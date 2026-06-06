@@ -27,7 +27,7 @@ Do the four steps once, in order. ~15 minutes total.
 
 1. Open your Supabase project → **SQL Editor** → **New query**.
 2. Paste all of **`supabase-setup.sql`** and click **Run**. This creates two tables
-   (`inventory`, `entries`), enables RLS, and adds `auth.uid()`-scoped policies so
+   (`weekly_focus_inventory`, `weekly_focus_entries`), enables RLS, and adds `auth.uid()`-scoped policies so
    every row belongs to the account that created it.
 3. **Project Settings → API** — copy two things for later:
    - **Project URL** — `https://xxxx.supabase.co`

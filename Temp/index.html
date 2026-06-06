@@ -168,13 +168,6 @@
   }
   .detail .obj::placeholder { color: var(--faint); font-style: italic; }
   .detail .obj:focus { outline: none; border-color: var(--brand); }
-  .detail .notes {
-    width: 100%; border: 1px solid var(--hair); border-radius: 7px; background: rgba(255,255,255,.6);
-    font-family: inherit; font-size: 11px; line-height: 1.5; color: var(--ink);
-    padding: 7px 9px; margin-top: 6px; resize: vertical; min-height: 46px;
-  }
-  .detail .notes::placeholder { color: var(--faint); font-style: italic; }
-  .detail .notes:focus { outline: none; border-color: var(--brand); background: #fff; }
   ul.subs { list-style: none; margin: 0 0 5px; padding: 0; }
   ul.subs li { display: flex; align-items: center; gap: 8px; height: 23px; }
   .sub-check { flex: 0 0 auto; width: 14px; height: 14px; border: 1.4px solid var(--mid); border-radius: 3px; background: #fff; cursor: pointer; padding: 0; position: relative; }
@@ -384,7 +377,7 @@
     .detail { padding: 4px 4px 12px 22px; }
     .sub-check { width: 22px; height: 22px; }
     .sub-check.on::after { font-size: 15px; top: 0; left: 3px; }
-    .sub-text, .detail .obj, .detail .notes, .sub-new { font-size: 15px; }
+    .sub-text, .detail .obj, .sub-new { font-size: 15px; }
     ul.subs li { height: 32px; }
     .block-head { font-size: 12px; }
     ol.targets li, .lined { height: 36px; }
@@ -394,7 +387,7 @@
     .toolbar, .panel, .status-line, .no-print, .zone-b { display: none !important; }
     .tgl, .pchip { display: none !important; }
     .det-toggle, .sub-add, .sub-del { display: none !important; }
-    .detail .obj, .detail .notes, .sub-text, .sub-new { border: none !important; }
+    .detail .obj, .sub-text, .sub-new { border: none !important; }
     .detail { padding-left: 28px; }
     .print-only { display: inline-flex !important; align-items: center; }
     .zone-a { background: none !important; border: none !important; border-radius: 0 !important; padding: 0 !important; }
@@ -741,7 +734,7 @@
   /* ---------------- shared: active line + detail panel ---------------- */
   function activeLine(key, pri, nameHtml) {
     var e = getEntry(key);
-    var filled = (e.objective && e.objective.trim()) || (e.subtasks && e.subtasks.length) || (e.notes && e.notes.trim());
+    var filled = (e.objective && e.objective.trim()) || (e.subtasks && e.subtasks.length);
     var pchip = "";
     if (pri) {
       var opts = ["H", "M", "L"].map(function (p) { return "<option" + (p === pri ? " selected" : "") + ">" + p + "</option>"; }).join("");
@@ -765,7 +758,6 @@
       '<input class="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
       '<ul class="subs">' + rows + "</ul>" +
       '<div class="sub-add no-print"><input class="sub-new" placeholder="Add a subtask\u2026"><button class="sub-addbtn">Add</button></div>' +
-      '<textarea class="notes" rows="2" placeholder="Notes \u2014 anything worth remembering\u2026">' + esc(e.notes || "") + "</textarea>" +
     "</div>";
   }
 
@@ -923,7 +915,7 @@
   function refreshFilled(el) {
     var wrap = el.closest("[data-key]"); if (!wrap) return;
     var e = getEntry(wrap.getAttribute("data-key"));
-    var has = (e.objective && e.objective.trim()) || (e.subtasks && e.subtasks.length) || (e.notes && e.notes.trim());
+    var has = (e.objective && e.objective.trim()) || (e.subtasks && e.subtasks.length);
     var bt = wrap.querySelector(".det-toggle"); if (bt) bt.classList.toggle("filled", !!has);
   }
   function subOf(el) { var li = el.closest("li[data-i]"); return li ? +li.getAttribute("data-i") : -1; }
@@ -961,7 +953,6 @@
     });
     col.addEventListener("input", function (e) {
       if (e.target.classList.contains("obj")) { patchEntry(keyOf(e.target), { objective: e.target.value }); refreshFilled(e.target); }
-      else if (e.target.classList.contains("notes")) { patchEntry(keyOf(e.target), { notes: e.target.value }); refreshFilled(e.target); }
       else if (e.target.classList.contains("sub-text")) { onSubText(e.target); }
     });
     col.addEventListener("keydown", function (e) {
