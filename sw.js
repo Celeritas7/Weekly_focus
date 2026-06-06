@@ -1,7 +1,7 @@
 /* Weekly Focus — service worker (offline app shell for the train).
    Caches the page so it opens with no signal. Supabase API calls are never
    cached; the app's own outbox queues edits and syncs them when you're back online. */
-const CACHE = "weekly-focus-v1";
+const CACHE = "weekly-focus-v2";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {

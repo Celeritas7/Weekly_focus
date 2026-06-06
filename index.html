@@ -10,6 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>Weekly Focus — Live</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   @page { size: letter; margin: 0.5in; }
 
@@ -336,6 +337,13 @@
   .cloud-fields input { width: 100%; border: 1px solid #c6c4be; border-radius: 6px; font-family: inherit; font-size: 12px; padding: 8px; background: #fff; color: #1a1a1a; }
   .cloud-fields input:focus { outline: none; border-color: var(--brand); }
   @media (max-width: 680px) { .cloud-fields { grid-template-columns: 1fr; } }
+  .cloud-auth-row { display: flex; gap: 10px; align-items: stretch; }
+  .cloud-auth-row input { flex: 1 1 auto; border: 1px solid #c6c4be; border-radius: 6px; font-family: inherit; font-size: 12px; padding: 8px; background: #fff; color: #1a1a1a; }
+  .cloud-auth-row input:focus { outline: none; border-color: var(--brand); }
+  .cloud-auth-row .btn { flex: 0 0 auto; white-space: nowrap; }
+  #cloudPanel label { display: block; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #444; margin-bottom: 4px; }
+  .cloud-pill.auth { background: oklch(0.36 0.09 264); color: oklch(0.90 0.10 264); }
+  @media (max-width: 680px) { .cloud-auth-row { flex-direction: column; } }
 
   /* ---------------- responsive (mobile) ---------------- */
   @media (max-width: 680px) {
@@ -429,15 +437,30 @@
 
 <div class="panel no-print" id="cloudPanel">
   <h3>Cloud sync (Supabase)</h3>
-  <p class="help">Sync this week across your PC and phone. Create the two tables first (see <b>supabase-setup.sql</b>), then paste your project's API details from <i>Supabase \u2192 Project Settings \u2192 API</i>. Use the <b>same board name</b> on every device to share one week.</p>
+  <p class="help">Sync this week across your PC and phone. Run <b>supabase-setup.sql</b> once, then enter your project details from <i>Supabase &rarr; Project Settings &rarr; API</i>. Use the <b>publishable</b> key (<code>sb_publishable_&hellip;</code>) &mdash; never a secret key. Sign in with a magic link; your week is private to your account. Use the <b>same board name</b> on every device to share one week.</p>
   <div class="cloud-fields">
     <div><label>Project URL</label><input id="cfUrl" placeholder="https://xxxx.supabase.co" autocomplete="off"></div>
-    <div><label>Anon public key</label><input id="cfKey" placeholder="eyJhbGci..." autocomplete="off"></div>
+    <div><label>Publishable key</label><input id="cfKey" placeholder="sb_publishable_..." autocomplete="off"></div>
     <div><label>Board name</label><input id="cfBoard" placeholder="my-week" autocomplete="off"></div>
   </div>
   <div class="actions">
-    <button class="btn dark" id="cloudSave">Connect &amp; sync</button>
+    <button class="btn dark" id="cloudSave">Save connection</button>
     <button class="btn ghost" id="cloudClose">Close</button>
+  </div>
+
+  <div id="cloudAuth" style="margin-top:14px; padding-top:14px; border-top:1px solid #d8d6d0;">
+    <div id="authSignedOut">
+      <label for="cfEmail">Sign in &mdash; magic link to your email</label>
+      <div class="cloud-auth-row">
+        <input id="cfEmail" type="email" placeholder="you@example.com" autocomplete="email">
+        <button class="btn dark" id="cloudSignIn">Send magic link</button>
+      </div>
+      <p class="help" style="margin:8px 0 0;">We email you a one-time link. Open it on this device to sign in. Sign in separately on each device (PC and phone).</p>
+    </div>
+    <div id="authSignedIn" style="display:none;">
+      <p class="help" style="margin:0 0 8px;">Signed in as <b id="authWho"></b>. Your boards are private to this account.</p>
+      <button class="btn ghost" id="cloudSignOut">Sign out</button>
+    </div>
   </div>
 </div>
 
@@ -1008,97 +1031,137 @@
     } catch (e) {}
   }
 
-  /* ---------------- cloud sync (Supabase) ---------------- */
+  /* ---------------- cloud sync (Supabase Auth + RLS) ----------------
+     Security model: the page holds only the PUBLISHABLE key. All reads/writes go
+     through the supabase-js client, which attaches the signed-in user's session
+     token automatically \u2014 so RLS scopes every row to auth.uid(). No session \u21d2 no
+     data. board_id is just a label for "which week", never a security boundary. */
   var CLOUD_KEY = "wfp_cloud", OUTBOX_KEY = "wfp_outbox";
-  var cloud = load(CLOUD_KEY);     // { url, key, board }
-  var outbox = load(OUTBOX_KEY);   // { qkey: {table,onConflict,row} }
+  var cloud = load(CLOUD_KEY);     // { url, key, board } \u2014 none are secret; safe to persist
+  var outbox = load(OUTBOX_KEY);   // { qkey: {table,onConflict,row} } \u2014 row stamped with user_id at flush
   var hasLocalSource = false;      // true once this device reads from disk/paste
   var flushing = false;
+  var sb = null;                   // supabase-js client
+  var session = null;              // active auth session (null = signed out)
+  var authSub = null;              // onAuthStateChange subscription
 
   function cloudConfigured() { return !!(cloud && cloud.url && cloud.key && cloud.board); }
+  function signedIn() { return !!(session && session.user); }
+  function syncReady() { return !!(sb && cloudConfigured() && signedIn()); }
+  function looksSecret(k) { return /^sb_secret_/i.test(k) || /service_role/i.test(k); }
   function saveCloud() { try { localStorage.setItem(CLOUD_KEY, JSON.stringify(cloud)); } catch (e) {} }
   function saveOutbox() { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox)); } catch (e) {} }
-  function base() { return cloud.url.replace(/\/$/, ""); }
-  function hdr(extra) { return Object.assign({ apikey: cloud.key, Authorization: "Bearer " + cloud.key, "Content-Type": "application/json" }, extra || {}); }
-  async function sbUpsert(table, onConflict, row) {
-    var res = await fetch(base() + "/rest/v1/" + table + "?on_conflict=" + onConflict, { method: "POST", headers: hdr({ Prefer: "resolution=merge-duplicates,return=minimal" }), body: JSON.stringify(row) });
-    if (!res.ok) throw new Error("HTTP " + res.status);
+
+  function ensureClient() {
+    if (sb) return sb;
+    if (!cloudConfigured() || typeof window.supabase === "undefined") return null;
+    sb = window.supabase.createClient(cloud.url, cloud.key, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "wfp_sb_auth" }
+    });
+    var sub = sb.auth.onAuthStateChange(function (event, sess) {
+      session = sess || null;
+      renderAuthUI(); updateCloudStatus();
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) initialSync();
+      else if (event === "TOKEN_REFRESHED" && syncReady()) flushOutbox();
+    });
+    authSub = sub && sub.data ? sub.data.subscription : null;
+    return sb;
   }
-  async function sbSelect(table, query) {
-    var res = await fetch(base() + "/rest/v1/" + table + "?" + query, { headers: hdr() });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return res.json();
+  function dropClient() {
+    if (authSub) { try { authSub.unsubscribe(); } catch (e) {} authSub = null; }
+    sb = null; session = null;
   }
 
   function queue(qkey, op) { outbox[qkey] = op; saveOutbox(); flushOutbox(); updateCloudStatus(); }
   function cloudPushEntry(key, payload) {
     if (!cloudConfigured()) return;
-    queue("entry:" + key, { table: "entries", onConflict: "board_id,item_key", row: { board_id: cloud.board, item_key: key, payload: payload, updated_at: new Date().toISOString() } });
+    queue("entry:" + key, { table: "entries", onConflict: "user_id,board_id,item_key", row: { board_id: cloud.board, item_key: key, payload: payload, updated_at: new Date().toISOString() } });
   }
   function cloudPushApps() {
     if (!cloudConfigured() || !state.apps) return;
-    queue("inv:apps", { table: "inventory", onConflict: "board_id", row: { board_id: cloud.board, apps: state.apps, updated_at: new Date().toISOString() } });
+    queue("inv:apps", { table: "inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, apps: state.apps, updated_at: new Date().toISOString() } });
   }
   function cloudPushStudy() {
     if (!cloudConfigured() || !state.domains) return;
-    queue("inv:study", { table: "inventory", onConflict: "board_id", row: { board_id: cloud.board, study: state.domains, updated_at: new Date().toISOString() } });
+    queue("inv:study", { table: "inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, study: state.domains, updated_at: new Date().toISOString() } });
   }
   async function flushOutbox() {
-    if (!cloudConfigured() || flushing) return;
+    if (!syncReady() || flushing) return;
     flushing = true;
+    var uid = session.user.id;
     var keys = Object.keys(outbox);
     for (var i = 0; i < keys.length; i++) {
       var op = outbox[keys[i]];
-      try { await sbUpsert(op.table, op.onConflict, op.row); delete outbox[keys[i]]; saveOutbox(); }
-      catch (e) { break; }   // offline -> stay queued
+      var row = Object.assign({ user_id: uid }, op.row);   // stamp the owner; RLS check requires it
+      try {
+        var r = await sb.from(op.table).upsert(row, { onConflict: op.onConflict });
+        if (r.error) throw r.error;
+        delete outbox[keys[i]]; saveOutbox();
+      } catch (e) { break; }   // offline / transient -> stay queued
     }
     flushing = false; updateCloudStatus();
   }
   async function cloudPullEntries() {
-    if (!cloudConfigured()) return;
+    if (!syncReady()) return;
     try {
-      var rows = await sbSelect("entries", "board_id=eq." + encodeURIComponent(cloud.board) + "&select=item_key,payload");
-      var map = {}; rows.forEach(function (r) { map[r.item_key] = r.payload || {}; });
+      var r = await sb.from("entries").select("item_key,payload").eq("board_id", cloud.board);
+      if (r.error) throw r.error;
+      var map = {}; (r.data || []).forEach(function (row) { map[row.item_key] = row.payload || {}; });
       // pending local writes win over remote
       Object.keys(outbox).forEach(function (qk) { if (qk.indexOf("entry:") === 0) { var op = outbox[qk]; map[op.row.item_key] = op.row.payload; } });
       entries = map; persistLocal(); buildApps(); buildStudy(); updateCloudStatus();
     } catch (e) { updateCloudStatus(); }
   }
   async function cloudPullInventory(force) {
-    if (!cloudConfigured()) return false;
+    if (!syncReady()) return false;
     try {
-      var rows = await sbSelect("inventory", "board_id=eq." + encodeURIComponent(cloud.board) + "&select=apps,study&limit=1");
-      if (rows && rows.length && (force || !hasLocalSource)) {
+      var r = await sb.from("inventory").select("apps,study").eq("board_id", cloud.board).limit(1);
+      if (r.error) throw r.error;
+      var rows = r.data || [];
+      if (rows.length && (force || !hasLocalSource)) {
         if (rows[0].apps) state.apps = rows[0].apps;
         if (rows[0].study) state.domains = rows[0].study;
         buildApps(); buildStudy();
       }
-      return !!(rows && rows.length);
+      return !!rows.length;
     } catch (e) { return false; }
   }
   function cloudResetEntries() {
-    if (!cloudConfigured()) return;
     Object.keys(outbox).forEach(function (k) { if (k.indexOf("entry:") === 0) delete outbox[k]; }); saveOutbox();
-    fetch(base() + "/rest/v1/entries?board_id=eq." + encodeURIComponent(cloud.board), { method: "DELETE", headers: hdr() }).catch(function () {});
+    if (!syncReady()) return;
+    sb.from("entries").delete().eq("board_id", cloud.board).then(function () {}, function () {});
+  }
+  function initialSync() {
+    // push whatever this device currently holds, then pull the rest
+    cloudPushApps(); cloudPushStudy();
+    Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); });
+    flushOutbox().then(function () { cloudPullInventory(false).then(cloudPullEntries); });
   }
   function pendingCount() { return Object.keys(outbox).length; }
   function updateCloudStatus() {
     var el = $("cloudStatus"); if (!el) return;
     if (!cloudConfigured()) { el.className = "cloud-pill off"; el.textContent = "\u2601 Cloud off"; return; }
+    if (!signedIn()) { el.className = "cloud-pill auth"; el.textContent = "\u2601 Sign in to sync"; return; }
     var n = pendingCount();
     if (!navigator.onLine) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Offline" + (n ? " \u00b7 " + n + " queued" : ""); }
     else if (n) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Syncing " + n + "\u2026"; }
     else { el.className = "cloud-pill ok"; el.textContent = "\u2601 Synced"; }
   }
+  function renderAuthUI() {
+    var inEl = $("authSignedIn"), outEl = $("authSignedOut");
+    if (!inEl || !outEl) return;
+    if (signedIn()) {
+      inEl.style.display = ""; outEl.style.display = "none";
+      var who = $("authWho"); if (who) who.textContent = session.user.email || "your account";
+    } else { inEl.style.display = "none"; outEl.style.display = ""; }
+  }
   function startCloud() {
-    updateCloudStatus();
-    if (!cloudConfigured()) return;
-    cloudPullInventory(false).then(cloudPullEntries);
-    flushOutbox();
-    setInterval(function () { if (document.visibilityState === "visible" && navigator.onLine) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); } }, 15000);
-    window.addEventListener("online", function () { flushOutbox(); cloudPullEntries(); updateCloudStatus(); });
+    ensureClient();                 // registers the auth listener; INITIAL_SESSION drives first sync
+    renderAuthUI(); updateCloudStatus();
+    setInterval(function () { if (document.visibilityState === "visible" && navigator.onLine && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); } }, 15000);
+    window.addEventListener("online", function () { if (syncReady()) { flushOutbox(); cloudPullEntries(); } updateCloudStatus(); });
     window.addEventListener("offline", updateCloudStatus);
-    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") { flushOutbox(); cloudPullEntries(); } });
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && syncReady()) { flushOutbox(); cloudPullEntries(); } });
   }
 
   /* cloud settings panel */
@@ -1106,17 +1169,36 @@
   $("cloudClose").onclick = function () { $("cloudPanel").classList.remove("open"); };
   (function fillCloud() { if (cloud.url) $("cfUrl").value = cloud.url; if (cloud.key) $("cfKey").value = cloud.key; if (cloud.board) $("cfBoard").value = cloud.board; })();
   $("cloudSave").onclick = function () {
-    cloud = { url: $("cfUrl").value.trim(), key: $("cfKey").value.trim(), board: ($("cfBoard").value.trim() || "my-week") };
-    saveCloud();
-    if (cloudConfigured()) {
-      // push whatever this device currently holds, then pull the rest
-      cloudPushApps(); cloudPushStudy();
-      Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); });
-      cloudPullInventory(false).then(cloudPullEntries);
-      setStatus("Cloud connected. Board <b>" + esc(cloud.board) + "</b> \u2014 syncing across your devices.");
-      $("cloudPanel").classList.remove("open");
-    } else { setStatus("Enter your Supabase URL, anon key, and a board name.", true); }
-    updateCloudStatus();
+    var next = { url: $("cfUrl").value.trim(), key: $("cfKey").value.trim(), board: ($("cfBoard").value.trim() || "my-week") };
+    if (next.key && looksSecret(next.key)) {
+      setStatus("That looks like a <b>secret</b> key. Never paste a secret / service_role key into the page \u2014 use the <b>publishable</b> key (<code>sb_publishable_\u2026</code>).", true);
+      return;
+    }
+    var changed = !cloud || cloud.url !== next.url || cloud.key !== next.key;
+    cloud = next; saveCloud();
+    if (!cloudConfigured()) { setStatus("Enter your Supabase URL, publishable key, and a board name.", true); updateCloudStatus(); return; }
+    if (changed) dropClient();      // rebuild client against the new project/key
+    ensureClient();
+    renderAuthUI(); updateCloudStatus();
+    if (syncReady()) { initialSync(); setStatus("Cloud connected. Board <b>" + esc(cloud.board) + "</b> \u2014 syncing across your devices."); }
+    else setStatus("Saved. Now <b>send yourself a magic link</b> below and open it on this device to start syncing board <b>" + esc(cloud.board) + "</b>.");
+  };
+  $("cloudSignIn").onclick = async function () {
+    if (!cloudConfigured()) { setStatus("Enter your Project URL, publishable key, and board name, then <b>Save connection</b> first.", true); return; }
+    ensureClient();
+    if (!sb) { setStatus("Couldn\u2019t load the Supabase client (offline?). Reconnect and try again.", true); return; }
+    var email = ($("cfEmail").value || "").trim();
+    if (!email) { setStatus("Enter your email to get a magic link.", true); return; }
+    try {
+      var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } });
+      if (r.error) throw r.error;
+      setStatus("Magic link sent to <b>" + esc(email) + "</b>. Open it <b>on this device</b> to finish signing in.");
+    } catch (e) { setStatus("Couldn\u2019t send the link: " + esc(e.message || String(e)), true); }
+  };
+  $("cloudSignOut").onclick = async function () {
+    if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
+    session = null; renderAuthUI(); updateCloudStatus();
+    setStatus("Signed out. Your local copy stays on this device; cloud sync pauses until you sign in again.");
   };
 
   buildApps(); buildStudy(); restore(); startCloud();
