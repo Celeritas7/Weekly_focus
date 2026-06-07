@@ -168,13 +168,6 @@
   }
   .detail .obj::placeholder { color: var(--faint); font-style: italic; }
   .detail .obj:focus { outline: none; border-color: var(--brand); }
-  .detail .notes {
-    width: 100%; border: 1px solid var(--hair); border-radius: 7px; background: rgba(255,255,255,.6);
-    font-family: inherit; font-size: 11px; line-height: 1.5; color: var(--ink);
-    padding: 7px 9px; margin-top: 6px; resize: vertical; min-height: 46px;
-  }
-  .detail .notes::placeholder { color: var(--faint); font-style: italic; }
-  .detail .notes:focus { outline: none; border-color: var(--brand); background: #fff; }
   ul.subs { list-style: none; margin: 0 0 5px; padding: 0; }
   ul.subs li { display: flex; align-items: center; gap: 8px; height: 23px; }
   .sub-check { flex: 0 0 auto; width: 14px; height: 14px; border: 1.4px solid var(--mid); border-radius: 3px; background: #fff; cursor: pointer; padding: 0; position: relative; }
@@ -384,7 +377,7 @@
     .detail { padding: 4px 4px 12px 22px; }
     .sub-check { width: 22px; height: 22px; }
     .sub-check.on::after { font-size: 15px; top: 0; left: 3px; }
-    .sub-text, .detail .obj, .detail .notes, .sub-new { font-size: 15px; }
+    .sub-text, .detail .obj, .sub-new { font-size: 15px; }
     ul.subs li { height: 32px; }
     .block-head { font-size: 12px; }
     ol.targets li, .lined { height: 36px; }
@@ -394,7 +387,7 @@
     .toolbar, .panel, .status-line, .no-print, .zone-b { display: none !important; }
     .tgl, .pchip { display: none !important; }
     .det-toggle, .sub-add, .sub-del { display: none !important; }
-    .detail .obj, .detail .notes, .sub-text, .sub-new { border: none !important; }
+    .detail .obj, .sub-text, .sub-new { border: none !important; }
     .detail { padding-left: 28px; }
     .print-only { display: inline-flex !important; align-items: center; }
     .zone-a { background: none !important; border: none !important; border-radius: 0 !important; padding: 0 !important; }
@@ -688,35 +681,6 @@
     if (typeof cloudPushEntry === "function") try { cloudPushEntry(key, next); } catch (e) {}
   }
 
-  /* ---- subtask identity + cross-device merge ----
-     Each subtask carries: { id, t, done, u (last-edit ms), del (tombstone) }.
-     Merge is a union by id with per-subtask last-write-wins, so subtasks added on
-     different devices both survive; a delete sets del+u (high) so it wins over a
-     stale copy instead of being resurrected. Legacy subtasks (no id) get a stable
-     id derived from their text so the same legacy item dedupes across devices. */
-  function subUid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
-  function subLegacyId(t) { var s = String(t || ""), h = 5381; for (var i = 0; i < s.length; i++) { h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; } return "l_" + h.toString(36); }
-  function normSubs(arr) {
-    return (Array.isArray(arr) ? arr : []).map(function (s) {
-      if (!s) return null;
-      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del };
-    }).filter(Boolean);
-  }
-  function mergeSubs(a, b) {
-    var by = {}, order = [];
-    function take(s) {
-      var ex = by[s.id];
-      if (!ex) { by[s.id] = s; order.push(s.id); return; }
-      if ((s.u || 0) > (ex.u || 0)) by[s.id] = s;
-      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del };
-    }
-    normSubs(a).forEach(take); normSubs(b).forEach(take);
-    return order.map(function (id) { return by[id]; });
-  }
-  function visibleSubs(arr) { return normSubs(arr).filter(function (s) { return !s.del; }); }
-  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
-  function subsDiffer(a, b) { return subsKey(a) !== subsKey(b); }
-
   function isActive(app) {
     var o = entries["app:" + app.name];
     if (o && typeof o.active === "boolean") return o.active;
@@ -770,7 +734,7 @@
   /* ---------------- shared: active line + detail panel ---------------- */
   function activeLine(key, pri, nameHtml) {
     var e = getEntry(key);
-    var filled = (e.objective && e.objective.trim()) || visibleSubs(e.subtasks).length || (e.notes && e.notes.trim());
+    var filled = (e.objective && e.objective.trim()) || (e.subtasks && e.subtasks.length);
     var pchip = "";
     if (pri) {
       var opts = ["H", "M", "L"].map(function (p) { return "<option" + (p === pri ? " selected" : "") + ">" + p + "</option>"; }).join("");
@@ -784,9 +748,9 @@
     "</div>";
   }
   function detailHtml(key) {
-    var e = getEntry(key), subs = visibleSubs(e.subtasks);
-    var rows = subs.map(function (s) {
-      return '<li data-sid="' + esc(s.id) + '"><button class="sub-check' + (s.done ? " on" : "") + '" aria-label="Done"></button>' +
+    var e = getEntry(key), subs = e.subtasks || [];
+    var rows = subs.map(function (s, i) {
+      return '<li data-i="' + i + '"><button class="sub-check' + (s.done ? " on" : "") + '" aria-label="Done"></button>' +
         '<input class="sub-text" value="' + esc(s.t || "") + '" placeholder="subtask">' +
         '<button class="sub-del no-print" title="Delete">\u00d7</button></li>';
     }).join("");
@@ -794,7 +758,6 @@
       '<input class="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
       '<ul class="subs">' + rows + "</ul>" +
       '<div class="sub-add no-print"><input class="sub-new" placeholder="Add a subtask\u2026"><button class="sub-addbtn">Add</button></div>' +
-      '<textarea class="notes" rows="2" placeholder="Notes \u2014 anything worth remembering\u2026">' + esc(e.notes || "") + "</textarea>" +
     "</div>";
   }
 
@@ -952,31 +915,29 @@
   function refreshFilled(el) {
     var wrap = el.closest("[data-key]"); if (!wrap) return;
     var e = getEntry(wrap.getAttribute("data-key"));
-    var has = (e.objective && e.objective.trim()) || visibleSubs(e.subtasks).length || (e.notes && e.notes.trim());
+    var has = (e.objective && e.objective.trim()) || (e.subtasks && e.subtasks.length);
     var bt = wrap.querySelector(".det-toggle"); if (bt) bt.classList.toggle("filled", !!has);
   }
-  function subOf(el) { var li = el.closest("li[data-sid]"); return li ? li.getAttribute("data-sid") : null; }
-  function findSub(subs, id) { for (var i = 0; i < subs.length; i++) if (subs[i].id === id) return i; return -1; }
+  function subOf(el) { var li = el.closest("li[data-i]"); return li ? +li.getAttribute("data-i") : -1; }
   function onSubCheck(el) {
-    var btn = el.closest(".sub-check"), k = keyOf(btn), id = subOf(btn);
-    var subs = normSubs(getEntry(k).subtasks), i = findSub(subs, id); if (i < 0) return;
-    subs[i] = Object.assign({}, subs[i], { done: !subs[i].done, u: Date.now() });
+    var btn = el.closest(".sub-check"), k = keyOf(btn), i = subOf(btn);
+    var subs = (getEntry(k).subtasks || []).slice(); if (!subs[i]) return;
+    subs[i] = Object.assign({}, subs[i], { done: !subs[i].done });
     patchEntry(k, { subtasks: subs }); btn.classList.toggle("on", subs[i].done);
   }
   function onSubText(el) {
-    var k = keyOf(el), id = subOf(el);
-    var subs = normSubs(getEntry(k).subtasks), i = findSub(subs, id); if (i < 0) return;
-    subs[i] = Object.assign({}, subs[i], { t: el.value, u: Date.now() }); patchEntry(k, { subtasks: subs });
+    var k = keyOf(el), i = subOf(el);
+    var subs = (getEntry(k).subtasks || []).slice(); if (!subs[i]) return;
+    subs[i] = Object.assign({}, subs[i], { t: el.value }); patchEntry(k, { subtasks: subs });
   }
   function onSubDel(el, rebuild) {
-    var k = keyOf(el), id = subOf(el);
-    var subs = normSubs(getEntry(k).subtasks), i = findSub(subs, id); if (i < 0) { rebuild(); return; }
-    subs[i] = Object.assign({}, subs[i], { del: true, u: Date.now() });   // tombstone so the delete syncs instead of resurrecting
+    var k = keyOf(el), i = subOf(el);
+    var subs = (getEntry(k).subtasks || []).slice(); subs.splice(i, 1);
     patchEntry(k, { subtasks: subs }); rebuild();
   }
   function onSubAdd(detailEl, k, rebuild) {
     var inp = detailEl.querySelector(".sub-new"), v = (inp.value || "").trim(); if (!v) return;
-    var subs = normSubs(getEntry(k).subtasks); subs.push({ id: subUid(), t: v, done: false, u: Date.now() });
+    var subs = (getEntry(k).subtasks || []).slice(); subs.push({ t: v, done: false });
     patchEntry(k, { subtasks: subs }); rebuild();
   }
   function wireColumn(colId, rebuild, sliceN) {
@@ -992,7 +953,6 @@
     });
     col.addEventListener("input", function (e) {
       if (e.target.classList.contains("obj")) { patchEntry(keyOf(e.target), { objective: e.target.value }); refreshFilled(e.target); }
-      else if (e.target.classList.contains("notes")) { patchEntry(keyOf(e.target), { notes: e.target.value }); refreshFilled(e.target); }
       else if (e.target.classList.contains("sub-text")) { onSubText(e.target); }
     });
     col.addEventListener("keydown", function (e) {
@@ -1146,23 +1106,10 @@
     try {
       var r = await sb.from("weekly_focus_entries").select("item_key,payload").eq("board_id", cloud.board);
       if (r.error) throw r.error;
-      var remote = {}; (r.data || []).forEach(function (row) { remote[row.item_key] = row.payload || {}; });
-      var pend = {}; Object.keys(outbox).forEach(function (qk) { if (qk.indexOf("entry:") === 0) { var op = outbox[qk]; pend[op.row.item_key] = op.row.payload; } });
-      var keys = {}; [remote, entries, pend].forEach(function (m) { Object.keys(m).forEach(function (k) { keys[k] = 1; }); });
-      var next = {};
-      Object.keys(keys).forEach(function (k) {
-        var rem = remote[k] || {}, loc = entries[k] || {};
-        // scalar fields (active, pri, objective, notes): remote overlays local, pending wins last
-        var base = Object.assign({}, loc, rem);
-        if (pend[k]) Object.assign(base, pend[k]);
-        // subtasks: union-merge local + remote + pending by id (last-write-wins per subtask)
-        var merged = mergeSubs(mergeSubs(loc.subtasks, rem.subtasks), (pend[k] && pend[k].subtasks) || []);
-        base.subtasks = merged;
-        next[k] = base;
-        // if our merge added anything the cloud doesn't have, write the union back so the DB holds it durably
-        if (subsDiffer(merged, rem.subtasks)) cloudPushEntry(k, base);
-      });
-      entries = next; persistLocal(); buildApps(); buildStudy(); updateCloudStatus();
+      var map = {}; (r.data || []).forEach(function (row) { map[row.item_key] = row.payload || {}; });
+      // pending local writes win over remote
+      Object.keys(outbox).forEach(function (qk) { if (qk.indexOf("entry:") === 0) { var op = outbox[qk]; map[op.row.item_key] = op.row.payload; } });
+      entries = map; persistLocal(); buildApps(); buildStudy(); updateCloudStatus();
     } catch (e) { updateCloudStatus(); }
   }
   async function cloudPullInventory(force) {
