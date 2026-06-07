@@ -1,7 +1,11 @@
 /* Weekly Focus — service worker (offline app shell for the train).
    Caches the page so it opens with no signal. Supabase API calls are never
    cached; the app's own outbox queues edits and syncs them when you're back online. */
-const CACHE = "weekly-focus-v2";
+/* BUMP THIS CONSTANT ON EVERY DEPLOY. Changing it makes the browser see a new
+   service-worker byte-for-byte, which forces reinstall (re-caching the new
+   index.html) and the activate handler below to purge every older cache. This is
+   what stops a stale build from being served indefinitely. */
+const CACHE = "weekly-focus-v3";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
