@@ -168,13 +168,15 @@
   }
   .detail .obj::placeholder { color: var(--faint); font-style: italic; }
   .detail .obj:focus { outline: none; border-color: var(--brand); }
+  .notes-block { margin-top: 9px; }
+  .notes-lbl { display: block; font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #b07d18; margin-bottom: 3px; }
   .detail .notes {
-    width: 100%; border: 1px solid var(--hair); border-radius: 7px; background: rgba(255,255,255,.6);
+    width: 100%; border: 1px solid #ecd9a6; border-left: 3px solid #e0b34d; border-radius: 7px; background: #fff8e6;
     font-family: inherit; font-size: 11px; line-height: 1.5; color: var(--ink);
-    padding: 7px 9px; margin-top: 6px; resize: vertical; min-height: 46px;
+    padding: 7px 9px; resize: vertical; min-height: 46px;
   }
-  .detail .notes::placeholder { color: var(--faint); font-style: italic; }
-  .detail .notes:focus { outline: none; border-color: var(--brand); background: #fff; }
+  .detail .notes::placeholder { color: #b89b5e; font-style: italic; }
+  .detail .notes:focus { outline: none; border-color: #e0b34d; border-left-color: #cf9a2e; background: #fffdf5; }
   ul.subs { list-style: none; margin: 0 0 5px; padding: 0; }
   ul.subs li { display: flex; align-items: center; gap: 8px; height: 23px; }
   .sub-check { flex: 0 0 auto; width: 14px; height: 14px; border: 1.4px solid var(--mid); border-radius: 3px; background: #fff; cursor: pointer; padding: 0; position: relative; }
@@ -793,8 +795,9 @@
     return '<div class="detail">' +
       '<input class="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
       '<ul class="subs">' + rows + "</ul>" +
-      '<div class="sub-add no-print"><input class="sub-new" placeholder="Add a subtask\u2026"><button class="sub-addbtn">Add</button></div>' +
-      '<textarea class="notes" rows="2" placeholder="Notes \u2014 anything worth remembering\u2026">' + esc(e.notes || "") + "</textarea>" +
+      '<div class="sub-add no-print"><input class="sub-new" placeholder="Add a checklist subtask\u2026"><button class="sub-addbtn">Add</button></div>' +
+      '<div class="notes-block"><span class="notes-lbl">\u270e Notes</span>' +
+      '<textarea class="notes" rows="2" placeholder="Longer notes \u2014 not a checklist item\u2026">' + esc(e.notes || "") + "</textarea></div>" +
     "</div>";
   }
 
