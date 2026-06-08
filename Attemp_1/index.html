@@ -2,17 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#161620">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Weekly Focus">
 <title>Weekly Focus</title>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icon-180.png">
-<link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="weekly-focus.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
 
@@ -25,12 +18,10 @@
       <span class="live">Live</span>
     </div>
     <span class="spacer"></span>
-    <span class="cloud-pill off" id="cloudPill" title="Cloud sync status">&#9729; Cloud off</span>
     <label class="weekfield">Week of
       <input id="weekInput" type="text" placeholder="2026-06-08" data-act="week">
     </label>
     <div class="toolset">
-      <button class="tbtn" id="btnCloud" title="Cloud sync settings"></button>
       <button class="tbtn" id="btnData" title="Connect your Apps &amp; Study data"></button>
       <button class="tbtn" id="btnSample" title="Load sample data"></button>
       <button class="tbtn" id="btnReset" title="Reset week"></button>
@@ -171,57 +162,16 @@
   </div>
 </div>
 
-<!-- ===================== CLOUD SYNC ===================== -->
-<div class="modal-bg" id="cloudModal">
-  <div class="modal">
-    <div class="modal-head">
-      <h3>Cloud sync</h3>
-      <p>Sync this week privately across your PC and phone via Supabase. Run <b>supabase-setup.sql</b> once, then enter your project details. Use the <b>publishable</b> key (<code>sb_publishable_&hellip;</code>) &mdash; never a secret key.</p>
-    </div>
-    <div class="modal-body" style="padding:0;">
-      <div class="dsect">
-        <h4>Connection</h4>
-        <div class="cfield"><label>Project URL</label><input id="cfUrl" type="text" placeholder="https://xxxx.supabase.co" autocomplete="off"></div>
-        <div class="cfield"><label>Publishable key</label><input id="cfKey" type="text" placeholder="sb_publishable_&hellip;" autocomplete="off"></div>
-        <div class="cfield"><label>Board name <span class="cf-hint">&mdash; use the same on every device</span></label><input id="cfBoard" type="text" placeholder="my-week" autocomplete="off"></div>
-        <div class="dbtns" style="margin-top:12px;"><button class="tbtn primary" id="cloudSave">Save connection</button></div>
-      </div>
-      <div class="dsect">
-        <h4>Account</h4>
-        <div id="authSignedOut">
-          <p class="dhelp">Sign in with a magic link &mdash; your week is private to your account.</p>
-          <div class="cfield"><label>Email</label><input id="cfEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
-          <div class="dbtns" style="margin-top:12px;"><button class="tbtn" id="cloudSignIn">Send magic link</button></div>
-        </div>
-        <div id="authSignedIn" style="display:none;">
-          <p class="dhelp">Signed in as <b id="authWho">your account</b>.</p>
-          <div class="dbtns"><button class="tbtn" id="cloudSignOut">Sign out</button></div>
-        </div>
-        <p class="dstatus" id="cloudStatus">Cloud is off. Connect a project above to sync across devices.</p>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="tbtn" id="cloudClose">Done</button>
-    </div>
-  </div>
-</div>
-
 <script src="weekly-focus-app.js"></script>
 <script>
   // inject toolbar icons + labels (kept out of markup for clarity)
   (function () {
     var b = function (id, svg, label) { var el = document.getElementById(id); if (el) el.innerHTML = svg + '<span>' + label + '</span>'; };
-    b("btnCloud", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1 0-8 5.5 5.5 0 0 1 10.6-1.3A3.8 3.8 0 0 1 18 18z"/></svg>', 'Cloud');
     b("btnData", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="7" ry="2.6"/><path d="M5 5.5v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6"/><path d="M5 11.5v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6"/></svg>', 'Data');
     b("btnSample", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18"/></svg>', 'Load sample');
     b("btnReset", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5v5h5"/><path d="M5.5 13a7 7 0 1 0 1.5-6.5L4 10"/></svg>', 'Reset');
     b("btnPrint", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><path d="M7 17h10v4H7z"/></svg>', 'Print');
   })();
-
-  // PWA: register the service worker (only on http/https — no-op in sandboxed previews)
-  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
-    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
-  }
 </script>
 
 </body>

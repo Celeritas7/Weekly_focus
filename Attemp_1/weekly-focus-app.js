@@ -132,13 +132,6 @@
   var targetOrder = loadArr(K.targets);
   var detailOpen = {};
 
-  /* cloud state (see CLOUD SYNC section) */
-  var CLOUD_KEY = "wf2_cloud", OUTBOX_KEY = "wf2_outbox", BOARD_ITEM = "__board";
-  var cloud = load(CLOUD_KEY);      // { url, key, board } — none secret; safe to persist
-  var outbox = load(OUTBOX_KEY);    // queued upserts, flushed when signed-in + online
-  var hasLocalSource = false;       // true once this device loads inventory from disk/paste
-  var flushing = false, sb = null, session = null, authSub = null;
-
   function load(k) { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch (e) { return {}; } }
   function loadArr(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } }
   function save() {
@@ -151,12 +144,11 @@
   }
   function subUid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function getEntry(k) { return entries[k] || {}; }
-  function patch(k, p) { entries[k] = Object.assign({}, entries[k], p); save(); cloudPushEntry(k, entries[k]); }
+  function patch(k, p) { entries[k] = Object.assign({}, entries[k], p); save(); }
 
   /* ---- real-data inventory: persist what's loaded from files/paste ---- */
   function saveInv() {
     try { localStorage.setItem(K.inv, JSON.stringify({ apps: state.apps, domains: state.domains })); } catch (e) {}
-    hasLocalSource = true; cloudPushApps(); cloudPushStudy();
   }
   function loadInv() {
     try { var v = JSON.parse(localStorage.getItem(K.inv)); return (v && (v.apps || v.domains)) ? v : null; } catch (e) { return null; }
@@ -164,9 +156,7 @@
 
   /* ---------------- model accessors ---------------- */
   function isActive(app) { var o = entries["app:" + app.name]; return (o && typeof o.active === "boolean") ? o.active : app.group === "Active"; }
-  function priOf(key, app) { var o = entries[key]; return (o && o.pri) || (app ? app.priAuto : null); }
-  function effPri(app) { return priOf("app:" + app.name, app); }
-  function priRankOf(key) { var o = entries[key]; return (o && o.pri) ? PRI_RANK[o.pri] : 3; }
+  function effPri(app) { var o = entries["app:" + app.name]; return (o && o.pri) || app.priAuto; }
   function studyPath(dom, names) { return dom + "/" + names.join("/"); }
   function isActiveStudy(p) { return getEntry("study:" + p).active === true; }
   function eachNode(dom, cb) {
@@ -191,8 +181,8 @@
   /* ---------------- targets (The Five) ---------------- */
   var MAX_TARGETS = 5;
   function isTarget(k) { return targetOrder.indexOf(k) >= 0; }
-  function addTarget(k) { if (isTarget(k) || targetOrder.length >= MAX_TARGETS) return false; targetOrder.push(k); save(); cloudPushBoard(); return true; }
-  function removeTarget(k) { var i = targetOrder.indexOf(k); if (i >= 0) { targetOrder.splice(i, 1); patch(k, { targetDone: false }); save(); cloudPushBoard(); } }
+  function addTarget(k) { if (isTarget(k) || targetOrder.length >= MAX_TARGETS) return false; targetOrder.push(k); save(); return true; }
+  function removeTarget(k) { var i = targetOrder.indexOf(k); if (i >= 0) { targetOrder.splice(i, 1); patch(k, { targetDone: false }); save(); } }
   function targetDone(k) { return getEntry(k).targetDone === true; }
   function activeKeys() {
     var ks = {};
@@ -264,43 +254,39 @@
   function itemCard(key, kind, nameHtml, crumbHtml, app) {
     var open = !!detailOpen[key], prog = subProgress(key);
     var li = document.createElement("div");
-    var pri = priOf(key, app);
-    var priCls = pri ? (" pri-" + pri) : "";
-    li.className = "item" + priCls + (open ? " open" : "");
+    li.className = "item" + (open ? " open" : "");
     li.setAttribute("data-key", key); li.setAttribute("data-kind", kind);
-    // progress ring only when there ARE subtasks; sits on the right so names align
     var ring = prog
-      ? '<div class="miniring" title="' + prog.done + ' of ' + prog.total + ' subtasks done">' + ringSVG(prog.pct, 26, 3.5, { t: "mt", f: "mf" }) + '<span class="mn">' + prog.done + '/' + prog.total + '</span></div>'
-      : '';
+      ? '<div class="miniring">' + ringSVG(prog.pct, 30, 4, { t: "mt", f: "mf" }) + '<span class="mn">' + prog.done + '/' + prog.total + '</span></div>'
+      : '<div class="miniring none">' + ringSVG(0, 30, 4, { t: "mt", f: "mf" }) + '<span class="mn">\u2013</span></div>';
+    var pchip = "";
+    if (app) {
+      var pri = effPri(app);
+      pchip = '<select class="pchip pchip-' + pri + '" data-act="pri">' + ["H", "M", "L"].map(function (p) { return '<option' + (p === pri ? " selected" : "") + '>' + p + '</option>'; }).join("") + '</select>' +
+        '<span class="pri-print">[' + pri + '] </span>';
+    }
     var starOn = isTarget(key), starFull = !starOn && targetOrder.length >= MAX_TARGETS;
     li.innerHTML =
       '<div class="item-row">' +
-        '<div class="item-grip" data-act="open">' +
+        '<div class="item-grip" data-act="open">' + ring +
           '<div class="iwrap-name">' + (crumbHtml ? '<div class="icrumb">' + crumbHtml + '</div>' : "") + '<div class="iname">' + nameHtml + '</div></div>' +
         '</div>' +
-        '<div class="item-actions">' + ring +
+        '<div class="item-actions">' + pchip +
           '<button class="star' + (starOn ? " on" : "") + '" data-act="star"' + (starFull ? " disabled" : "") + ' title="' + (starOn ? "In The Five" : starFull ? "The Five is full" : "Add to The Five") + '">' + IC.star + '</button>' +
           '<button class="caret-btn" data-act="open">' + IC.chev + '</button>' +
           '<button class="tgl on" data-act="off" title="Move to backlog"><span class="knob"></span></button>' +
         '</div>' +
       '</div>' +
-      detailHtml(key, app);
+      detailHtml(key);
     return li;
   }
-  function priName(p) { return p === "H" ? "High" : p === "M" ? "Medium" : "Low"; }
-  function detailHtml(key, app) {
+  function detailHtml(key) {
     var e = getEntry(key), rows = subs(key).map(function (x) {
       return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
         '<input class="sub-text" data-act="subedit" value="' + esc(x.t || "") + '" placeholder="subtask">' +
         '<button class="sub-del" data-act="subdel" title="Delete">\u00d7</button></li>';
     }).join("");
-    var priCtl = "";
-    var pri = priOf(key, app);
-    priCtl = '<div class="pri-row"><span class="pri-lbl">Priority</span>' +
-      '<div class="pri-seg">' + ["H", "M", "L"].map(function (p) {
-        return '<button class="pseg pseg-' + p + (p === pri ? " on" : "") + '" data-pri="' + p + '">' + priName(p) + '</button>';
-      }).join("") + '</div></div>';
-    return '<div class="detail">' + priCtl +
+    return '<div class="detail">' +
       '<input class="obj" data-act="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
       '<ul class="subs">' + rows + '</ul>' +
       '<div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a checklist subtask\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
@@ -367,7 +353,7 @@
       var byDom = {}; active.forEach(function (a) { (byDom[a.domain] = byDom[a.domain] || []).push(a); });
       (state.domains || []).forEach(function (d) {
         var arr = byDom[d.name]; if (!arr) return;
-        arr.sort(function (x, y) { return (priRankOf("study:" + x.path) - priRankOf("study:" + y.path)) || x.node.name.toLowerCase().localeCompare(y.node.name.toLowerCase()); });
+        arr.sort(function (x, y) { return x.node.name.toLowerCase().localeCompare(y.node.name.toLowerCase()); });
         var ch = document.createElement("div"); ch.className = "cat-head"; ch.style.color = "oklch(0.55 0.13 " + hueFor(d.name) + ")";
         ch.innerHTML = '<span class="cat-dot"></span>' + esc(d.name) + ' <span class="cat-n">' + arr.length + '</span>';
         host.appendChild(ch);
@@ -450,9 +436,6 @@
     // picker rows
     var pk = e.target.closest("[data-pick]");
     if (pk) { var k = pk.getAttribute("data-pick"); if (addTarget(k)) { renderAll(); openPicker(); } else toast("The Five is full \u2014 remove one first."); return; }
-    // priority segmented control (in detail)
-    var seg = e.target.closest("[data-pri]");
-    if (seg) { patch(keyOf(seg), { pri: seg.getAttribute("data-pri") }); renderApps(); renderStudy(); return; }
     if (!act) return;
     var a = act.getAttribute("data-act");
 
@@ -507,13 +490,16 @@
       var sid = e.target.closest("[data-sid]").getAttribute("data-sid");
       patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid ? Object.assign({}, x, { t: e.target.value }) : x; }) });
     }
-    else if (a === "week") { meta.weekOf = e.target.value; save(); cloudPushBoard(); }
-    else if (a === "eowDone") { meta.eowDone = e.target.value; save(); cloudPushBoard(); }
-    else if (a === "eowCarry") { meta.eowCarry = e.target.value; save(); cloudPushBoard(); }
-    else if (a === "eowNotes") { meta.eowNotes = e.target.value; save(); cloudPushBoard(); }
+    else if (a === "week") { meta.weekOf = e.target.value; save(); }
+    else if (a === "eowDone") { meta.eowDone = e.target.value; save(); }
+    else if (a === "eowCarry") { meta.eowCarry = e.target.value; save(); }
+    else if (a === "eowNotes") { meta.eowNotes = e.target.value; save(); }
   });
 
-  // priority change handled via segmented control click (see document click handler)
+  // priority change
+  document.addEventListener("change", function (e) {
+    if (e.target.getAttribute && e.target.getAttribute("data-act") === "pri") { patch(keyOf(e.target), { pri: e.target.value }); renderApps(); }
+  });
 
   /* ---- backlog disclosure ---- */
   function wireDisclosure(headId, wrapId) {
@@ -615,146 +601,6 @@
     try { fileHandle = (await idbGet("status")) || null; dirHandle = (await idbGet("db")) || null; } catch (e) {}
   }
 
-  /* ============================================================
-     CLOUD SYNC — Supabase Auth + RLS, outbox two-way sync.
-     Ported from the original app; same tables + item_key format,
-     so no DB changes. Cloud is OFF until you connect in the panel —
-     until then the app behaves exactly like the local-only version.
-     Board-level state (The Five order + week/EOW notes) rides on a
-     synthetic entry keyed "__board" so no schema change is needed.
-     ============================================================ */
-  function cloudConfigured() { return !!(cloud && cloud.url && cloud.key && cloud.board); }
-  function signedIn() { return !!(session && session.user); }
-  function syncReady() { return !!(sb && cloudConfigured() && signedIn()); }
-  function looksSecret(k) { return /^sb_secret_/i.test(k) || /service_role/i.test(k); }
-  function saveCloud() { try { localStorage.setItem(CLOUD_KEY, JSON.stringify(cloud)); } catch (e) {} }
-  function saveOutbox() { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox)); } catch (e) {} }
-
-  function ensureClient() {
-    if (sb) return sb;
-    if (!cloudConfigured() || typeof window.supabase === "undefined") return null;
-    sb = window.supabase.createClient(cloud.url, cloud.key, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "wf2_sb_auth" }
-    });
-    var sub = sb.auth.onAuthStateChange(function (event, sess) {
-      session = sess || null;
-      renderAuthUI(); updateCloudStatus();
-      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) initialSync();
-      else if (event === "TOKEN_REFRESHED" && syncReady()) flushOutbox();
-    });
-    authSub = sub && sub.data ? sub.data.subscription : null;
-    return sb;
-  }
-  function dropClient() { if (authSub) { try { authSub.unsubscribe(); } catch (e) {} authSub = null; } sb = null; session = null; }
-
-  function queue(qkey, op) { outbox[qkey] = op; saveOutbox(); flushOutbox(); updateCloudStatus(); }
-  function cloudPushEntry(key, payload) {
-    if (!cloudConfigured()) return;
-    queue("entry:" + key, { table: "weekly_focus_entries", onConflict: "user_id,board_id,item_key", row: { board_id: cloud.board, item_key: key, payload: payload, updated_at: new Date().toISOString() } });
-  }
-  function cloudPushBoard() { if (!cloudConfigured()) return; cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta }); }
-  function cloudPushApps() { if (!cloudConfigured() || !state.apps) return; queue("inv:apps", { table: "weekly_focus_inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, apps: state.apps, updated_at: new Date().toISOString() } }); }
-  function cloudPushStudy() { if (!cloudConfigured() || !state.domains) return; queue("inv:study", { table: "weekly_focus_inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, study: state.domains, updated_at: new Date().toISOString() } }); }
-
-  async function flushOutbox() {
-    if (!syncReady() || flushing) return;
-    flushing = true;
-    var uid = session.user.id, keys = Object.keys(outbox);
-    for (var i = 0; i < keys.length; i++) {
-      var op = outbox[keys[i]];
-      var row = Object.assign({ user_id: uid }, op.row);   // stamp owner; RLS requires it
-      try { var r = await sb.from(op.table).upsert(row, { onConflict: op.onConflict }); if (r.error) throw r.error; delete outbox[keys[i]]; saveOutbox(); }
-      catch (e) { break; }   // offline / transient → stay queued
-    }
-    flushing = false; updateCloudStatus();
-  }
-  async function cloudPullEntries() {
-    if (!syncReady()) return;
-    try {
-      var r = await sb.from("weekly_focus_entries").select("item_key,payload").eq("board_id", cloud.board);
-      if (r.error) throw r.error;
-      var map = {}; (r.data || []).forEach(function (row) { map[row.item_key] = row.payload || {}; });
-      // pending local writes win over remote
-      Object.keys(outbox).forEach(function (qk) { if (qk.indexOf("entry:") === 0) { var op = outbox[qk]; map[op.row.item_key] = op.row.payload; } });
-      // board-level state rides on a synthetic item
-      if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; delete map[BOARD_ITEM]; if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; }
-      entries = map; save(); renderAll(); updateCloudStatus();
-    } catch (e) { updateCloudStatus(); }
-  }
-  async function cloudPullInventory(force) {
-    if (!syncReady()) return false;
-    try {
-      var r = await sb.from("weekly_focus_inventory").select("apps,study").eq("board_id", cloud.board).limit(1);
-      if (r.error) throw r.error;
-      var rows = r.data || [];
-      if (rows.length && (force || !hasLocalSource)) {
-        if (rows[0].apps) state.apps = rows[0].apps;
-        if (rows[0].study) state.domains = rows[0].study;
-        try { localStorage.setItem(K.inv, JSON.stringify({ apps: state.apps, domains: state.domains })); } catch (e) {}
-        renderAll();
-      }
-      return !!rows.length;
-    } catch (e) { return false; }
-  }
-  function initialSync() {
-    cloudPushApps(); cloudPushStudy(); cloudPushBoard();
-    Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); });
-    flushOutbox().then(function () { cloudPullInventory(false).then(cloudPullEntries); });
-  }
-  function pendingCount() { return Object.keys(outbox).length; }
-  function updateCloudStatus() {
-    var el = $("cloudPill"); if (!el) return;
-    if (!cloudConfigured()) { el.className = "cloud-pill off"; el.textContent = "\u2601 Cloud off"; return; }
-    if (!signedIn()) { el.className = "cloud-pill auth"; el.textContent = "\u2601 Sign in"; return; }
-    var n = pendingCount();
-    if (!navigator.onLine) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Offline" + (n ? " \u00b7 " + n : ""); }
-    else if (n) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Syncing " + n + "\u2026"; }
-    else { el.className = "cloud-pill ok"; el.textContent = "\u2601 Synced"; }
-  }
-  function renderAuthUI() {
-    var inEl = $("authSignedIn"), outEl = $("authSignedOut"); if (!inEl || !outEl) return;
-    if (signedIn()) { inEl.style.display = ""; outEl.style.display = "none"; var who = $("authWho"); if (who) who.textContent = session.user.email || "your account"; }
-    else { inEl.style.display = "none"; outEl.style.display = ""; }
-  }
-  function startCloud() {
-    ensureClient(); renderAuthUI(); updateCloudStatus();
-    setInterval(function () { if (document.visibilityState === "visible" && navigator.onLine && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); } }, 15000);
-    window.addEventListener("online", function () { if (syncReady()) { flushOutbox(); cloudPullEntries(); } updateCloudStatus(); });
-    window.addEventListener("offline", updateCloudStatus);
-    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && syncReady()) { flushOutbox(); cloudPullEntries(); } });
-  }
-  function cloudSetStatus(html, warn) { var el = $("cloudStatus"); if (!el) return; el.innerHTML = html; el.className = "dstatus" + (warn ? " warn" : ""); }
-  function fillCloud() { if (cloud.url) $("cfUrl").value = cloud.url; if (cloud.key) $("cfKey").value = cloud.key; $("cfBoard").value = cloud.board || ""; }
-  function wireCloud() {
-    $("btnCloud").onclick = function () { $("cloudModal").classList.add("open"); fillCloud(); renderAuthUI(); updateCloudStatus(); };
-    $("cloudClose").onclick = function () { $("cloudModal").classList.remove("open"); };
-    $("cloudModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
-    $("cloudSave").onclick = function () {
-      var next = { url: $("cfUrl").value.trim(), key: $("cfKey").value.trim(), board: ($("cfBoard").value.trim() || "my-week") };
-      if (next.key && looksSecret(next.key)) { cloudSetStatus("That looks like a <b>secret</b> key. Use the <b>publishable</b> key (<code>sb_publishable_\u2026</code>), never a secret / service_role key.", true); return; }
-      var changed = !cloud || cloud.url !== next.url || cloud.key !== next.key;
-      cloud = next; saveCloud();
-      if (!cloudConfigured()) { cloudSetStatus("Enter your Supabase URL, publishable key, and a board name.", true); updateCloudStatus(); return; }
-      if (changed) dropClient();
-      ensureClient(); renderAuthUI(); updateCloudStatus();
-      if (syncReady()) { initialSync(); cloudSetStatus("Cloud connected. Board <b>" + esc(cloud.board) + "</b> \u2014 syncing across your devices."); }
-      else cloudSetStatus("Saved. Now <b>send yourself a magic link</b> below and open it on this device to start syncing board <b>" + esc(cloud.board) + "</b>.");
-    };
-    $("cloudSignIn").onclick = async function () {
-      if (!cloudConfigured()) { cloudSetStatus("Enter your details and <b>Save connection</b> first.", true); return; }
-      ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Reconnect and try again.", true); return; }
-      var email = ($("cfEmail").value || "").trim();
-      if (!email) { cloudSetStatus("Enter your email to get a magic link.", true); return; }
-      try { var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error; cloudSetStatus("Magic link sent to <b>" + esc(email) + "</b>. Open it <b>on this device</b> to finish signing in."); }
-      catch (e) { cloudSetStatus("Couldn\u2019t send the link: " + esc(e.message || String(e)), true); }
-    };
-    $("cloudSignOut").onclick = async function () {
-      if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
-      session = null; renderAuthUI(); updateCloudStatus();
-      cloudSetStatus("Signed out. Your local copy stays on this device; sync pauses until you sign in again.");
-    };
-  }
-
   function init() {
     wireDisclosure("appsBacklogHead", "appsBacklogWrap");
     wireDisclosure("studyTreeHead", "studyTreeWrap");
@@ -773,14 +619,12 @@
     $("pickClose").onclick = closePicker;
     $("pickModal").addEventListener("click", function (e) { if (e.target === this) closePicker(); });
     wireData();
-    wireCloud();
 
     // boot: prefer real inventory loaded earlier on this device; else sample so it's always interactive
     var inv = loadInv();
-    if (inv) { state.apps = inv.apps || null; state.domains = inv.domains || null; hasLocalSource = true; renderAll(); }
+    if (inv) { state.apps = inv.apps || null; state.domains = inv.domains || null; renderAll(); }
     else { loadSample(); }
     restoreHandles();
-    startCloud();   // no-op until you connect a Supabase project in the Cloud panel
   }
 
   // expose parsers for real data wiring
