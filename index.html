@@ -176,28 +176,16 @@
   <div class="modal">
     <div class="modal-head">
       <h3>Cloud sync</h3>
-      <p>Sync this week privately across your PC and phone via Supabase. Run <b>supabase-setup.sql</b> once, then enter your project details. Use the <b>publishable</b> key (<code>sb_publishable_&hellip;</code>) &mdash; never a secret key.</p>
+      <p>This week syncs across your devices automatically &mdash; no sign-in. The connection below is pre-filled; only change it to point at a different Supabase project or board. Use a <b>publishable</b> key (<code>sb_publishable_&hellip;</code>) &mdash; never a secret key.</p>
     </div>
     <div class="modal-body" style="padding:0;">
       <div class="dsect">
-        <h4>Connection</h4>
+        <h4>Connection <span class="cf-hint">&mdash; optional override</span></h4>
         <div class="cfield"><label>Project URL</label><input id="cfUrl" type="text" placeholder="https://xxxx.supabase.co" autocomplete="off"></div>
         <div class="cfield"><label>Publishable key</label><input id="cfKey" type="text" placeholder="sb_publishable_&hellip;" autocomplete="off"></div>
-        <div class="cfield"><label>Board name <span class="cf-hint">&mdash; use the same on every device</span></label><input id="cfBoard" type="text" placeholder="my-week" autocomplete="off"></div>
+        <div class="cfield"><label>Board name <span class="cf-hint">&mdash; use the same on every device</span></label><input id="cfBoard" type="text" placeholder="my_week" autocomplete="off"></div>
         <div class="dbtns" style="margin-top:12px;"><button class="tbtn primary" id="cloudSave">Save connection</button></div>
-      </div>
-      <div class="dsect">
-        <h4>Account</h4>
-        <div id="authSignedOut">
-          <p class="dhelp">Sign in with a magic link &mdash; your week is private to your account.</p>
-          <div class="cfield"><label>Email</label><input id="cfEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
-          <div class="dbtns" style="margin-top:12px;"><button class="tbtn" id="cloudSignIn">Send magic link</button></div>
-        </div>
-        <div id="authSignedIn" style="display:none;">
-          <p class="dhelp">Signed in as <b id="authWho">your account</b>.</p>
-          <div class="dbtns"><button class="tbtn" id="cloudSignOut">Sign out</button></div>
-        </div>
-        <p class="dstatus" id="cloudStatus">Cloud is off. Connect a project above to sync across devices.</p>
+        <p class="dstatus" id="cloudStatus">Syncing automatically with the built-in connection. Clear a field and save to restore its default.</p>
       </div>
     </div>
     <div class="modal-foot">
