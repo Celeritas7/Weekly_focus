@@ -201,7 +201,7 @@
       </div>
     </div>
     <div class="modal-foot">
-      <span class="buildtag">build 6</span>
+      <span class="buildtag"></span><!-- filled from APP_BUILD in weekly-focus-app.js -->
       <button class="tbtn" id="cloudClose">Done</button>
     </div>
   </div>
@@ -222,6 +222,14 @@
   // PWA: register the service worker (only on http/https — no-op in sandboxed previews)
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
     window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+    // A new SW took control (fresh deploy + skipWaiting/claim): reload once so the
+    // page runs the new build. Flag guards against reload loops.
+    var swReloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (swReloaded) return;
+      swReloaded = true;
+      location.reload();
+    });
   }
 </script>
 

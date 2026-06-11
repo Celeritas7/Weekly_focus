@@ -7,6 +7,14 @@
 (function () {
   "use strict";
 
+  /* BUMP ON EVERY DEPLOY, together with the cache version in sw.js. Rendered in
+     the cloud-modal footer so a stale cached build is visible at a glance. */
+  var APP_BUILD = "7";
+  (function () {
+    var el = document.querySelector(".buildtag");
+    if (el) el.textContent = "build " + APP_BUILD;
+  })();
+
   /* ---------------- icons ---------------- */
   var IC = {
     chev: '<svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
