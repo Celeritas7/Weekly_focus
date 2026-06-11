@@ -639,7 +639,6 @@
     var sub = sb.auth.onAuthStateChange(function (event, sess) {
       session = sess || null;
       renderAuthUI(); updateCloudStatus();
-      var cm = $("cloudModal"); if (cm && cm.classList.contains("open")) cloudSetStatus(cloudSummary());
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) initialSync();
       else if (event === "TOKEN_REFRESHED" && syncReady()) flushOutbox();
     });
@@ -737,56 +736,28 @@
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && syncReady()) { flushOutbox(); cloudPullEntries(); } });
   }
   function cloudSetStatus(html, warn) { var el = $("cloudStatus"); if (!el) return; el.innerHTML = html; el.className = "dstatus" + (warn ? " warn" : ""); }
-  /* live summary of the REAL cloud state \u2014 shown whenever the panel opens */
-  function cloudSummary() {
-    if (!cloudConfigured()) return "Cloud is off. Enter your project details above, then <b>Save connection</b>.";
-    if (!signedIn()) return "Connected to board <b>" + esc(cloud.board) + "</b> \u2014 not signed in on this device yet. Send yourself a magic link below and open it <b>on this device</b>.";
-    var n = pendingCount();
-    return "Syncing board <b>" + esc(cloud.board) + "</b> as <b>" + esc(session.user.email || "you") + "</b>." + (n ? " " + n + " change" + (n > 1 ? "s" : "") + " waiting to upload." : " Everything is up to date.");
-  }
-  function urlLooksRight(u) { return /^https:\/\/[a-z0-9-]+\.supabase\.(co|in|net)$/i.test(u); }
-  /* ping the project so a typo'd URL or rejected key is caught immediately */
-  async function testConnection() {
-    try {
-      var r = await fetch(cloud.url + "/auth/v1/health", { headers: { apikey: cloud.key } });
-      if (r.status === 401 || r.status === 403) return { ok: false, msg: "Reached your project, but it <b>rejected the key</b>. Copy the <b>anon / publishable</b> key again from Supabase \u2192 Settings \u2192 API." };
-      if (!r.ok) return { ok: false, msg: "The project answered HTTP " + r.status + " \u2014 double-check the Project URL." };
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, msg: "Couldn\u2019t reach <b>" + esc(cloud.url) + "</b>. That\u2019s usually a typo \u2014 compare it letter-by-letter with Supabase \u2192 Settings \u2192 API (it must look like <code>https://abcdwxyz12345678ijkl.supabase.co</code>)." };
-    }
-  }
-  /* shared by Save + magic link: validate \u2192 save \u2192 verify reachable */
-  async function saveConnection() {
-    var next = { url: $("cfUrl").value.trim().replace(/\/+$/, ""), key: $("cfKey").value.trim(), board: ($("cfBoard").value.trim() || "my-week") };
-    if (next.key && looksSecret(next.key)) { cloudSetStatus("That looks like a <b>secret</b> key. Use the <b>publishable</b> (<code>sb_publishable_\u2026</code>) or legacy <b>anon</b> (<code>eyJ\u2026</code>) key \u2014 never a secret / service_role key.", true); return false; }
-    if (!next.url || !next.key) { cloudSetStatus("Enter your Supabase Project URL and key, then save.", true); return false; }
-    if (!urlLooksRight(next.url)) { cloudSetStatus("That doesn\u2019t look like a Supabase project URL. It must be exactly the <b>Project URL</b> from Settings \u2192 API, like <code>https://abcdwxyz12345678ijkl.supabase.co</code> \u2014 check it for typos.", true); return false; }
-    var changed = !cloud || cloud.url !== next.url || cloud.key !== next.key;
-    cloud = next; saveCloud();
-    if (changed) dropClient();
-    cloudSetStatus("Checking the connection\u2026");
-    var t = await testConnection();
-    if (!t.ok) { cloudSetStatus(t.msg, true); updateCloudStatus(); return false; }
-    ensureClient(); renderAuthUI(); updateCloudStatus();
-    if (syncReady()) { initialSync(); cloudSetStatus("Connection verified \u2713 \u2014 board <b>" + esc(cloud.board) + "</b> is syncing."); }
-    else cloudSetStatus("Connection verified \u2713 Now send yourself a <b>magic link</b> below and open it <b>on this device</b> to start syncing board <b>" + esc(cloud.board) + "</b>.");
-    return true;
-  }
   function fillCloud() { if (cloud.url) $("cfUrl").value = cloud.url; if (cloud.key) $("cfKey").value = cloud.key; $("cfBoard").value = cloud.board || ""; }
   function wireCloud() {
-    $("btnCloud").onclick = function () { $("cloudModal").classList.add("open"); fillCloud(); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); };
+    $("btnCloud").onclick = function () { $("cloudModal").classList.add("open"); fillCloud(); renderAuthUI(); updateCloudStatus(); };
     $("cloudClose").onclick = function () { $("cloudModal").classList.remove("open"); };
     $("cloudModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
-    $("cloudSave").onclick = function () { saveConnection(); };
+    $("cloudSave").onclick = function () {
+      var next = { url: $("cfUrl").value.trim(), key: $("cfKey").value.trim(), board: ($("cfBoard").value.trim() || "my-week") };
+      if (next.key && looksSecret(next.key)) { cloudSetStatus("That looks like a <b>secret</b> key. Use the <b>publishable</b> key (<code>sb_publishable_\u2026</code>), never a secret / service_role key.", true); return; }
+      var changed = !cloud || cloud.url !== next.url || cloud.key !== next.key;
+      cloud = next; saveCloud();
+      if (!cloudConfigured()) { cloudSetStatus("Enter your Supabase URL, publishable key, and a board name.", true); updateCloudStatus(); return; }
+      if (changed) dropClient();
+      ensureClient(); renderAuthUI(); updateCloudStatus();
+      if (syncReady()) { initialSync(); cloudSetStatus("Cloud connected. Board <b>" + esc(cloud.board) + "</b> \u2014 syncing across your devices."); }
+      else cloudSetStatus("Saved. Now <b>send yourself a magic link</b> below and open it on this device to start syncing board <b>" + esc(cloud.board) + "</b>.");
+    };
     $("cloudSignIn").onclick = async function () {
-      // auto-save first \u2014 tapping the magic-link button shouldn't require a separate Save
-      var typedUrl = $("cfUrl").value.trim().replace(/\/+$/, ""), typedKey = $("cfKey").value.trim();
-      if (!cloudConfigured() || cloud.url !== typedUrl || cloud.key !== typedKey) { var ok = await saveConnection(); if (!ok) return; }
+      if (!cloudConfigured()) { cloudSetStatus("Enter your details and <b>Save connection</b> first.", true); return; }
       ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Reconnect and try again.", true); return; }
       var email = ($("cfEmail").value || "").trim();
       if (!email) { cloudSetStatus("Enter your email to get a magic link.", true); return; }
-      try { var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error; cloudSetStatus("Magic link sent to <b>" + esc(email) + "</b>. Open it <b>on this device, in this browser</b> to finish signing in."); }
+      try { var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error; cloudSetStatus("Magic link sent to <b>" + esc(email) + "</b>. Open it <b>on this device</b> to finish signing in."); }
       catch (e) { cloudSetStatus("Couldn\u2019t send the link: " + esc(e.message || String(e)), true); }
     };
     $("cloudPull").onclick = function () {

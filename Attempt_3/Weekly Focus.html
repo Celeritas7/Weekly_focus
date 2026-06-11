@@ -176,7 +176,7 @@
   <div class="modal">
     <div class="modal-head">
       <h3>Cloud sync</h3>
-      <p>Sync this week privately across your PC and phone via Supabase. Run <b>supabase-setup.sql</b> once, then enter your project details. Use the <b>publishable</b> key (<code>sb_publishable_&hellip;</code>) or the legacy <b>anon</b> key (<code>eyJ&hellip;</code>) &mdash; never a secret key.</p>
+      <p>Sync this week privately across your PC and phone via Supabase. Run <b>supabase-setup.sql</b> once, then enter your project details. Use the <b>publishable</b> key (<code>sb_publishable_&hellip;</code>) &mdash; never a secret key.</p>
     </div>
     <div class="modal-body" style="padding:0;">
       <div class="dsect">
@@ -195,13 +195,12 @@
         </div>
         <div id="authSignedIn" style="display:none;">
           <p class="dhelp">Signed in as <b id="authWho">your account</b>.</p>
-          <div class="dbtns"><button class="tbtn primary" id="cloudPull">Pull from cloud</button><button class="tbtn" id="cloudSignOut">Sign out</button></div>
+          <div class="dbtns"><button class="tbtn" id="cloudSignOut">Sign out</button></div>
         </div>
         <p class="dstatus" id="cloudStatus">Cloud is off. Connect a project above to sync across devices.</p>
       </div>
     </div>
     <div class="modal-foot">
-      <span class="buildtag">build 6</span>
       <button class="tbtn" id="cloudClose">Done</button>
     </div>
   </div>
