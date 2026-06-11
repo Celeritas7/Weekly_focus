@@ -134,10 +134,17 @@
 
   /* cloud state (see CLOUD SYNC section) */
   var CLOUD_KEY = "wf2_cloud", OUTBOX_KEY = "wf2_outbox", BOARD_ITEM = "__board";
-  var cloud = load(CLOUD_KEY);      // { url, key, board } — none secret; safe to persist
-  var outbox = load(OUTBOX_KEY);    // queued upserts, flushed when signed-in + online
+  // Hardcoded so a fresh device (incl. phone) syncs board "my_week" with zero setup.
+  // The URL + publishable/anon key are safe in client code; the Cloud panel is an optional override.
+  var CLOUD_DEFAULTS = {
+    url: "https://wylxvmkcrexwfpjpbhyy.supabase.co",
+    key: "sb_publishable_e3pDOuxIdstaC7s0a680kQ_R10TrAyv",
+    board: "my_week"
+  };
+  var cloud = Object.assign({}, CLOUD_DEFAULTS, load(CLOUD_KEY));  // saved override wins
+  var outbox = load(OUTBOX_KEY);    // queued upserts, flushed when online
   var hasLocalSource = false;       // true once this device loads inventory from disk/paste
-  var flushing = false, sb = null, session = null, authSub = null;
+  var flushing = false, sb = null;
 
   function load(k) { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch (e) { return {}; } }
   function loadArr(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } }
@@ -313,7 +320,7 @@
   function renderApps() {
     var host = $("appsActive"), back = $("appsBacklog");
     host.innerHTML = ""; back.innerHTML = "";
-    if (!state.apps) { host.innerHTML = emptyZone(cloudConfigured() ? "Waiting for your cloud data. Open <b>Cloud</b>, sign in, then tap <b>Pull from cloud</b>." : "No apps loaded. Click <b>Load sample</b> or paste your PROJECT_STATUS.md."); $("appsN").textContent = "0"; $("appsBacklogWrap").style.display = "none"; return; }
+    if (!state.apps) { host.innerHTML = emptyZone("No apps loaded. Click <b>Load sample</b> or paste your PROJECT_STATUS.md."); $("appsN").textContent = "0"; $("appsBacklogWrap").style.display = "none"; return; }
     var active = state.apps.filter(isActive), backlog = state.apps.filter(function (a) { return !isActive(a); });
     $("appsN").textContent = active.length;
     if (!active.length) host.innerHTML = emptyZone("Nothing active yet \u2014 flip on apps from the backlog below.");
@@ -359,7 +366,7 @@
   function renderStudy() {
     var host = $("studyActive"), tree = $("studyTree");
     host.innerHTML = ""; tree.innerHTML = "";
-    if (!state.domains) { host.innerHTML = emptyZone(cloudConfigured() ? "Waiting for your cloud data. Open <b>Cloud</b>, sign in, then tap <b>Pull from cloud</b>." : "No topics loaded. Click <b>Load sample</b> or paste your Database folder listing."); $("studyN").textContent = "0"; $("studyTreeWrap").style.display = "none"; return; }
+    if (!state.domains) { host.innerHTML = emptyZone("No topics loaded. Click <b>Load sample</b> or paste your Database folder listing."); $("studyN").textContent = "0"; $("studyTreeWrap").style.display = "none"; return; }
     var active = collectActiveStudy();
     $("studyN").textContent = active.length;
     if (!active.length) host.innerHTML = emptyZone("No topics active yet \u2014 open a folder below and flip one on.");
@@ -524,7 +531,7 @@
   function loadSample() {
     state.apps = parseStatus(SAMPLE_STATUS);
     state.domains = parseListing(SAMPLE_DIR);
-    if (!localStorage.getItem(K.seeded) && !cloudConfigured()) {
+    if (!localStorage.getItem(K.seeded)) {
       entries = Object.assign(sampleEntries(), entries);
       targetOrder = ["app:FocusFlow", "app:VisionTrack", "app:LedgerLite", "study:LANGUAGES/Japanese/Kanji"];
       expanded = { "LANGUAGES/Japanese": true, "AI_AND_MATHS/Mathematics": true };
@@ -616,16 +623,17 @@
   }
 
   /* ============================================================
-     CLOUD SYNC — Supabase Auth + RLS, outbox two-way sync.
-     Ported from the original app; same tables + item_key format,
-     so no DB changes. Cloud is OFF until you connect in the panel —
-     until then the app behaves exactly like the local-only version.
+     CLOUD SYNC — Supabase anon, board-keyed (no auth, RLS off).
+     Mirrors the Roadmap model: a fixed default user_id is filled by
+     the column default server-side, so the client never sends user_id
+     and never signs in. Connection is hardcoded (see CLOUD_DEFAULTS)
+     so a fresh device syncs board "my_week" with zero setup; the Cloud
+     panel is an optional override. Same tables + item_key format.
      Board-level state (The Five order + week/EOW notes) rides on a
      synthetic entry keyed "__board" so no schema change is needed.
      ============================================================ */
   function cloudConfigured() { return !!(cloud && cloud.url && cloud.key && cloud.board); }
-  function signedIn() { return !!(session && session.user); }
-  function syncReady() { return !!(sb && cloudConfigured() && signedIn()); }
+  function syncReady() { return !!(sb && cloudConfigured()); }
   function looksSecret(k) { return /^sb_secret_/i.test(k) || /service_role/i.test(k); }
   function saveCloud() { try { localStorage.setItem(CLOUD_KEY, JSON.stringify(cloud)); } catch (e) {} }
   function saveOutbox() { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox)); } catch (e) {} }
@@ -633,19 +641,13 @@
   function ensureClient() {
     if (sb) return sb;
     if (!cloudConfigured() || typeof window.supabase === "undefined") return null;
+    // anon client — no sign-in; reads & writes go through as the anon role
     sb = window.supabase.createClient(cloud.url, cloud.key, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "wf2_sb_auth" }
+      auth: { persistSession: false, autoRefreshToken: false }
     });
-    var sub = sb.auth.onAuthStateChange(function (event, sess) {
-      session = sess || null;
-      renderAuthUI(); updateCloudStatus();
-      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) initialSync();
-      else if (event === "TOKEN_REFRESHED" && syncReady()) flushOutbox();
-    });
-    authSub = sub && sub.data ? sub.data.subscription : null;
     return sb;
   }
-  function dropClient() { if (authSub) { try { authSub.unsubscribe(); } catch (e) {} authSub = null; } sb = null; session = null; }
+  function dropClient() { sb = null; }
 
   function queue(qkey, op) { outbox[qkey] = op; saveOutbox(); flushOutbox(); updateCloudStatus(); }
   function cloudPushEntry(key, payload) {
@@ -659,11 +661,11 @@
   async function flushOutbox() {
     if (!syncReady() || flushing) return;
     flushing = true;
-    var uid = session.user.id, keys = Object.keys(outbox);
+    var keys = Object.keys(outbox);
     for (var i = 0; i < keys.length; i++) {
       var op = outbox[keys[i]];
-      var row = Object.assign({ user_id: uid }, op.row);   // stamp owner; RLS requires it
-      try { var r = await sb.from(op.table).upsert(row, { onConflict: op.onConflict }); if (r.error) throw r.error; delete outbox[keys[i]]; saveOutbox(); }
+      // never send user_id — the column default fills the fixed owner (matches Roadmap)
+      try { var r = await sb.from(op.table).upsert(op.row, { onConflict: op.onConflict }); if (r.error) throw r.error; delete outbox[keys[i]]; saveOutbox(); }
       catch (e) { break; }   // offline / transient → stay queued
     }
     flushing = false; updateCloudStatus();
@@ -673,14 +675,7 @@
     try {
       var r = await sb.from("weekly_focus_entries").select("item_key,payload").eq("board_id", cloud.board);
       if (r.error) throw r.error;
-      var rows = r.data || [];
-      if (!rows.length) {
-        // Cloud board is empty (first ever connect): seed it from this device
-        // ONLY if this device holds real data — never wipe local, never push sample.
-        if (hasLocalSource) { cloudPushBoard(); Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); }); flushOutbox(); }
-        updateCloudStatus(); return;
-      }
-      var map = {}; rows.forEach(function (row) { map[row.item_key] = row.payload || {}; });
+      var map = {}; (r.data || []).forEach(function (row) { map[row.item_key] = row.payload || {}; });
       // pending local writes win over remote
       Object.keys(outbox).forEach(function (qk) { if (qk.indexOf("entry:") === 0) { var op = outbox[qk]; map[op.row.item_key] = op.row.payload; } });
       // board-level state rides on a synthetic item
@@ -704,32 +699,22 @@
     } catch (e) { return false; }
   }
   function initialSync() {
-    // CLOUD-FIRST: pull before pushing, so a fresh device (your phone) adopts
-    // the cloud copy instead of overwriting it with sample/placeholder data.
-    cloudPullInventory(!hasLocalSource).then(function () {
-      return cloudPullEntries();
-    }).then(function () {
-      if (hasLocalSource) { cloudPushApps(); cloudPushStudy(); }
-      flushOutbox();
-    });
+    cloudPushApps(); cloudPushStudy(); cloudPushBoard();
+    Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); });
+    flushOutbox().then(function () { cloudPullInventory(false).then(cloudPullEntries); });
   }
   function pendingCount() { return Object.keys(outbox).length; }
   function updateCloudStatus() {
     var el = $("cloudPill"); if (!el) return;
     if (!cloudConfigured()) { el.className = "cloud-pill off"; el.textContent = "\u2601 Cloud off"; return; }
-    if (!signedIn()) { el.className = "cloud-pill auth"; el.textContent = "\u2601 Sign in"; return; }
     var n = pendingCount();
     if (!navigator.onLine) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Offline" + (n ? " \u00b7 " + n : ""); }
     else if (n) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Syncing " + n + "\u2026"; }
     else { el.className = "cloud-pill ok"; el.textContent = "\u2601 Synced"; }
   }
-  function renderAuthUI() {
-    var inEl = $("authSignedIn"), outEl = $("authSignedOut"); if (!inEl || !outEl) return;
-    if (signedIn()) { inEl.style.display = ""; outEl.style.display = "none"; var who = $("authWho"); if (who) who.textContent = session.user.email || "your account"; }
-    else { inEl.style.display = "none"; outEl.style.display = ""; }
-  }
   function startCloud() {
-    ensureClient(); renderAuthUI(); updateCloudStatus();
+    ensureClient(); updateCloudStatus();
+    if (syncReady()) initialSync();   // push local + pull board on load (no sign-in needed)
     setInterval(function () { if (document.visibilityState === "visible" && navigator.onLine && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); } }, 15000);
     window.addEventListener("online", function () { if (syncReady()) { flushOutbox(); cloudPullEntries(); } updateCloudStatus(); });
     window.addEventListener("offline", updateCloudStatus);
@@ -738,41 +723,22 @@
   function cloudSetStatus(html, warn) { var el = $("cloudStatus"); if (!el) return; el.innerHTML = html; el.className = "dstatus" + (warn ? " warn" : ""); }
   function fillCloud() { if (cloud.url) $("cfUrl").value = cloud.url; if (cloud.key) $("cfKey").value = cloud.key; $("cfBoard").value = cloud.board || ""; }
   function wireCloud() {
-    $("btnCloud").onclick = function () { $("cloudModal").classList.add("open"); fillCloud(); renderAuthUI(); updateCloudStatus(); };
+    $("btnCloud").onclick = function () { $("cloudModal").classList.add("open"); fillCloud(); updateCloudStatus(); };
     $("cloudClose").onclick = function () { $("cloudModal").classList.remove("open"); };
     $("cloudModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
     $("cloudSave").onclick = function () {
-      var next = { url: $("cfUrl").value.trim(), key: $("cfKey").value.trim(), board: ($("cfBoard").value.trim() || "my-week") };
+      var next = {
+        url: ($("cfUrl").value.trim() || CLOUD_DEFAULTS.url),
+        key: ($("cfKey").value.trim() || CLOUD_DEFAULTS.key),
+        board: ($("cfBoard").value.trim() || CLOUD_DEFAULTS.board)
+      };
       if (next.key && looksSecret(next.key)) { cloudSetStatus("That looks like a <b>secret</b> key. Use the <b>publishable</b> key (<code>sb_publishable_\u2026</code>), never a secret / service_role key.", true); return; }
       var changed = !cloud || cloud.url !== next.url || cloud.key !== next.key;
       cloud = next; saveCloud();
-      if (!cloudConfigured()) { cloudSetStatus("Enter your Supabase URL, publishable key, and a board name.", true); updateCloudStatus(); return; }
       if (changed) dropClient();
-      ensureClient(); renderAuthUI(); updateCloudStatus();
-      if (syncReady()) { initialSync(); cloudSetStatus("Cloud connected. Board <b>" + esc(cloud.board) + "</b> \u2014 syncing across your devices."); }
-      else cloudSetStatus("Saved. Now <b>send yourself a magic link</b> below and open it on this device to start syncing board <b>" + esc(cloud.board) + "</b>.");
-    };
-    $("cloudSignIn").onclick = async function () {
-      if (!cloudConfigured()) { cloudSetStatus("Enter your details and <b>Save connection</b> first.", true); return; }
-      ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Reconnect and try again.", true); return; }
-      var email = ($("cfEmail").value || "").trim();
-      if (!email) { cloudSetStatus("Enter your email to get a magic link.", true); return; }
-      try { var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error; cloudSetStatus("Magic link sent to <b>" + esc(email) + "</b>. Open it <b>on this device</b> to finish signing in."); }
-      catch (e) { cloudSetStatus("Couldn\u2019t send the link: " + esc(e.message || String(e)), true); }
-    };
-    $("cloudPull").onclick = function () {
-      if (!syncReady()) { cloudSetStatus("Connect and sign in first — then Pull fetches your other device’s data.", true); return; }
-      cloudSetStatus("Pulling latest from the cloud…");
-      cloudPullInventory(true).then(function (got) {
-        return cloudPullEntries().then(function () { return got; });
-      }).then(function (got) {
-        cloudSetStatus(got ? "Up to date — inventory and tasks refreshed from the cloud." : "The cloud board is empty. On your PC: open <b>Data</b>, load your files — they push up automatically — then Pull here again.", !got);
-      });
-    };
-    $("cloudSignOut").onclick = async function () {
-      if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
-      session = null; renderAuthUI(); updateCloudStatus();
-      cloudSetStatus("Signed out. Your local copy stays on this device; sync pauses until you sign in again.");
+      ensureClient(); updateCloudStatus();
+      if (syncReady()) { initialSync(); cloudSetStatus("Cloud connected. Board <b>" + esc(cloud.board) + "</b> - syncing across your devices."); }
+      else cloudSetStatus("Saved, but the Supabase client could not start (offline, or the CDN is blocked). It will retry on reload.", true);
     };
   }
 
@@ -796,11 +762,9 @@
     wireData();
     wireCloud();
 
-    // boot: real inventory if this device has it; on a cloud-connected device wait
-    // for the pull (no confusing sample data); otherwise sample so it's interactive
+    // boot: prefer real inventory loaded earlier on this device; else sample so it's always interactive
     var inv = loadInv();
     if (inv) { state.apps = inv.apps || null; state.domains = inv.domains || null; hasLocalSource = true; renderAll(); }
-    else if (cloudConfigured()) { renderAll(); }
     else { loadSample(); }
     restoreHandles();
     startCloud();   // no-op until you connect a Supabase project in the Cloud panel
