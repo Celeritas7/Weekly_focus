@@ -157,6 +157,34 @@
   function subs(k) { var a = getEntry(k).subtasks; return Array.isArray(a) ? a : []; }
   function subProgress(k) { var a = subs(k); if (!a.length) return null; var d = a.filter(function (x) { return x.done; }).length; return { done: d, total: a.length, pct: d / a.length }; }
 
+  /* ---- subtask identity + cross-device merge ----
+     Each subtask carries: { id, t, done, u (last-edit ms), del (tombstone) }.
+     Merge is a union by id with per-subtask last-write-wins, so subtasks added on
+     different devices both survive; a delete sets del+u (high) so it wins over a
+     stale copy instead of being resurrected. Legacy subtasks (no id) get a stable
+     id derived from their text so the same legacy item dedupes across devices. */
+  function subLegacyId(t) { var s = String(t || ""), h = 5381; for (var i = 0; i < s.length; i++) { h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; } return "l_" + h.toString(36); }
+  function normSubs(arr) {
+    return (Array.isArray(arr) ? arr : []).map(function (s) {
+      if (!s) return null;
+      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del };
+    }).filter(Boolean);
+  }
+  function mergeSubs(a, b) {
+    var by = {}, order = [];
+    function take(s) {
+      var ex = by[s.id];
+      if (!ex) { by[s.id] = s; order.push(s.id); return; }
+      if ((s.u || 0) > (ex.u || 0)) by[s.id] = s;
+      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del };
+    }
+    normSubs(a).forEach(take); normSubs(b).forEach(take);
+    return order.map(function (id) { return by[id]; });
+  }
+  function visibleSubs(arr) { return normSubs(arr).filter(function (s) { return !s.del; }); }
+  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
+  function subsDiffer(a, b) { return subsKey(a) !== subsKey(b); }
+
   /* ---------------- targets (The Five) ---------------- */
   var MAX_TARGETS = 5;
   function isTarget(k) { return targetOrder.indexOf(k) >= 0; }
@@ -419,12 +447,12 @@
     }
     if (a === "subtoggle") {
       var sid = e.target.closest("[data-sid]").getAttribute("data-sid");
-      patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid ? Object.assign({}, x, { done: !x.done }) : x; }) });
+      patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid ? Object.assign({}, x, { done: !x.done, u: Date.now() }) : x; }) });
       renderColumn("app"); renderColumn("study"); renderPulse(); renderFive(); return;
     }
     if (a === "subdel") {
       var sid2 = e.target.closest("[data-sid]").getAttribute("data-sid");
-      patch(key, { subtasks: subs(key).filter(function (x) { return x.id !== sid2; }) }); renderColumn("app"); renderColumn("study"); renderPulse(); renderFive(); return;
+      patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderColumn("app"); renderColumn("study"); renderPulse(); renderFive(); return;
     }
     if (a === "subadd") { addSub(act, key); return; }
   });
@@ -439,7 +467,7 @@
   function addSub(fromEl, key) {
     var box = fromEl.closest(".sub-add").querySelector(".sub-new");
     var v = (box.value || "").trim(); if (!v) return;
-    patch(key, { subtasks: subs(key).concat([{ id: uid(), t: v, done: false }]) });
+    patch(key, { subtasks: subs(key).concat([{ id: uid(), t: v, done: false, u: Date.now() }]) });
     renderColumn("app"); renderColumn("study"); renderPulse(); renderFive();
     var node = document.querySelector('[data-key="' + cssEsc(key) + '"] .sub-new'); if (node) node.focus();
   }
@@ -454,7 +482,7 @@
     else if (a === "rename") renameItem(key, e.target.value);
     else if (a === "subedit") {
       var sid = e.target.closest("[data-sid]").getAttribute("data-sid");
-      patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid ? Object.assign({}, x, { t: e.target.value }) : x; }) });
+      patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid ? Object.assign({}, x, { t: e.target.value, u: Date.now() }) : x; }) });
     }
     else if (a === "week") { meta.weekOf = e.target.value; save(); cloudPushBoard(); }
     else if (a === "eowDone") { meta.eowDone = e.target.value; save(); cloudPushBoard(); }
