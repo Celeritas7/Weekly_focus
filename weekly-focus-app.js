@@ -326,7 +326,7 @@
   function priName(p) { return p === "H" ? "High" : p === "M" ? "Medium" : "Low"; }
   function detailHtml(id) {
     var e = getEntry(id), it = itemById(id), pri = priOf(id);
-    var rows = subs(id).map(function (x) {
+    var rows = normSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
       var t = x.t || "";
       return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
         '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' +
@@ -448,12 +448,14 @@
     }
     if (a === "subtoggle") {
       var sid = e.target.closest("[data-sid]").getAttribute("data-sid");
-      patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid ? Object.assign({}, x, { done: !x.done, u: Date.now() }) : x; }) });
+      var subs_norm = normSubs(subs(key));   // backfill ids
+      patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid ? Object.assign({}, x, { done: !x.done, u: Date.now() }) : x; }) });
       renderColumn("app"); renderColumn("study"); renderPulse(); renderFive(); return;
     }
     if (a === "subdel") {
       var sid2 = e.target.closest("[data-sid]").getAttribute("data-sid");
-      patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderColumn("app"); renderColumn("study"); renderPulse(); renderFive(); return;
+      var subs_norm = normSubs(subs(key));   // backfill ids
+      patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderColumn("app"); renderColumn("study"); renderPulse(); renderFive(); return;
     }
     if (a === "subedit-start") { startSubEdit(act, key); return; }
     if (a === "subadd") { addSub(act, key); return; }
@@ -480,13 +482,13 @@
   function startSubEdit(span, key) {
     var li = span.closest("[data-sid]"); if (!li) return;
     var sid = li.getAttribute("data-sid"), cur = "";
-    subs(key).forEach(function (x) { if (x.id === sid) cur = x.t || ""; });
+    normSubs(subs(key)).forEach(function (x) { if (x.id === sid) cur = x.t || ""; });   // backfill ids
     var input = document.createElement("input");
     input.className = "sub-text-edit"; input.value = cur; input.placeholder = "subtask";
     var settled = false;
     function finish(saveIt) {
       if (settled) return; settled = true;
-      if (saveIt && input.value !== cur) patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid ? Object.assign({}, x, { t: input.value, u: Date.now() }) : x; }) });
+      if (saveIt && input.value !== cur) { var subs_norm = normSubs(subs(key)); patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid ? Object.assign({}, x, { t: input.value, u: Date.now() }) : x; }) }); }
       renderColumn("app"); renderColumn("study");
     }
     input.addEventListener("keydown", function (ev) {
