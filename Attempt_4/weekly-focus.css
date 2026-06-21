@@ -363,37 +363,17 @@ button { font-family: inherit; }
 .brow .bname { flex: 1 1 auto; font-size: 13.5px; color: var(--mid); min-width: 0; }
 .brows { list-style: none; margin: 0; padding: 0; }
 
-/* add-item row (bottom of each column) */
-.add-row {
-  display: block; width: 100%; margin: 4px 0 2px; padding: 11px 14px; text-align: left;
-  border: 1.5px dashed var(--hair); border-radius: var(--r-md); background: transparent;
-  font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: .01em; color: var(--faint);
-  cursor: pointer; transition: border-color .15s, color .15s, background .15s;
-}
-.add-row:hover { border-color: var(--brand-line); color: var(--brand); background: var(--brand-soft); }
-.col-study .add-row:hover { border-color: var(--study-line); color: var(--study); background: var(--study-soft); }
-
-/* backlog row delete (reveal on hover) */
-.brow { position: relative; }
-.brow-del { flex: 0 0 auto; border: none; background: none; color: var(--hair); cursor: pointer; padding: 3px; border-radius: 6px; line-height: 0; opacity: 0; transition: opacity .12s, color .12s; }
-.brow-del svg { width: 15px; height: 15px; display: block; }
-.brow:hover .brow-del { opacity: 1; }
-.brow-del:hover { color: var(--pri-h); background: var(--hair-2); }
-
-/* manage row inside detail (rename / regroup / delete) */
-.manage-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--hair); }
-.mg-name, .mg-group {
-  font-family: inherit; font-size: 12.5px; padding: 7px 10px; border: 1px solid var(--hair); border-radius: 8px;
-  background: var(--card-2); color: var(--ink); min-width: 0;
-}
-.mg-name { flex: 1.4 1 0; }
-.mg-group { flex: 1 1 0; }
-.mg-name:focus, .mg-group:focus { outline: none; border-color: var(--brand); background: #fff; }
-.mg-del { flex: 0 0 auto; border: 1px solid var(--hair); background: var(--card); color: var(--faint); border-radius: 8px; padding: 6px 9px; cursor: pointer; line-height: 0; transition: color .12s, border-color .12s, background .12s; }
-.mg-del svg { width: 16px; height: 16px; display: block; }
-.mg-del:hover { color: #fff; background: var(--pri-h); border-color: var(--pri-h); }
-
-.empty-zone .ez-dim { color: var(--faint); font-size: 11.5px; }
+/* study tree */
+.trow { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: var(--r-sm); }
+.tfolder { cursor: pointer; } .tfolder:hover { background: var(--card-2); }
+.tname { font-size: 13.5px; color: var(--mid); flex: 1 1 auto; min-width: 0; }
+.tfolder .tname { font-weight: 700; }
+.kid-n { color: var(--faint); font-weight: 600; font-size: 10px; margin-left: 4px; }
+.tcaret { flex: 0 0 auto; width: 16px; height: 16px; border: none; background: none; cursor: pointer; color: var(--faint); padding: 0; display: flex; align-items: center; justify-content: center; transition: transform .15s; }
+.tcaret svg { width: 10px; height: 10px; }
+.tcaret.open { transform: rotate(90deg); }
+.tcaret-sp { flex: 0 0 auto; width: 16px; }
+.tcrumb { font-size: 10px; color: var(--faint); font-weight: 500; }
 
 /* ============================================================
    END OF WEEK
@@ -483,7 +463,6 @@ button { font-family: inherit; }
 .cloud-pill.auth { color: #9a6a18; background: oklch(0.96 0.04 80); border-color: oklch(0.88 0.07 80); }
 .cloud-pill.ok { color: oklch(0.46 0.12 152); background: var(--on-soft); border-color: oklch(0.85 0.07 152); }
 .cloud-pill.warn { color: #9a4a2a; background: oklch(0.96 0.04 50); border-color: oklch(0.88 0.07 50); }
-.buildtag { margin-right: auto; align-self: center; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
 @media (max-width: 760px) { .cloud-pill { order: 4; } }
 
 /* toast */
@@ -523,7 +502,7 @@ button { font-family: inherit; }
   @page { size: letter; margin: 0.5in; }
   html, body { background: #fff; }
   .topbar, .toolset, .backlog, .star, .tgl, .caret-btn, .tdrop, .sub-add, .sub-del,
-  .modal-bg, .toast, .pchip, .five, .pri-row, .cloud-pill, .add-row, .manage-row { display: none !important; }
+  .modal-bg, .toast, .pchip, .five, .pri-row, .cloud-pill { display: none !important; }
 
   .app { max-width: none; padding: 0; }
 

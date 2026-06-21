@@ -40,7 +40,17 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Static same-origin assets (css/js/icons): cache-first, then network (and cache it).
+  // The app bundle: network-first too — a stale cached JS build silently breaks sync.
+  if (url.pathname.endsWith("/weekly-focus-app.js")) {
+    e.respondWith(
+      fetch(req)
+        .then((r) => { const cp = r.clone(); caches.open(CACHE).then((c) => c.put(req, cp)); return r; })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Static same-origin assets (css/icons): cache-first, then network (and cache it).
   e.respondWith(
     caches.match(req).then((c) => c || fetch(req).then((r) => {
       const cp = r.clone(); caches.open(CACHE).then((cache) => cache.put(req, cp)); return r;
