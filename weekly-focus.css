@@ -305,11 +305,15 @@ button { font-family: inherit; }
 .sub-check { flex: 0 0 auto; width: 18px; height: 18px; border: 1.5px solid var(--mid); border-radius: 5px; background: #fff; cursor: pointer; padding: 0; position: relative; }
 .sub-check.on { background: var(--on); border-color: var(--on); }
 .sub-check.on::after { content: "\2713"; color: #fff; font-size: 11px; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-.sub-text { flex: 1 1 auto; border: none; background: transparent; font-family: inherit; font-size: 13px; color: var(--ink); padding: 2px; }
-.sub-text:focus { outline: none; }
-.sub-check.on + .sub-text { color: var(--faint); text-decoration: line-through; }
+/* click-to-edit subtask text */
+.sub-text-editable { flex: 1 1 auto; font-family: inherit; font-size: 13px; color: var(--ink); padding: 2px 4px; border-radius: 5px; cursor: pointer; min-width: 0; }
+.sub-text-editable:hover { background: var(--card-2); }
+.sub-text-editable.empty { color: var(--faint); }
+.sub-check.on + .sub-text-editable { color: var(--faint); text-decoration: line-through; }
+.sub-text-edit { flex: 1 1 auto; border: 1px solid var(--brand); border-radius: 5px; background: #fff; font-family: inherit; font-size: 13px; color: var(--ink); padding: 1px 3px; min-width: 0; }
+.sub-text-edit:focus { outline: none; }
 .sub-del { flex: 0 0 auto; border: none; background: none; color: var(--hair); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
-.sub-del:hover { color: var(--pri-h); }
+.sub-del:hover, .sub-delete-btn:hover { color: var(--pri-h); }
 .sub-add { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .sub-new { flex: 1 1 auto; border: 1px solid var(--hair); border-radius: 8px; font-family: inherit; font-size: 12.5px; padding: 7px 10px; background: var(--card-2); }
 .sub-new:focus { outline: none; border-color: var(--brand); background: #fff; }
@@ -557,7 +561,7 @@ button { font-family: inherit; }
   .subs li { padding: 1px 0; gap: 7px; }
   .sub-check { width: 11px; height: 11px; border-width: 1.2px; }
   .sub-check.on::after { font-size: 9px; }
-  .sub-text { font-size: 11px; padding: 0; }
+  .sub-text-editable, .sub-text-edit { font-size: 11px; padding: 0 2px; }
   .detail .notes { font-size: 11px; min-height: 0 !important; border: none !important; border-left: 2px solid #e0b34d !important; background: #fffaf0 !important; border-radius: 0 !important; padding: 3px 0 3px 8px !important; }
   .notes-lbl { font-size: 8px; margin-bottom: 2px; }
 

@@ -327,9 +327,10 @@
   function detailHtml(id) {
     var e = getEntry(id), it = itemById(id), pri = priOf(id);
     var rows = subs(id).map(function (x) {
+      var t = x.t || "";
       return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-        '<input class="sub-text" data-act="subedit" value="' + esc(x.t || "") + '" placeholder="subtask">' +
-        '<button class="sub-del" data-act="subdel" title="Delete">\u00d7</button></li>';
+        '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' +
+        '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button></li>';
     }).join("");
     var priCtl = '<div class="pri-row"><span class="pri-lbl">Priority</span>' +
       '<div class="pri-seg">' + ["H", "M", "L"].map(function (p) {
@@ -454,6 +455,7 @@
       var sid2 = e.target.closest("[data-sid]").getAttribute("data-sid");
       patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderColumn("app"); renderColumn("study"); renderPulse(); renderFive(); return;
     }
+    if (a === "subedit-start") { startSubEdit(act, key); return; }
     if (a === "subadd") { addSub(act, key); return; }
   });
 
@@ -473,6 +475,28 @@
   }
   function cssEsc(s) { return s.replace(/(["\\])/g, "\\$1"); }
 
+  /* click-to-edit a subtask: swap the text span for an input.
+     Enter / blur commits (stamps u); Escape cancels without saving. */
+  function startSubEdit(span, key) {
+    var li = span.closest("[data-sid]"); if (!li) return;
+    var sid = li.getAttribute("data-sid"), cur = "";
+    subs(key).forEach(function (x) { if (x.id === sid) cur = x.t || ""; });
+    var input = document.createElement("input");
+    input.className = "sub-text-edit"; input.value = cur; input.placeholder = "subtask";
+    var settled = false;
+    function finish(saveIt) {
+      if (settled) return; settled = true;
+      if (saveIt && input.value !== cur) patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid ? Object.assign({}, x, { t: input.value, u: Date.now() }) : x; }) });
+      renderColumn("app"); renderColumn("study");
+    }
+    input.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); finish(true); }
+      else if (ev.key === "Escape") { ev.preventDefault(); finish(false); }
+    });
+    input.addEventListener("blur", function () { finish(true); });
+    span.replaceWith(input); input.focus(); input.select();
+  }
+
   /* live text inputs */
   document.addEventListener("input", function (e) {
     var a = e.target.getAttribute && e.target.getAttribute("data-act"); if (!a) return;
@@ -480,10 +504,6 @@
     if (a === "obj") patch(key, { objective: e.target.value });
     else if (a === "notes") patch(key, { notes: e.target.value });
     else if (a === "rename") renameItem(key, e.target.value);
-    else if (a === "subedit") {
-      var sid = e.target.closest("[data-sid]").getAttribute("data-sid");
-      patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid ? Object.assign({}, x, { t: e.target.value, u: Date.now() }) : x; }) });
-    }
     else if (a === "week") { meta.weekOf = e.target.value; save(); cloudPushBoard(); }
     else if (a === "eowDone") { meta.eowDone = e.target.value; save(); cloudPushBoard(); }
     else if (a === "eowCarry") { meta.eowCarry = e.target.value; save(); cloudPushBoard(); }
