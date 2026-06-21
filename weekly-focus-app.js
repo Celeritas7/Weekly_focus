@@ -583,7 +583,7 @@
         else r = await sb.from(op.table).upsert(Object.assign({ user_id: uidv }, op.row), { onConflict: op.onConflict });
         if (r.error) throw r.error;
         delete outbox[keys[i]]; saveOutbox();
-      } catch (e) { break; }
+      } catch (e) { continue; }
     }
     flushing = false; updateCloudStatus();
   }
