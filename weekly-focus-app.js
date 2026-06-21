@@ -155,7 +155,7 @@
 
   /* ---------------- subtask progress ---------------- */
   function subs(k) { var a = getEntry(k).subtasks; return Array.isArray(a) ? a : []; }
-  function subProgress(k) { var a = subs(k); if (!a.length) return null; var d = a.filter(function (x) { return x.done; }).length; return { done: d, total: a.length, pct: d / a.length }; }
+  function subProgress(k) { var a = visibleSubs(subs(k)); if (!a.length) return null; var d = a.filter(function (x) { return x.done; }).length; return { done: d, total: a.length, pct: d / a.length }; }
 
   /* ---- subtask identity + cross-device merge ----
      Each subtask carries: { id, t, done, u (last-edit ms), del (tombstone) }.
@@ -326,7 +326,7 @@
   function priName(p) { return p === "H" ? "High" : p === "M" ? "Medium" : "Low"; }
   function detailHtml(id) {
     var e = getEntry(id), it = itemById(id), pri = priOf(id);
-    var rows = normSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
+    var rows = visibleSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
       var t = x.t || "";
       return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
         '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' +
@@ -598,12 +598,20 @@
         // empty cloud board + this device has data → seed cloud (never wipe local)
         cloudPushInv(); cloudPushBoard(); Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); }); flushOutbox(); updateCloudStatus(); return;
       }
-      var map = {}; rows.forEach(function (row) { map[row.item_key] = row.payload || {}; });
-      Object.keys(outbox).forEach(function (qk) {                 // pending local writes win
+      var map = {}, remoteSubsBy = {};
+      rows.forEach(function (row) { var p = row.payload || {}; map[row.item_key] = p; remoteSubsBy[row.item_key] = normSubs(p.subtasks); });
+      Object.keys(outbox).forEach(function (qk) {                 // pending local writes win (scalars); subtasks merged below
         if (qk.indexOf("entry:") === 0) map[outbox[qk].row.item_key] = outbox[qk].row.payload;
-        if (qk.indexOf("del:") === 0) delete map[qk.slice(4)];
+        if (qk.indexOf("del:") === 0) { delete map[qk.slice(4)]; delete remoteSubsBy[qk.slice(4)]; }
       });
       if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; delete map[BOARD_ITEM]; if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; }
+      Object.keys(map).forEach(function (k) {                     // union-merge subtasks: remote ∪ local-current
+        if (k === BOARD_ITEM) return;
+        var remoteSubs = remoteSubsBy[k] || [];
+        var merged = mergeSubs(remoteSubs, normSubs((entries[k] || {}).subtasks));
+        map[k] = Object.assign({}, map[k], { subtasks: merged });
+        if (subsDiffer(remoteSubs, merged)) cloudPushEntry(k, map[k]);   // converge server; gate prevents push storms
+      });
       entries = map; save(); renderAll(); updateCloudStatus();
     } catch (e) { updateCloudStatus(); }
   }
