@@ -227,11 +227,16 @@
       card.setAttribute("data-tkey", k);
       var m = lab.crumb ? esc(lab.crumb) : (kindOf(k) === "app" ? "App" : "Study");
       if (prog) m += " \u00b7 " + prog.done + "/" + prog.total;
+      var sv = visibleSubs(subs(k));
+      var subList = sv.length ? '<ul class="tsubs" data-key="' + esc(k) + '">' + sv.map(function (x) {
+        return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button><span class="tsub-text">' + esc(x.t || "subtask") + '</span></li>';
+      }).join("") + '</ul>' : '';
       card.innerHTML =
         '<span class="tnum">TARGET ' + (i + 1) + '</span>' +
         '<button class="tcheck' + (done ? " on" : "") + '" data-act="tdone" title="Mark done"></button>' +
         '<div class="ttitle">' + esc(lab.name) + '</div>' +
         '<div class="tmeta">' + m + '</div>' +
+        subList +
         '<button class="tdrop" data-act="tdrop" title="Remove from focus">\u00d7</button>';
       grid.appendChild(card);
     });
