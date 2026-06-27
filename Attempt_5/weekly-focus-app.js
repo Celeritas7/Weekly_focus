@@ -38,28 +38,26 @@
   var state = { apps: [], study: [] };
   var itemIndex = {};               // id -> item (across apps + study)
   var invTs = "";                   // last-applied inventory timestamp (last-write-wins across devices)
-  var entries = {};                 // id -> { active, pri, objective, subtasks[], notes, targetDone } — loaded from Supabase
-  var meta = {};                    // { weekOf, eowDone, eowCarry, eowNotes } — loaded from Supabase
-  var targetOrder = [];             // The Five — loaded from Supabase
+  var entries = load(K.entries);    // id -> { active, pri, objective, subtasks[], notes, targetDone }
+  var meta = load(K.meta);          // { weekOf, eowDone, eowCarry, eowNotes }
+  var targetOrder = loadArr(K.targets);
   var detailOpen = {};
 
-  /* cloud state — the connection is baked into the build (config.js), NOT localStorage,
-     so it can never be lost to storage eviction. Supabase is the source of truth. */
+  /* cloud state (see CLOUD SYNC section) */
   var CLOUD_KEY = "wf2_cloud", OUTBOX_KEY = "wf2_outbox", BOARD_ITEM = "__board";
-  var cloud = (window.WF_CONFIG && WF_CONFIG.url)
-    ? { url: WF_CONFIG.url, key: WF_CONFIG.key, board: WF_CONFIG.board || "my-week" }
-    : load(CLOUD_KEY);
-  /* which board is selected is a tiny UI preference (NOT your data — that lives in
-     Supabase). If it's ever evicted you just land back on the default board. */
-  try { var _ab = localStorage.getItem("wf2_active_board"); if (_ab && window.WF_CONFIG) cloud.board = _ab; } catch (e) {}
-  var outbox = {};                  // in-memory write queue — never persisted to localStorage
+  var cloud = load(CLOUD_KEY);
+  var outbox = load(OUTBOX_KEY);
   var flushing = false, sb = null, session = null, authSub = null;
 
   function load(k) { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch (e) { return {}; } }
   function loadArr(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } }
-  /* Data is never written to localStorage — it lives in Supabase. save() is a no-op;
-     every mutation is pushed to the database through the cloudPush* helpers below. */
-  function save() {}
+  function save() {
+    try {
+      localStorage.setItem(K.entries, JSON.stringify(entries));
+      localStorage.setItem(K.meta, JSON.stringify(meta));
+      localStorage.setItem(K.targets, JSON.stringify(targetOrder));
+    } catch (e) {}
+  }
   function getEntry(k) { return entries[k] || {}; }
   function patch(k, p) { entries[k] = Object.assign({}, entries[k], p); save(); cloudPushEntry(k, entries[k]); }
 
@@ -110,11 +108,21 @@
   }
   function saveInv(pushUp) {
     invTs = nowISO();
-    if (pushUp !== false) cloudPushInv();   // inventory lives in Supabase, not localStorage
+    try { localStorage.setItem(K.inv, JSON.stringify({ apps: state.apps, study: state.study, ts: invTs })); } catch (e) {}
+    if (pushUp !== false) cloudPushInv();
   }
-  /* No local inventory cache any more — the inventory is pulled from Supabase on
-     sign-in. Kept as a no-op so existing call sites stay valid. */
-  function loadInvLocal() { return false; }
+  function loadInvLocal() {
+    try {
+      var v = JSON.parse(localStorage.getItem(K.inv)); if (!v) return false;
+      var legacy = v.domains !== undefined
+        || (Array.isArray(v.apps) && v.apps.some(function (a) { return a && !a.id; }))
+        || (Array.isArray(v.study) && v.study.some(function (s) { return s && s.children; }));
+      setInventory(v.apps, v.study || v.domains, true);
+      invTs = v.ts || (legacy ? nowISO() : "");
+      if (legacy) { try { localStorage.setItem(K.inv, JSON.stringify({ apps: state.apps, study: state.study, ts: invTs })); } catch (e) {} }
+      return true;
+    } catch (e) { return false; }
+  }
 
   /* ---------------- CRUD ---------------- */
   function addItem(kind, name, group) {
@@ -189,16 +197,7 @@
   /* ============================================================
      RENDER
      ============================================================ */
-  /* ---- liveliness state (entrance, detail-open, ring count-up, drag) ---- */
-  var ENTER = false;        // one-shot: entrance-animate the next full render
-  var OPENING = null;       // id whose detail panel should play the open animation
-  var lastPctShown = 0;     // previous hero-ring value, for the count-up + sweep
-  var DRAG = { id: null, type: null, kind: null };
-
-  function renderAll() {
-    pruneTargets(); renderPulse(); renderFive(); renderColumn("app"); renderColumn("study"); renderMeta();
-    if (ENTER) { ENTER = false; setTimeout(function () { var ns = document.querySelectorAll(".wf-enter"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("wf-enter"); }, 720); }
-  }
+  function renderAll() { pruneTargets(); renderPulse(); renderFive(); renderColumn("app"); renderColumn("study"); renderMeta(); }
 
   function renderPulse() {
     var done = targetOrder.filter(targetDone).length, total = targetOrder.length;
@@ -217,23 +216,15 @@
           '<div class="pstat apps"><span class="n">' + activeItems("app").length + '</span><span class="l">Apps active</span></div>' +
           '<div class="pstat study"><span class="n">' + activeItems("study").length + '</span><span class="l">Topics active</span></div>' +
         '</div></div>';
-    // count the percentage up, and sweep the ring from its previous value
-    var pctEl = el.querySelector(".pct");
-    if (pctEl) animateCount(pctEl, Math.round(lastPctShown * 100), Math.round(pct * 100));
-    var fill = el.querySelector(".ring .fill");
-    if (fill) { var rr = (96 - 9) / 2, cc = 2 * Math.PI * rr; fill.style.strokeDashoffset = (cc * (1 - lastPctShown)).toFixed(1); requestAnimationFrame(function () { requestAnimationFrame(function () { fill.style.strokeDashoffset = (cc * (1 - pct)).toFixed(1); }); }); }
-    lastPctShown = pct;
   }
 
   function renderFive() {
     var grid = $("fiveGrid"); grid.innerHTML = "";
-    if (ENTER) grid.classList.add("wf-enter");
     targetOrder.forEach(function (k, i) {
       var lab = labelFor(k), done = targetDone(k), prog = subProgress(k);
       var card = document.createElement("div");
       card.className = "tcard" + (done ? " done" : "");
       card.setAttribute("data-tkey", k);
-      card.setAttribute("draggable", "true");
       var m = lab.crumb ? esc(lab.crumb) : (kindOf(k) === "app" ? "App" : "Study");
       if (prog) m += " \u00b7 " + prog.done + "/" + prog.total;
       var sv = visibleSubs(subs(k));
@@ -265,7 +256,6 @@
       : { host: "studyActive", back: "studyBacklog", wrap: "studyBacklogWrap", bn: "studyBacklogN", n: "studyN", noun: "topic" };
     var host = $(ids.host), back = $(ids.back);
     host.innerHTML = ""; back.innerHTML = "";
-    if (ENTER) host.classList.add("wf-enter");
     var arr = arrFor(kind), active = activeItems(kind), backlog = backlogItems(kind);
     $(ids.n).textContent = active.length;
 
@@ -282,7 +272,7 @@
       back.appendChild(catHead(kind, g.group, g.items.length));
       var ul = document.createElement("ul"); ul.className = "brows";
       g.items.forEach(function (it) {
-        var li = document.createElement("li"); li.className = "brow"; li.setAttribute("data-key", it.id); li.setAttribute("draggable", "true");
+        var li = document.createElement("li"); li.className = "brow"; li.setAttribute("data-key", it.id);
         li.innerHTML = '<button class="tgl tgl-sm" data-act="on" title="Bring into This Week"><span class="knob"></span></button>' +
           '<span class="bname">' + esc(it.name) + '</span>' +
           '<button class="brow-del" data-act="del" title="Delete forever">' + IC.trash + '</button>';
@@ -299,12 +289,7 @@
     return groups.map(function (gr) {
       var items = arr.filter(function (a) { return a.group === gr; });
       items.sort(sortPri
-        ? function (a, b) {
-            var oa = ordOf(a.id), ob = ordOf(b.id);
-            if (oa != null && ob != null) return oa - ob;
-            if (oa != null) return -1; if (ob != null) return 1;
-            return (priRankOf(a.id) - priRankOf(b.id)) || a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-          }
+        ? function (a, b) { return (priRankOf(a.id) - priRankOf(b.id)) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); }
         : function (a, b) { return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
       return { group: gr, items: items };
     }).filter(function (g) { return g.items.length; });
@@ -324,7 +309,6 @@
     var li = document.createElement("div");
     li.className = "item" + (pri ? " pri-" + pri : "") + (open ? " open" : "");
     li.setAttribute("data-key", id); li.setAttribute("data-kind", kindOf(id));
-    if (!open) li.setAttribute("draggable", "true");   // collapsed cards drag; open ones are being edited
     var ring = prog
       ? '<div class="miniring" title="' + prog.done + ' of ' + prog.total + ' subtasks done">' + ringSVG(prog.pct, 26, 3.5, { t: "mt", f: "mf" }) + '<span class="mn">' + prog.done + '/' + prog.total + '</span></div>'
       : '';
@@ -363,7 +347,7 @@
       '<input class="mg-group" data-act="group" list="' + listId + '" value="' + esc(it ? it.group : "") + '" placeholder="Group">' +
       '<button class="mg-del" data-act="del" title="Delete forever">' + IC.trash + '</button>' +
       '</div>';
-    return '<div class="detail' + (id === OPENING ? ' opening' : '') + '">' + priCtl +
+    return '<div class="detail">' + priCtl +
       '<input class="obj" data-act="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
       '<ul class="subs">' + rows + '</ul>' +
       '<div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a checklist subtask\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
@@ -451,19 +435,11 @@
 
     if (a === "tpick") { openPicker(); return; }
     if (a === "pickclose") { closePicker(); return; }
-    if (a === "tdone") {
-      var tk = act.closest("[data-tkey]").getAttribute("data-tkey");
-      var wasAll = targetOrder.length && targetOrder.every(targetDone);
-      patch(tk, { targetDone: !targetDone(tk) });
-      renderPulse(); renderFive();
-      var nowAll = targetOrder.length && targetOrder.every(targetDone);
-      if (nowAll && !wasAll) celebrate();
-      toastMaybeDone(); return;
-    }
+    if (a === "tdone") { var tk = act.closest("[data-tkey]").getAttribute("data-tkey"); patch(tk, { targetDone: !targetDone(tk) }); renderPulse(); renderFive(); toastMaybeDone(); return; }
     if (a === "tdrop") { removeTarget(act.closest("[data-tkey]").getAttribute("data-tkey")); renderAll(); return; }
 
     var key = keyOf(act);
-    if (a === "open") { detailOpen[key] = !detailOpen[key]; OPENING = detailOpen[key] ? key : null; renderColumn("app"); renderColumn("study"); OPENING = null; return; }
+    if (a === "open") { detailOpen[key] = !detailOpen[key]; renderColumn("app"); renderColumn("study"); return; }
     if (a === "off") { patch(key, { active: false }); removeTarget(key); detailOpen[key] = false; renderAll(); return; }
     if (a === "on") { patch(key, { active: true }); renderAll(); return; }
     if (a === "star") {
@@ -563,8 +539,8 @@
   function signedIn() { return !!(session && session.user); }
   function syncReady() { return !!(sb && cloudConfigured() && signedIn()); }
   function looksSecret(k) { return /^sb_secret_/i.test(k) || /service_role/i.test(k); }
-  function saveCloud() {}    // connection is baked into config.js — nothing to persist
-  function saveOutbox() {}   // the outbox is in-memory only
+  function saveCloud() { try { localStorage.setItem(CLOUD_KEY, JSON.stringify(cloud)); } catch (e) {} }
+  function saveOutbox() { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox)); } catch (e) {} }
 
   function ensureClient() {
     if (sb) return sb;
@@ -641,7 +617,7 @@
         map[k] = Object.assign({}, map[k], { subtasks: merged });
         if (subsDiffer(remoteSubs, merged)) cloudPushEntry(k, map[k]);   // converge server; gate prevents push storms
       });
-      entries = map; save(); ENTER = true; renderAll(); updateCloudStatus();
+      entries = map; save(); renderAll(); updateCloudStatus();
     } catch (e) { updateCloudStatus(); }
   }
   async function cloudPullInventory(force) {
@@ -655,7 +631,8 @@
       if (force || (!hasInvPending && (!invTs || remoteTs > invTs))) {
         setInventory(rows[0].apps, rows[0].study, false);
         invTs = remoteTs || nowISO();
-        ENTER = true; renderAll(); refreshGroupLists();
+        try { localStorage.setItem(K.inv, JSON.stringify({ apps: state.apps, study: state.study, ts: invTs })); } catch (e) {}
+        renderAll(); refreshGroupLists();
       }
       return true;
     } catch (e) { return false; }
@@ -669,8 +646,6 @@
   function pendingCount() { return Object.keys(outbox).length; }
   function updateCloudStatus() {
     var el = $("cloudPill"); if (!el) return;
-    var banner = $("signinBanner");
-    if (banner) banner.style.display = (cloudConfigured() && !signedIn()) ? "" : "none";
     if (!cloudConfigured()) { el.className = "cloud-pill off"; el.textContent = "\u2601 Cloud off"; return; }
     if (!signedIn()) { el.className = "cloud-pill auth"; el.textContent = "\u2601 Sign in"; return; }
     var n = pendingCount();
@@ -724,17 +699,19 @@
     else cloudSetStatus("Connection verified \u2713 Now send yourself a <b>magic link</b> below and open it <b>on this device</b> to start syncing board <b>" + esc(cloud.board) + "</b>.");
     return true;
   }
-  function fillCloud() {}   // connection fields are gone — the build is pre-wired via config.js
+  function fillCloud() { if (cloud.url) $("cfUrl").value = cloud.url; if (cloud.key) $("cfKey").value = cloud.key; $("cfBoard").value = cloud.board || ""; }
   function wireCloud() {
-    var _bc = $("btnCloud"); if (_bc) _bc.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); };
+    $("btnCloud").onclick = function () { $("cloudModal").classList.add("open"); fillCloud(); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); };
     $("cloudClose").onclick = function () { $("cloudModal").classList.remove("open"); };
     $("cloudModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
-    var bsi = $("bannerSignIn"); if (bsi) bsi.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); var ce = $("cfEmail"); if (ce) ce.focus(); };
+    $("cloudSave").onclick = function () { saveConnection(); };
     $("cloudSignIn").onclick = async function () {
-      ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Check your connection and try again.", true); return; }
+      var typedUrl = $("cfUrl").value.trim().replace(/\/+$/, ""), typedKey = $("cfKey").value.trim();
+      if (!cloudConfigured() || cloud.url !== typedUrl || cloud.key !== typedKey) { var ok = await saveConnection(); if (!ok) return; }
+      ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Reconnect and try again.", true); return; }
       var email = ($("cfEmail").value || "").trim();
       if (!email) { cloudSetStatus("Enter your email to get a magic link.", true); return; }
-      try { var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error; cloudSetStatus("Magic link sent to <b>" + esc(email) + "</b>. Open it <b>on this device, in this browser</b> to finish signing in and load your week."); }
+      try { var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error; cloudSetStatus("Magic link sent to <b>" + esc(email) + "</b>. Open it <b>on this device, in this browser</b> to finish signing in."); }
       catch (e) { cloudSetStatus("Couldn\u2019t send the link: " + esc(e.message || String(e)), true); }
     };
     $("cloudPull").onclick = function () {
@@ -752,207 +729,20 @@
   }
 
   /* ============================================================
-     LIVELINESS — ring count-up, confetti, drag-and-drop
-     ============================================================ */
-  function ordOf(id) { var e = entries[id]; return (e && typeof e.ord === "number") ? e.ord : null; }
-
-  function animateCount(el, from, to) {
-    from = from || 0; if (from === to) { el.textContent = to + "%"; return; }
-    var start = null, dur = 520;
-    requestAnimationFrame(function step(ts) {
-      if (start == null) start = ts;
-      var p = Math.min(1, (ts - start) / dur), eased = 1 - Math.pow(1 - p, 3);
-      el.textContent = Math.round(from + (to - from) * eased) + "%";
-      if (p < 1) requestAnimationFrame(step); else el.textContent = to + "%";
-    });
-  }
-
-  function celebrate() {
-    var colors = ["var(--brand)", "var(--study)", "var(--on)", "var(--pri-m)", "var(--pri-h)", "var(--cat-gp)"];
-    for (var i = 0; i < 90; i++) {
-      (function (i) {
-        var p = document.createElement("div"); p.className = "confetti-piece";
-        var size = 7 + Math.random() * 7, dur = 1.6 + Math.random() * 1.4, delay = Math.random() * 0.25;
-        p.style.left = (Math.random() * 100) + "vw";
-        p.style.width = size + "px"; p.style.height = (size * 1.5) + "px";
-        p.style.background = colors[i % colors.length];
-        p.style.borderRadius = (Math.random() < 0.4 ? "50%" : "2px");
-        p.style.transform = "translateY(-20px) rotate(" + (Math.random() * 360) + "deg)";
-        p.style.animation = "wf-confetti " + dur + "s cubic-bezier(.25,.6,.4,1) " + delay + "s forwards";
-        document.body.appendChild(p);
-        setTimeout(function () { p.remove(); }, (dur + delay) * 1000 + 200);
-      })(i);
-    }
-  }
-
-  /* Insertion point: the not-dragging element nearest *after* the pointer. */
-  function afterEl(container, coord, axis, selector) {
-    var els = Array.prototype.slice.call(container.querySelectorAll(selector + ":not(.dragging)"));
-    var best = { dist: -Infinity, el: null };
-    els.forEach(function (el) {
-      var box = el.getBoundingClientRect();
-      var c = axis === "x" ? coord - box.left - box.width / 2 : coord - box.top - box.height / 2;
-      if (c < 0 && c > best.dist) best = { dist: c, el: el };
-    });
-    return best.el;
-  }
-  function clearHot() { var ns = document.querySelectorAll(".dropzone-hot"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("dropzone-hot"); }
-
-  function reorderActiveItem(kind, dragId, beforeId) {
-    var it0 = itemById(dragId); if (!it0) return; var grp = it0.group;
-    var inGroup = activeItems(kind).filter(function (x) { return x.group === grp; });
-    inGroup.sort(function (a, b) {
-      var oa = ordOf(a.id), ob = ordOf(b.id);
-      if (oa != null && ob != null) return oa - ob;
-      if (oa != null) return -1; if (ob != null) return 1;
-      return (priRankOf(a.id) - priRankOf(b.id)) || a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-    });
-    var ids = inGroup.map(function (x) { return x.id; });
-    var from = ids.indexOf(dragId); if (from >= 0) ids.splice(from, 1);
-    var at = ids.length;
-    if (beforeId && itemById(beforeId) && itemById(beforeId).group === grp) { var bi = ids.indexOf(beforeId); if (bi >= 0) at = bi; }
-    ids.splice(at, 0, dragId);
-    ids.forEach(function (id, i) { entries[id] = Object.assign({}, entries[id], { ord: i }); cloudPushEntry(id, entries[id]); });
-    save();
-  }
-
-  function wireDragDrop() {
-    document.addEventListener("dragstart", function (e) {
-      if (!e.target.closest) return;
-      var t = e.target.closest("[data-tkey]");
-      if (t && t.getAttribute("draggable") === "true") { DRAG = { id: t.getAttribute("data-tkey"), type: "target", kind: null }; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", DRAG.id); } catch (x) {} t.classList.add("dragging"); return; }
-      var it = e.target.closest(".item[data-key]") || e.target.closest(".brow[data-key]");
-      if (it && it.getAttribute("draggable") === "true") {
-        var id = it.getAttribute("data-key"); DRAG = { id: id, type: "item", kind: kindOf(id) };
-        e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", id); } catch (x) {} it.classList.add("dragging");
-        var w = $(DRAG.kind === "app" ? "appsBacklogWrap" : "studyBacklogWrap"); if (w) { w.style.display = ""; w.classList.add("drag-reveal"); }
-      }
-    });
-    document.addEventListener("dragend", function () {
-      var d = document.querySelectorAll(".dragging"); for (var i = 0; i < d.length; i++) d[i].classList.remove("dragging");
-      var r = document.querySelectorAll(".drag-reveal"); for (var j = 0; j < r.length; j++) r[j].classList.remove("drag-reveal");
-      clearHot(); var wasItem = DRAG.type === "item"; DRAG = { id: null, type: null, kind: null };
-      if (wasItem) { renderColumn("app"); renderColumn("study"); }
-    });
-
-    // The Five — drag to reorder
-    var grid = $("fiveGrid");
-    grid.addEventListener("dragover", function (e) { if (DRAG.type !== "target") return; e.preventDefault(); });
-    grid.addEventListener("drop", function (e) {
-      if (DRAG.type !== "target") return; e.preventDefault();
-      var before = afterEl(grid, e.clientX, "x", ".tcard[data-tkey]");
-      var cur = targetOrder.slice(), from = cur.indexOf(DRAG.id); if (from < 0) return; cur.splice(from, 1);
-      var at = before ? cur.indexOf(before.getAttribute("data-tkey")) : cur.length; if (at < 0) at = cur.length;
-      cur.splice(at, 0, DRAG.id); targetOrder = cur; save(); cloudPushBoard(); renderFive();
-    });
-
-    // Active columns — drop to activate (if needed) + reorder
-    [["appsActive", "app"], ["studyActive", "study"]].forEach(function (pair) {
-      var host = $(pair[0]), kind = pair[1];
-      host.addEventListener("dragover", function (e) { if (DRAG.type !== "item" || DRAG.kind !== kind) return; e.preventDefault(); host.classList.add("dropzone-hot"); });
-      host.addEventListener("dragleave", function (e) { if (!host.contains(e.relatedTarget)) host.classList.remove("dropzone-hot"); });
-      host.addEventListener("drop", function (e) {
-        if (DRAG.type !== "item" || DRAG.kind !== kind) return; e.preventDefault(); host.classList.remove("dropzone-hot");
-        var before = afterEl(host, e.clientY, "y", ".item[data-key]");
-        if (!isActive(itemById(DRAG.id))) patch(DRAG.id, { active: true });
-        reorderActiveItem(kind, DRAG.id, before ? before.getAttribute("data-key") : null);
-        ENTER = false; renderAll();
-      });
-    });
-
-    // Backlog — drop to deactivate
-    [["appsBacklogWrap", "app"], ["studyBacklogWrap", "study"]].forEach(function (pair) {
-      var zone = $(pair[0]), kind = pair[1]; if (!zone) return;
-      zone.addEventListener("dragover", function (e) { if (DRAG.type !== "item" || DRAG.kind !== kind) return; e.preventDefault(); zone.classList.add("dropzone-hot"); });
-      zone.addEventListener("dragleave", function (e) { if (!zone.contains(e.relatedTarget)) zone.classList.remove("dropzone-hot"); });
-      zone.addEventListener("drop", function (e) {
-        if (DRAG.type !== "item" || DRAG.kind !== kind) return; e.preventDefault(); zone.classList.remove("dropzone-hot");
-        patch(DRAG.id, { active: false }); removeTarget(DRAG.id); detailOpen[DRAG.id] = false;
-        if (entries[DRAG.id]) delete entries[DRAG.id].ord;
-        renderAll();
-      });
-    });
-  }
-
-  /* ============================================================
-     BOARDS — multiple named focus contexts. Each board_id keeps its
-     own inventory + per-item priorities/targets in Supabase, so
-     switching boards swaps your whole focus. Zero schema change:
-     board_id is already part of every row's primary key.
-     ============================================================ */
-  function updateBoardUI() { var el = $("boardName"); if (el) el.textContent = cloud.board || "my-week"; }
-
-  function switchBoard(name) {
-    name = (name || "").trim(); if (!name || name === cloud.board) { closeBoardMenu(); return; }
-    cloud.board = name;
-    try { localStorage.setItem("wf2_active_board", name); } catch (e) {}
-    state = { apps: [], study: [] }; itemIndex = {}; rebuildIndex();
-    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = "";
-    ENTER = true; updateBoardUI(); refreshGroupLists(); renderAll(); updateCloudStatus(); closeBoardMenu();
-    if (syncReady()) initialSync();           // pulls THIS board's inventory + entries
-  }
-
-  function createBoard() {
-    var name = (prompt("New board name (e.g. Job hunt, App dev, Study):") || "").trim();
-    if (!name) return;
-    switchBoard(name);
-    if (syncReady()) { cloudPushInv(); flushOutbox(); }   // materialise the empty board so it lists
-    toast("Board \u201c" + name + "\u201d created.");
-  }
-
-  async function deleteBoard(name) {
-    if (!confirm("Delete board \u201c" + name + "\u201d and everything in it? This can\u2019t be undone.")) return;
-    if (syncReady()) {
-      try { await sb.from("weekly_focus_inventory").delete().match({ user_id: session.user.id, board_id: name }); } catch (e) {}
-      try { await sb.from("weekly_focus_entries").delete().match({ user_id: session.user.id, board_id: name }); } catch (e) {}
-    }
-    if (cloud.board === name) switchBoard((window.WF_CONFIG && WF_CONFIG.board) || "my-week");
-    else openBoardMenu();
-    toast("Board \u201c" + name + "\u201d deleted.");
-  }
-
-  async function listBoards() {
-    var set = {}; set[cloud.board] = 1;
-    if (syncReady()) {
-      try { var r = await sb.from("weekly_focus_inventory").select("board_id"); (r.data || []).forEach(function (x) { set[x.board_id] = 1; }); } catch (e) {}
-    }
-    return Object.keys(set).sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
-  }
-
-  function closeBoardMenu() { var m = $("boardMenu"); if (m) m.hidden = true; }
-  async function openBoardMenu() {
-    var m = $("boardMenu"); if (!m) return;
-    m.innerHTML = '<div class="bm-load">Loading\u2026</div>'; m.hidden = false;
-    var boards = await listBoards();
-    m.innerHTML = "";
-    boards.forEach(function (b) {
-      var row = document.createElement("div"); row.className = "bm-item" + (b === cloud.board ? " on" : "");
-      row.innerHTML = '<button class="bm-pick" data-board="' + esc(b) + '">' + (b === cloud.board ? "\u2713 " : "") + esc(b) + '</button>' +
-        '<button class="bm-del" data-delboard="' + esc(b) + '" title="Delete board">' + IC.trash + '</button>';
-      m.appendChild(row);
-    });
-    var add = document.createElement("button"); add.className = "bm-new"; add.id = "bmNew"; add.textContent = "+ New board";
-    m.appendChild(add);
-  }
-
-  function wireBoards() {
-    var btn = $("boardBtn"); if (!btn) return;
-    btn.onclick = function (e) { e.stopPropagation(); var m = $("boardMenu"); if (m.hidden) openBoardMenu(); else closeBoardMenu(); };
-    $("boardMenu").addEventListener("click", function (e) {
-      var pick = e.target.closest("[data-board]"); if (pick) { switchBoard(pick.getAttribute("data-board")); return; }
-      var del = e.target.closest("[data-delboard]"); if (del) { e.stopPropagation(); deleteBoard(del.getAttribute("data-delboard")); return; }
-      if (e.target.id === "bmNew") { createBoard(); }
-    });
-    document.addEventListener("click", function (e) { var p = $("boardPick"); if (p && !p.contains(e.target)) closeBoardMenu(); });
-  }
-
-  /* ============================================================
      INIT
      ============================================================ */
   function init() {
     wireDisclosure("appsBacklogHead", "appsBacklogWrap");
     wireDisclosure("studyBacklogHead", "studyBacklogWrap");
     $("btnPrint").onclick = function () { window.print(); };
+    $("btnReset").onclick = function () {
+      if (!confirm("Start a fresh week? Clears your targets, objectives, subtasks and notes. Your apps & topics (and their priorities) stay.")) return;
+      Object.keys(entries).forEach(function (k) { var e = entries[k]; entries[k] = { active: e.active, pri: e.pri }; });
+      targetOrder = []; detailOpen = {}; meta = {};
+      save(); renderAll();
+      if (cloudConfigured()) { cloudPushBoard(); Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); }); }
+      toast("Fresh week.");
+    };
     $("addAppBtn").onclick = function () { openAdd("app"); };
     $("addStudyBtn").onclick = function () { openAdd("study"); };
     $("addSave").onclick = commitAdd;
@@ -961,15 +751,11 @@
     $("pickClose").onclick = closePicker;
     $("pickModal").addEventListener("click", function (e) { if (e.target === this) closePicker(); });
     wireCloud();
-    wireBoards();
-    updateBoardUI();
-    wireDragDrop();
 
+    loadInvLocal();        // offline cache → instant render; never sample, never overwrite
     refreshGroupLists();
-    ENTER = true;
-    renderAll();           // renders empty until your Supabase data arrives
-    if (navigator.storage && navigator.storage.persist) { try { navigator.storage.persist(); } catch (e) {} }
-    startCloud();          // connects with the baked-in config, then loads your week once signed in
+    renderAll();
+    startCloud();          // pulls from Supabase when connected + signed in
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();

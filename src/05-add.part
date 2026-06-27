@@ -1,0 +1,22 @@
+
+  /* ============================================================
+     ADD-ITEM MODAL
+     ============================================================ */
+  var addKind = "app";
+  function openAdd(kind) {
+    addKind = kind;
+    $("addTitle").textContent = kind === "app" ? "Add app" : "Add topic";
+    $("addName").value = ""; $("addGroup").value = "";
+    $("addName").setAttribute("placeholder", kind === "app" ? "e.g. LedgerLite" : "e.g. Kanji");
+    $("addGroup").setAttribute("placeholder", kind === "app" ? "Category (e.g. General Purpose)" : "Subject (e.g. Japanese)");
+    $("addGroup").setAttribute("list", "grp-" + kind);
+    $("addModal").classList.add("open");
+    setTimeout(function () { $("addName").focus(); }, 30);
+  }
+  function closeAdd() { $("addModal").classList.remove("open"); }
+  function commitAdd() {
+    var name = $("addName").value.trim(); if (!name) { $("addName").focus(); return; }
+    addItem(addKind, name, $("addGroup").value);
+    toast((addKind === "app" ? "App" : "Topic") + " added \u2014 it\u2019s active this week.");
+    $("addName").value = ""; $("addGroup").value = ""; $("addName").focus();
+  }

@@ -1,0 +1,155 @@
+
+  /* ============================================================
+     STATE + PERSISTENCE
+     ============================================================ */
+  var K = { entries: "wf2_entries", meta: "wf2_meta", targets: "wf2_targets", inv: "wf2_inv" };
+  var state = { apps: [], study: [] };
+  var itemIndex = {};               // id -> item (across apps + study)
+  var invTs = "";                   // last-applied inventory timestamp (last-write-wins across devices)
+  var entries = {};                 // id -> { active, pri, objective, subtasks[], notes, targetDone } — loaded from Supabase
+  var meta = {};                    // { weekOf, eowDone, eowCarry, eowNotes } — loaded from Supabase
+  var targetOrder = [];             // The Five — loaded from Supabase
+  var detailOpen = {};
+
+  /* cloud state — the connection is baked into the build (config.js), NOT localStorage,
+     so it can never be lost to storage eviction. Supabase is the source of truth. */
+  var CLOUD_KEY = "wf2_cloud", OUTBOX_KEY = "wf2_outbox", BOARD_ITEM = "__board";
+  var cloud = (window.WF_CONFIG && WF_CONFIG.url)
+    ? { url: WF_CONFIG.url, key: WF_CONFIG.key, board: WF_CONFIG.board || "my-week" }
+    : load(CLOUD_KEY);
+  /* which board is selected is a tiny UI preference (NOT your data — that lives in
+     Supabase). If it's ever evicted you just land back on the default board. */
+  try { var _ab = localStorage.getItem("wf2_active_board"); if (_ab && window.WF_CONFIG) cloud.board = _ab; } catch (e) {}
+  var outbox = {};                  // in-memory write queue — never persisted to localStorage
+  var flushing = false, sb = null, session = null, authSub = null;
+
+  function load(k) { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch (e) { return {}; } }
+  function loadArr(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } }
+  /* Data is never written to localStorage — it lives in Supabase. save() is a no-op;
+     every mutation is pushed to the database through the cloudPush* helpers below. */
+  function save() {}
+  function getEntry(k) { return entries[k] || {}; }
+  function patch(k, p) { entries[k] = Object.assign({}, entries[k], p); save(); cloudPushEntry(k, entries[k]); }
+
+  /* ---------------- inventory (in-app, Supabase-backed) ---------------- */
+  function rebuildIndex() { itemIndex = {}; state.apps.forEach(function (a) { itemIndex[a.id] = a; }); state.study.forEach(function (s) { itemIndex[s.id] = s; }); }
+  function itemById(id) { return itemIndex[id] || null; }
+  function kindOf(id) { return id.indexOf("study:") === 0 ? "study" : "app"; }
+  function arrFor(kind) { return kind === "study" ? state.study : state.apps; }
+
+  /* Convert legacy file-shaped inventory (apps w/ category, study as folder tree)
+     into the flat in-app shape. IDs are kept identical to the old item_keys
+     (app:Name / study:DOM/.../Leaf) so existing curation reattaches untouched. */
+  function normalizeInventory(rawApps, rawStudy) {
+    var seedActive = {};
+    var apps = (rawApps || []).map(function (a) {
+      if (a && a.id) return { id: a.id, name: a.name, group: a.group || "Other" };
+      if (a && a.group === "Active") seedActive["app:" + a.name] = true;       // old status column
+      return { id: "app:" + a.name, name: a.name, group: a.category || "Other" };
+    });
+    var study = [];
+    if (Array.isArray(rawStudy) && rawStudy.length && rawStudy[0] && !rawStudy[0].children) {
+      study = rawStudy.map(function (s) { return s.id ? { id: s.id, name: s.name, group: s.group || "Other" } : { id: "study:" + s.name, name: s.name, group: s.group || "Other" }; });
+    } else if (Array.isArray(rawStudy)) {
+      rawStudy.forEach(function (dom) {                                         // old folder tree → flat leaves
+        (function rec(node, anc) {
+          var names = anc.concat([node.name]);
+          if (!node.children || !node.children.length) {
+            var path = dom.name + "/" + names.join("/");
+            study.push({ id: "study:" + path, name: node.name, group: dom.name });
+          } else node.children.forEach(function (c) { rec(c, names); });
+        });
+        (dom.children || []).forEach(function (c) {
+          (function rec(node, anc) {
+            var names = anc.concat([node.name]);
+            if (!node.children || !node.children.length) study.push({ id: "study:" + dom.name + "/" + names.join("/"), name: node.name, group: dom.name });
+            else node.children.forEach(function (k) { rec(k, names); });
+          })(c, []);
+        });
+      });
+    }
+    return { apps: apps, study: study, seedActive: seedActive };
+  }
+
+  function setInventory(rawApps, rawStudy, applySeed) {
+    var n = normalizeInventory(rawApps, rawStudy);
+    state.apps = n.apps; state.study = n.study; rebuildIndex();
+    if (applySeed) Object.keys(n.seedActive).forEach(function (id) { if (entries[id] == null || entries[id].active == null) entries[id] = Object.assign({ active: true }, entries[id]); });
+  }
+  function saveInv(pushUp) {
+    invTs = nowISO();
+    if (pushUp !== false) cloudPushInv();   // inventory lives in Supabase, not localStorage
+  }
+  /* No local inventory cache any more — the inventory is pulled from Supabase on
+     sign-in. Kept as a no-op so existing call sites stay valid. */
+  function loadInvLocal() { return false; }
+
+  /* ---------------- CRUD ---------------- */
+  function addItem(kind, name, group) {
+    name = (name || "").trim(); if (!name) return null;
+    group = (group || "").trim() || (kind === "app" ? "Other" : "General");
+    var id = kind + ":" + uid();
+    arrFor(kind).push({ id: id, name: name, group: group }); rebuildIndex();
+    patch(id, { active: true });               // new items land in This Week
+    saveInv(); renderAll(); return id;
+  }
+  function renameItem(id, name) { var it = itemById(id); if (!it) return; it.name = (name || "").trim() || it.name; saveInv(); }
+  function regroupItem(id, group) { var it = itemById(id); if (!it) return; it.group = (group || "").trim() || it.group; saveInv(); renderAll(); }
+  function deleteItem(id) {
+    var arr = arrFor(kindOf(id)), i = arr.findIndex(function (x) { return x.id === id; });
+    if (i >= 0) arr.splice(i, 1);
+    rebuildIndex(); removeTarget(id); delete entries[id]; delete detailOpen[id];
+    save(); saveInv(); cloudDeleteEntry(id); renderAll();
+  }
+
+  /* ---------------- model accessors ---------------- */
+  function isActive(item) { var e = entries[item.id]; return !!(e && e.active === true); }
+  function priOf(id) { var e = entries[id]; return (e && e.pri) || null; }
+  function priRankOf(id) { var e = entries[id]; return (e && e.pri) ? PRI_RANK[e.pri] : 3; }
+  function activeItems(kind) { return arrFor(kind).filter(isActive); }
+  function backlogItems(kind) { return arrFor(kind).filter(function (x) { return !isActive(x); }); }
+
+  var APP_CATS = ["General Purpose", "Mechanical", "Language Study", "Other"];
+  var CAT_CLASS = { "General Purpose": "cat-gp", "Mechanical": "cat-mech", "Language Study": "cat-lang", "Other": "cat-other" };
+  var PRI_RANK = { H: 0, M: 1, L: 2 };
+
+  /* ---------------- subtask progress ---------------- */
+  function subs(k) { var a = getEntry(k).subtasks; return Array.isArray(a) ? a : []; }
+  function subProgress(k) { var a = visibleSubs(subs(k)); if (!a.length) return null; var d = a.filter(function (x) { return x.done; }).length; return { done: d, total: a.length, pct: d / a.length }; }
+
+  /* ---- subtask identity + cross-device merge ----
+     Each subtask carries: { id, t, done, u (last-edit ms), del (tombstone) }.
+     Merge is a union by id with per-subtask last-write-wins, so subtasks added on
+     different devices both survive; a delete sets del+u (high) so it wins over a
+     stale copy instead of being resurrected. Legacy subtasks (no id) get a stable
+     id derived from their text so the same legacy item dedupes across devices. */
+  function subLegacyId(t) { var s = String(t || ""), h = 5381; for (var i = 0; i < s.length; i++) { h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; } return "l_" + h.toString(36); }
+  function normSubs(arr) {
+    return (Array.isArray(arr) ? arr : []).map(function (s) {
+      if (!s) return null;
+      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del };
+    }).filter(Boolean);
+  }
+  function mergeSubs(a, b) {
+    var by = {}, order = [];
+    function take(s) {
+      var ex = by[s.id];
+      if (!ex) { by[s.id] = s; order.push(s.id); return; }
+      if ((s.u || 0) > (ex.u || 0)) by[s.id] = s;
+      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del };
+    }
+    normSubs(a).forEach(take); normSubs(b).forEach(take);
+    return order.map(function (id) { return by[id]; });
+  }
+  function visibleSubs(arr) { return normSubs(arr).filter(function (s) { return !s.del; }); }
+  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
+  function subsDiffer(a, b) { return subsKey(a) !== subsKey(b); }
+
+  /* ---------------- targets (The Five) ---------------- */
+  var MAX_TARGETS = 5;
+  function isTarget(k) { return targetOrder.indexOf(k) >= 0; }
+  function addTarget(k) { if (isTarget(k) || targetOrder.length >= MAX_TARGETS) return false; targetOrder.push(k); save(); cloudPushBoard(); return true; }
+  function removeTarget(k) { var i = targetOrder.indexOf(k); if (i >= 0) { targetOrder.splice(i, 1); if (entries[k]) patch(k, { targetDone: false }); save(); cloudPushBoard(); } }
+  function targetDone(k) { return getEntry(k).targetDone === true; }
+  function pruneTargets() { targetOrder = targetOrder.filter(function (k) { var it = itemById(k); return it && isActive(it); }); }
+  function labelFor(k) { var it = itemById(k); return it ? { name: it.name, crumb: it.group } : { name: k, crumb: "" }; }

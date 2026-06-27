@@ -1,0 +1,198 @@
+
+  /* ============================================================
+     CLOUD SYNC — Supabase Auth + RLS, outbox two-way sync.
+     Inventory is one row per board (apps + study jsonb columns).
+     Per-item curation is one row per item_key. Board-level state
+     (The Five + week/EOW notes) rides on a synthetic "__board" row.
+     ============================================================ */
+  function cloudConfigured() { return !!(cloud && cloud.url && cloud.key && cloud.board); }
+  function signedIn() { return !!(session && session.user); }
+  function syncReady() { return !!(sb && cloudConfigured() && signedIn()); }
+  function looksSecret(k) { return /^sb_secret_/i.test(k) || /service_role/i.test(k); }
+  function saveCloud() {}    // connection is baked into config.js — nothing to persist
+  function saveOutbox() {}   // the outbox is in-memory only
+
+  function ensureClient() {
+    if (sb) return sb;
+    if (!cloudConfigured() || typeof window.supabase === "undefined") return null;
+    sb = window.supabase.createClient(cloud.url, cloud.key, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "wf2_sb_auth" }
+    });
+    var sub = sb.auth.onAuthStateChange(function (event, sess) {
+      session = sess || null;
+      renderAuthUI(); updateCloudStatus();
+      var cm = $("cloudModal"); if (cm && cm.classList.contains("open")) cloudSetStatus(cloudSummary());
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) initialSync();
+      else if (event === "TOKEN_REFRESHED" && syncReady()) flushOutbox();
+    });
+    authSub = sub && sub.data ? sub.data.subscription : null;
+    return sb;
+  }
+  function dropClient() { if (authSub) { try { authSub.unsubscribe(); } catch (e) {} authSub = null; } sb = null; session = null; }
+
+  function queue(qkey, op) { outbox[qkey] = op; saveOutbox(); flushOutbox(); updateCloudStatus(); }
+  function cloudPushEntry(key, payload) {
+    if (!cloudConfigured()) return;
+    queue("entry:" + key, { table: "weekly_focus_entries", onConflict: "user_id,board_id,item_key", row: { board_id: cloud.board, item_key: key, payload: payload, updated_at: nowISO() } });
+  }
+  function cloudDeleteEntry(key) {
+    if (!cloudConfigured()) return;
+    delete outbox["entry:" + key];                    // drop any pending upsert for it
+    queue("del:" + key, { method: "delete", table: "weekly_focus_entries", match: { board_id: cloud.board, item_key: key } });
+  }
+  function cloudPushBoard() { cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta }); }
+  function cloudPushInv() {
+    if (!cloudConfigured()) return;
+    queue("inv", { table: "weekly_focus_inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, apps: state.apps, study: state.study, updated_at: invTs || nowISO() } });
+  }
+
+  async function flushOutbox() {
+    if (!syncReady() || flushing) return;
+    flushing = true;
+    var uidv = session.user.id, keys = Object.keys(outbox);
+    for (var i = 0; i < keys.length; i++) {
+      var op = outbox[keys[i]];
+      try {
+        var r;
+        if (op.method === "delete") r = await sb.from(op.table).delete().match(Object.assign({ user_id: uidv }, op.match));
+        else r = await sb.from(op.table).upsert(Object.assign({ user_id: uidv }, op.row), { onConflict: op.onConflict });
+        if (r.error) throw r.error;
+        delete outbox[keys[i]]; saveOutbox();
+      } catch (e) { continue; }
+    }
+    flushing = false; updateCloudStatus();
+  }
+
+  async function cloudPullEntries() {
+    if (!syncReady()) return;
+    try {
+      var r = await sb.from("weekly_focus_entries").select("item_key,payload").eq("board_id", cloud.board);
+      if (r.error) throw r.error;
+      var rows = r.data || [];
+      if (!rows.length && (state.apps.length || state.study.length || Object.keys(entries).length)) {
+        // empty cloud board + this device has data → seed cloud (never wipe local)
+        cloudPushInv(); cloudPushBoard(); Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); }); flushOutbox(); updateCloudStatus(); return;
+      }
+      var map = {}, remoteSubsBy = {};
+      rows.forEach(function (row) { var p = row.payload || {}; map[row.item_key] = p; remoteSubsBy[row.item_key] = normSubs(p.subtasks); });
+      Object.keys(outbox).forEach(function (qk) {                 // pending local writes win (scalars); subtasks merged below
+        if (qk.indexOf("entry:") === 0) map[outbox[qk].row.item_key] = outbox[qk].row.payload;
+        if (qk.indexOf("del:") === 0) { delete map[qk.slice(4)]; delete remoteSubsBy[qk.slice(4)]; }
+      });
+      if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; delete map[BOARD_ITEM]; if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; }
+      Object.keys(map).forEach(function (k) {                     // union-merge subtasks: remote ∪ local-current
+        if (k === BOARD_ITEM) return;
+        var remoteSubs = remoteSubsBy[k] || [];
+        var merged = mergeSubs(remoteSubs, normSubs((entries[k] || {}).subtasks));
+        map[k] = Object.assign({}, map[k], { subtasks: merged });
+        if (subsDiffer(remoteSubs, merged)) cloudPushEntry(k, map[k]);   // converge server; gate prevents push storms
+      });
+      entries = map; save(); ENTER = true; renderAll(); updateCloudStatus();
+    } catch (e) { updateCloudStatus(); }
+  }
+  async function cloudPullInventory(force) {
+    if (!syncReady()) return false;
+    try {
+      var r = await sb.from("weekly_focus_inventory").select("apps,study,updated_at").eq("board_id", cloud.board).limit(1);
+      if (r.error) throw r.error;
+      var rows = r.data || []; if (!rows.length) return false;
+      var remoteTs = rows[0].updated_at || "";
+      var hasInvPending = !!outbox["inv"];
+      if (force || (!hasInvPending && (!invTs || remoteTs > invTs))) {
+        setInventory(rows[0].apps, rows[0].study, false);
+        invTs = remoteTs || nowISO();
+        ENTER = true; renderAll(); refreshGroupLists();
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+  function initialSync() {
+    // CLOUD-FIRST: a fresh device adopts the cloud copy; a device with local
+    // data keeps it and seeds the cloud only if the board is empty.
+    var fresh = !state.apps.length && !state.study.length;
+    cloudPullInventory(fresh).then(cloudPullEntries).then(flushOutbox);
+  }
+  function pendingCount() { return Object.keys(outbox).length; }
+  function updateCloudStatus() {
+    var el = $("cloudPill"); if (!el) return;
+    var banner = $("signinBanner");
+    if (banner) banner.style.display = (cloudConfigured() && !signedIn()) ? "" : "none";
+    if (!cloudConfigured()) { el.className = "cloud-pill off"; el.textContent = "\u2601 Cloud off"; return; }
+    if (!signedIn()) { el.className = "cloud-pill auth"; el.textContent = "\u2601 Sign in"; return; }
+    var n = pendingCount();
+    if (!navigator.onLine) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Offline" + (n ? " \u00b7 " + n : ""); }
+    else if (n) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Syncing " + n + "\u2026"; }
+    else { el.className = "cloud-pill ok"; el.textContent = "\u2601 Synced"; }
+  }
+  function renderAuthUI() {
+    var inEl = $("authSignedIn"), outEl = $("authSignedOut"); if (!inEl || !outEl) return;
+    if (signedIn()) { inEl.style.display = ""; outEl.style.display = "none"; var who = $("authWho"); if (who) who.textContent = session.user.email || "your account"; }
+    else { inEl.style.display = "none"; outEl.style.display = ""; }
+  }
+  function startCloud() {
+    ensureClient(); renderAuthUI(); updateCloudStatus();
+    setInterval(function () { if (document.visibilityState === "visible" && navigator.onLine && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); } }, 15000);
+    window.addEventListener("online", function () { if (syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); } updateCloudStatus(); });
+    window.addEventListener("offline", updateCloudStatus);
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); } });
+  }
+  function cloudSetStatus(html, warn) { var el = $("cloudStatus"); if (!el) return; el.innerHTML = html; el.className = "dstatus" + (warn ? " warn" : ""); }
+  function cloudSummary() {
+    if (!cloudConfigured()) return "Cloud is off. Enter your project details above, then <b>Save connection</b>.";
+    if (!signedIn()) return "Connected to board <b>" + esc(cloud.board) + "</b> \u2014 not signed in on this device yet. Send yourself a magic link below and open it <b>on this device</b>.";
+    var n = pendingCount();
+    return "Syncing board <b>" + esc(cloud.board) + "</b> as <b>" + esc(session.user.email || "you") + "</b>." + (n ? " " + n + " change" + (n > 1 ? "s" : "") + " waiting to upload." : " Everything is up to date.");
+  }
+  function urlLooksRight(u) { return /^https:\/\/[a-z0-9-]+\.supabase\.(co|in|net)$/i.test(u); }
+  async function testConnection() {
+    try {
+      var r = await fetch(cloud.url + "/auth/v1/health", { headers: { apikey: cloud.key } });
+      if (r.status === 401 || r.status === 403) return { ok: false, msg: "Reached your project, but it <b>rejected the key</b>. Copy the <b>anon / publishable</b> key again from Supabase \u2192 Settings \u2192 API." };
+      if (!r.ok) return { ok: false, msg: "The project answered HTTP " + r.status + " \u2014 double-check the Project URL." };
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, msg: "Couldn\u2019t reach <b>" + esc(cloud.url) + "</b>. That\u2019s usually a typo \u2014 compare it letter-by-letter with Supabase \u2192 Settings \u2192 API (it must look like <code>https://abcdwxyz12345678ijkl.supabase.co</code>)." };
+    }
+  }
+  async function saveConnection() {
+    var next = { url: $("cfUrl").value.trim().replace(/\/+$/, ""), key: $("cfKey").value.trim(), board: ($("cfBoard").value.trim() || "my-week") };
+    if (next.key && looksSecret(next.key)) { cloudSetStatus("That looks like a <b>secret</b> key. Use the <b>publishable</b> (<code>sb_publishable_\u2026</code>) or legacy <b>anon</b> (<code>eyJ\u2026</code>) key \u2014 never a secret / service_role key.", true); return false; }
+    if (!next.url || !next.key) { cloudSetStatus("Enter your Supabase Project URL and key, then save.", true); return false; }
+    if (!urlLooksRight(next.url)) { cloudSetStatus("That doesn\u2019t look like a Supabase project URL. It must be exactly the <b>Project URL</b> from Settings \u2192 API, like <code>https://abcdwxyz12345678ijkl.supabase.co</code> \u2014 check it for typos.", true); return false; }
+    var changed = !cloud || cloud.url !== next.url || cloud.key !== next.key;
+    cloud = next; saveCloud();
+    if (changed) dropClient();
+    cloudSetStatus("Checking the connection\u2026");
+    var t = await testConnection();
+    if (!t.ok) { cloudSetStatus(t.msg, true); updateCloudStatus(); return false; }
+    ensureClient(); renderAuthUI(); updateCloudStatus();
+    if (syncReady()) { initialSync(); cloudSetStatus("Connection verified \u2713 \u2014 board <b>" + esc(cloud.board) + "</b> is syncing."); }
+    else cloudSetStatus("Connection verified \u2713 Now send yourself a <b>magic link</b> below and open it <b>on this device</b> to start syncing board <b>" + esc(cloud.board) + "</b>.");
+    return true;
+  }
+  function fillCloud() {}   // connection fields are gone — the build is pre-wired via config.js
+  function wireCloud() {
+    var _bc = $("btnCloud"); if (_bc) _bc.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); };
+    $("cloudClose").onclick = function () { $("cloudModal").classList.remove("open"); };
+    $("cloudModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
+    var bsi = $("bannerSignIn"); if (bsi) bsi.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); var ce = $("cfEmail"); if (ce) ce.focus(); };
+    $("cloudSignIn").onclick = async function () {
+      ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Check your connection and try again.", true); return; }
+      var email = ($("cfEmail").value || "").trim();
+      if (!email) { cloudSetStatus("Enter your email to get a magic link.", true); return; }
+      try { var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error; cloudSetStatus("Magic link sent to <b>" + esc(email) + "</b>. Open it <b>on this device, in this browser</b> to finish signing in and load your week."); }
+      catch (e) { cloudSetStatus("Couldn\u2019t send the link: " + esc(e.message || String(e)), true); }
+    };
+    $("cloudPull").onclick = function () {
+      if (!syncReady()) { cloudSetStatus("Connect and sign in first \u2014 then Pull fetches your other device\u2019s data.", true); return; }
+      cloudSetStatus("Pulling latest from the cloud\u2026");
+      cloudPullInventory(true).then(function (got) { return cloudPullEntries().then(function () { return got; }); }).then(function (got) {
+        cloudSetStatus(got ? "Up to date \u2014 inventory and tasks refreshed from the cloud." : "The cloud board is empty. Add apps/topics on any signed-in device and they\u2019ll appear here.", !got);
+      });
+    };
+    $("cloudSignOut").onclick = async function () {
+      if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
+      session = null; renderAuthUI(); updateCloudStatus();
+      cloudSetStatus("Signed out. Your local copy stays on this device; sync pauses until you sign in again.");
+    };
+  }

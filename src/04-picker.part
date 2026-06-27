@@ -1,0 +1,23 @@
+
+  /* ============================================================
+     TARGET PICKER
+     ============================================================ */
+  function openPicker() {
+    var body = $("pickBody"); body.innerHTML = "";
+    var rows = [];
+    activeItems("app").forEach(function (a) { rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
+    activeItems("study").forEach(function (s) { rows.push({ key: s.id, name: s.name, crumb: s.group, tag: "Study", color: "oklch(0.55 0.13 " + hueFor(s.group) + ")" }); });
+    if (!rows.length) { body.innerHTML = '<div class="modal-empty">No active items yet.<br>Switch on an app or topic first, then pick your targets from them.</div>'; }
+    else rows.forEach(function (r) {
+      var taken = isTarget(r.key);
+      var b = document.createElement("button");
+      b.className = "pick" + (taken ? " taken" : ""); b.setAttribute("data-pick", r.key);
+      b.innerHTML = '<span class="pdot" style="background:' + r.color + '"></span>' +
+        '<span class="ptxt"><span class="pname">' + esc(r.name) + '</span><br><span class="pcrumb">' + esc(r.crumb) + '</span></span>' +
+        '<span class="ptag" style="background:' + r.color + '">' + r.tag + '</span>';
+      body.appendChild(b);
+    });
+    $("pickModal").classList.add("open");
+  }
+  function closePicker() { $("pickModal").classList.remove("open"); }
+  function catColor(cat) { return ({ "General Purpose": "var(--cat-gp)", "Mechanical": "var(--cat-mech)", "Language Study": "var(--cat-lang)" })[cat] || "var(--cat-other)"; }
