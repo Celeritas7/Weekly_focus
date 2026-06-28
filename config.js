@@ -14,5 +14,5 @@
 window.WF_CONFIG = {
   url:   "https://wylxvmkcrexwfpjpbhyy.supabase.co",
   key:   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5bHh2bWtjcmV4d2ZwanBiaHl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg2MzkxMDYsImV4cCI6MjA4NDIxNTEwNn0.6Bxo42hx4jwlJGWnfjiTpiDUsYfc1QLTN3YtrU1efak",
-  board: "my-week"
+  board: "my_week"
 };
