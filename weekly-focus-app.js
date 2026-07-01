@@ -61,17 +61,76 @@
   }
   function getEntry(k) { return entries[k] || {}; }
 
-  /* ---- live-edit guard: never let a background sync re-render clobber the
-     field the user is currently typing in (notes, objective, subtasks, EOW). */
-  var pendingRender = false;
-  function isEditing() {
-    var el = document.activeElement;
-    return !!(el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT") && el.getAttribute && el.getAttribute("data-act"));
+  /* ---- live-edit protection ----------------------------------------------
+     A background sync (15s timer / tab-return / reconnect) replaces `entries`
+     with the cloud copy and re-renders. That used to wipe whatever you were
+     typing: the "Add subtask" box (never persisted) and any notes/objective
+     text you'd typed but that hadn't been pushed yet. syncRender() snapshots
+     in-progress field values BEFORE the re-render, then restores them AND
+     re-commits them into `entries` so your local text wins over a stale
+     remote copy. Works even when the field lost focus (e.g. you switched
+     browser tabs) — we also keep any field whose on-screen value is ahead of
+     what the sync would render. */
+  function entryValFor(a, key, sid) {
+    var e = key ? getEntry(key) : {};
+    if (a === "notes") return e.notes || "";
+    if (a === "obj") return e.objective || "";
+    if (a === "rename") { var it = key ? itemById(key) : null; return it ? it.name : ""; }
+    if (a === "subedit") { var s = subs(key).filter(function (x) { return x.id === sid; })[0]; return s ? (s.t || "") : ""; }
+    if (a === "week") return meta.weekOf || "";
+    if (a === "eowDone") return meta.eowDone || "";
+    if (a === "eowCarry") return meta.eowCarry || "";
+    if (a === "eowNotes") return meta.eowNotes || "";
+    return null; // subnew and anything else: no backing store
   }
-  function syncRender() { if (isEditing()) { pendingRender = true; } else { renderAll(); } }
-  document.addEventListener("focusout", function () {
-    setTimeout(function () { if (pendingRender && !isEditing()) { pendingRender = false; renderAll(); } }, 0);
-  });
+  function commitField(a, key, sid, val) {
+    if (a === "notes") patch(key, { notes: val });
+    else if (a === "obj") patch(key, { objective: val });
+    else if (a === "rename") renameItem(key, val);
+    else if (a === "subedit") patch(key, { subtasks: subs(key).map(function (x) { return x.id === sid ? Object.assign({}, x, { t: val }) : x; }) });
+    else if (a === "week") { meta.weekOf = val; save(); cloudPushBoard(); }
+    else if (a === "eowDone") { meta.eowDone = val; save(); cloudPushBoard(); }
+    else if (a === "eowCarry") { meta.eowCarry = val; save(); cloudPushBoard(); }
+    else if (a === "eowNotes") { meta.eowNotes = val; save(); cloudPushBoard(); }
+  }
+  function snapshotInputs() {
+    var active = document.activeElement, snaps = [];
+    document.querySelectorAll("input[data-act], textarea[data-act]").forEach(function (el) {
+      var a = el.getAttribute("data-act");
+      var kEl = el.closest("[data-key]"), sEl = el.closest("[data-sid]");
+      var key = kEl ? kEl.getAttribute("data-key") : null, sid = sEl ? sEl.getAttribute("data-sid") : null;
+      var focused = el === active;
+      var backing = entryValFor(a, key, sid);
+      // Preserve when: the field is focused, it's the never-saved add box,
+      // or the on-screen value is ahead of what a sync render would show.
+      if (!focused && a !== "subnew" && (backing === null || el.value === backing)) return;
+      var ss = null, se = null;
+      try { ss = el.selectionStart; se = el.selectionEnd; } catch (e) {}
+      snaps.push({ a: a, key: key, sid: sid, val: el.value, focused: focused, backed: backing !== null, ss: ss, se: se });
+    });
+    return snaps;
+  }
+  function restoreInputs(snaps) {
+    snaps.forEach(function (s) {
+      // Re-commit backed fields so the restored local value survives the next save.
+      if (s.backed) commitField(s.a, s.key, s.sid, s.val);
+      var els = document.querySelectorAll('[data-act="' + s.a + '"]');
+      var el = null;
+      for (var i = 0; i < els.length; i++) {
+        var kEl = els[i].closest("[data-key]"), sEl = els[i].closest("[data-sid]");
+        if ((kEl ? kEl.getAttribute("data-key") : null) === s.key &&
+            (sEl ? sEl.getAttribute("data-sid") : null) === s.sid) { el = els[i]; break; }
+      }
+      if (!el) return;
+      if (el.value !== s.val) el.value = s.val;
+      if (s.focused) { try { el.focus(); if (s.ss != null) el.setSelectionRange(s.ss, s.se); } catch (e) {} }
+    });
+  }
+  function syncRender() {
+    var snaps = snapshotInputs();
+    renderAll();
+    if (snaps.length) restoreInputs(snaps);
+  }
   function patch(k, p) { entries[k] = Object.assign({}, entries[k], p); save(); cloudPushEntry(k, entries[k]); }
 
   /* ---------------- inventory (in-app, Supabase-backed) ---------------- */
