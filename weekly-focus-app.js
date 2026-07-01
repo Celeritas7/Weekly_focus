@@ -264,7 +264,8 @@
   /* ============================================================
      RENDER
      ============================================================ */
-  function renderAll() { pruneTargets(); renderPulse(); renderFive(); renderColumn("app"); renderColumn("study"); renderMeta(); }
+  var lastRenderSig = "";
+  function renderAll() { pruneTargets(); renderPulse(); renderFive(); renderColumn("app"); renderColumn("study"); renderMeta(); lastRenderSig = JSON.stringify({ e: entries, t: targetOrder, m: meta }); }
 
   function renderPulse() {
     var done = targetOrder.filter(targetDone).length, total = targetOrder.length;
@@ -695,7 +696,14 @@
         if (qk.indexOf("del:") === 0) delete map[qk.slice(4)];
       });
       if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; delete map[BOARD_ITEM]; if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; }
-      entries = map; save(); syncRender(); updateCloudStatus();
+      // Only touch the DOM when the incoming cloud state actually differs from
+      // what's on screen — otherwise a 15s poll / tab-return needlessly rebuilds
+      // the whole board and flickers.
+      var nextSig = JSON.stringify({ e: map, t: targetOrder, m: meta });
+      var changed = nextSig !== lastRenderSig;
+      entries = map; save();
+      if (changed) { lastRenderSig = nextSig; syncRender(); }
+      updateCloudStatus();
     } catch (e) { updateCloudStatus(); }
   }
   async function cloudPullInventory(force) {
