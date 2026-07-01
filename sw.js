@@ -3,9 +3,10 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v10";
+const CACHE = "weekly-focus-v14";
 const ASSETS = [
   "./", "./index.html",
+  "./config.js",
   "./weekly-focus.css", "./weekly-focus-app.js",
   "./manifest.webmanifest",
   "./icon-180.png", "./icon-192.png", "./icon-512.png"
@@ -40,12 +41,10 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Static same-origin assets (css/js/icons): network-first so code/style
-  // updates always land, with cache fallback when offline. (Was cache-first,
-  // which pinned stale JS/CSS until the cache version was bumped by hand.)
+  // Static same-origin assets (css/js/icons): cache-first, then network (and cache it).
   e.respondWith(
-    fetch(req).then((r) => {
+    caches.match(req).then((c) => c || fetch(req).then((r) => {
       const cp = r.clone(); caches.open(CACHE).then((cache) => cache.put(req, cp)); return r;
-    }).catch(() => caches.match(req))
+    }).catch(() => c))
   );
 });

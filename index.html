@@ -24,20 +24,32 @@
       <h1>Weekly Focus</h1>
       <span class="live">Live</span>
     </div>
+    <div class="boardpick" id="boardPick">
+      <button class="boardbtn" id="boardBtn">
+        <span class="bp-k">Board</span>
+        <span id="boardName">my-week</span>
+        <svg viewBox="0 0 16 16" width="11" height="11"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="boardmenu" id="boardMenu" hidden></div>
+    </div>
     <span class="spacer"></span>
     <span class="cloud-pill off" id="cloudPill" title="Cloud sync status">&#9729; Cloud off</span>
     <label class="weekfield">Week of
       <input id="weekInput" type="text" placeholder="2026-06-08" data-act="week">
     </label>
     <div class="toolset">
-      <button class="tbtn" id="btnCloud" title="Cloud sync settings"></button>
-      <button class="tbtn" id="btnReset" title="Start a fresh week"></button>
       <button class="tbtn primary" id="btnPrint" title="Print focus sheet"></button>
     </div>
   </div>
 </header>
 
 <main class="app">
+
+  <!-- ===================== SIGN-IN BANNER ===================== -->
+  <div class="signin-banner" id="signinBanner" style="display:none">
+    <span>Your week lives in the cloud. <b>Sign in</b> to load it on this device &mdash; nothing is stored locally.</span>
+    <button class="tbtn primary" id="bannerSignIn">Sign in</button>
+  </div>
 
   <!-- ===================== WEEKLY PULSE ===================== -->
   <section class="pulse" id="pulse"></section>
@@ -63,13 +75,6 @@
       </div>
       <div id="appsActive"></div>
       <button class="add-row" id="addAppBtn">+ Add app</button>
-      <div class="backlog parked" id="appsParkedWrap">
-        <div class="backlog-head" id="appsParkedHead">
-          <span class="bcaret">&#9662;</span> Parked
-          <span class="bn" id="appsParkedN">0</span>
-        </div>
-        <div class="backlog-body" id="appsParked"></div>
-      </div>
       <div class="backlog" id="appsBacklogWrap">
         <div class="backlog-head" id="appsBacklogHead">
           <span class="bcaret">&#9662;</span> Backlog
@@ -88,13 +93,6 @@
       </div>
       <div id="studyActive"></div>
       <button class="add-row" id="addStudyBtn">+ Add topic</button>
-      <div class="backlog parked" id="studyParkedWrap">
-        <div class="backlog-head" id="studyParkedHead">
-          <span class="bcaret">&#9662;</span> Parked
-          <span class="bn" id="studyParkedN">0</span>
-        </div>
-        <div class="backlog-body" id="studyParked"></div>
-      </div>
       <div class="backlog" id="studyBacklogWrap">
         <div class="backlog-head" id="studyBacklogHead">
           <span class="bcaret">&#9662;</span> Backlog
@@ -148,34 +146,6 @@
 <datalist id="grp-app"></datalist>
 <datalist id="grp-study"></datalist>
 
-<!-- ===================== PARK ===================== -->
-<div class="modal-bg" id="parkModal">
-  <div class="modal">
-    <div class="modal-head">
-      <h3>Park <span id="parkSubject"></span></h3>
-      <p>Hide it from this week. It returns to active automatically when the time is up.</p>
-    </div>
-    <div class="modal-body" style="padding:16px 20px;">
-      <div class="park-opts">
-        <button class="park-opt" data-parkms="10800000">3 hours</button>
-        <button class="park-opt" data-parkms="86400000">1 day</button>
-        <button class="park-opt" data-parkms="172800000">2 days</button>
-        <button class="park-opt" data-parkms="259200000">3 days</button>
-        <button class="park-opt" data-parkms="604800000">1 week</button>
-        <button class="park-opt" data-parkms="1209600000">2 weeks</button>
-      </div>
-      <div class="park-custom">
-        <label>Custom</label>
-        <input id="parkDays" type="number" min="1" max="90" placeholder="days">
-        <button class="tbtn" id="parkCustomBtn">Park</button>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="tbtn" id="parkClose">Cancel</button>
-    </div>
-  </div>
-</div>
-
 <!-- ===================== ADD ITEM ===================== -->
 <div class="modal-bg" id="addModal">
   <div class="modal">
@@ -199,15 +169,12 @@
   <div class="modal">
     <div class="modal-head">
       <h3>Cloud sync</h3>
-      <p>Your data lives here. Sync it privately across PC and phone via Supabase. Run <b>supabase-setup.sql</b> once, then enter your project details. Use the <b>publishable</b> key (<code>sb_publishable_&hellip;</code>) or the legacy <b>anon</b> key (<code>eyJ&hellip;</code>) &mdash; never a secret key.</p>
+      <p>Your week lives in Supabase &mdash; this device just needs to be signed in. Sign in with a magic link below; your data loads automatically and stays in sync across every device.</p>
     </div>
     <div class="modal-body" style="padding:0;">
       <div class="dsect">
         <h4>Connection</h4>
-        <div class="cfield"><label>Project URL</label><input id="cfUrl" type="text" placeholder="https://xxxx.supabase.co" autocomplete="off"></div>
-        <div class="cfield"><label>Publishable key</label><input id="cfKey" type="text" placeholder="sb_publishable_&hellip;" autocomplete="off"></div>
-        <div class="cfield"><label>Board name <span class="cf-hint">&mdash; use the same on every device</span></label><input id="cfBoard" type="text" placeholder="my-week" autocomplete="off"></div>
-        <div class="dbtns" style="margin-top:12px;"><button class="tbtn primary" id="cloudSave">Save connection</button></div>
+        <p class="dhelp">This build is permanently wired to your Supabase project &mdash; the connection is baked into the app, so it can never drop out the way the old setup did. Just sign in below to load your week.</p>
       </div>
       <div class="dsect">
         <h4>Account</h4>
@@ -224,39 +191,24 @@
       </div>
     </div>
     <div class="modal-foot">
-      <span class="buildtag">build 9</span>
+      <span class="buildtag">build 11 &middot; cloud-first</span>
       <button class="tbtn" id="cloudClose">Done</button>
     </div>
   </div>
 </div>
 
+<script src="config.js"></script>
 <script src="weekly-focus-app.js"></script>
 <script>
   // inject toolbar icons + labels (kept out of markup for clarity)
   (function () {
     var b = function (id, svg, label) { var el = document.getElementById(id); if (el) el.innerHTML = svg + '<span>' + label + '</span>'; };
-    b("btnCloud", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1 0-8 5.5 5.5 0 0 1 10.6-1.3A3.8 3.8 0 0 1 18 18z"/></svg>', 'Cloud');
-    b("btnReset", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5v5h5"/><path d="M5.5 13a7 7 0 1 0 1.5-6.5L4 10"/></svg>', 'Fresh week');
     b("btnPrint", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><path d="M7 17h10v4H7z"/></svg>', 'Print');
   })();
 
   // PWA: register the service worker (only on http/https — no-op in sandboxed previews)
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
-    // Was this page already controlled by a worker when it loaded? If so, a later
-    // controllerchange means a NEW build activated → reload once so the fresh
-    // JS/CSS actually runs (no more manually clearing caches to see updates).
-    var swHadController = !!navigator.serviceWorker.controller;
-    var swReloaded = false;
-    navigator.serviceWorker.addEventListener("controllerchange", function () {
-      if (swReloaded || !swHadController) return;   // skip the first-ever install
-      swReloaded = true;
-      window.location.reload();
-    });
-    window.addEventListener("load", function () {
-      navigator.serviceWorker.register("sw.js").then(function (reg) {
-        try { var p = reg.update(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
-      }).catch(function () {});
-    });
+    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
   }
 </script>
 
