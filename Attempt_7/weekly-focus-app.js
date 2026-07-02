@@ -692,7 +692,7 @@
       if (force || (!hasInvPending && (!invTs || remoteTs > invTs))) {
         setInventory(rows[0].apps, rows[0].study, false);
         invTs = remoteTs || nowISO();
-        ENTER = true; syncRender(); refreshGroupLists();
+        ENTER = true; renderAll(); refreshGroupLists();
       }
       return true;
     } catch (e) { return false; }
