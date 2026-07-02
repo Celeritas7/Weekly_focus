@@ -55,7 +55,6 @@
   var outbox = {};                  // in-memory write queue — never persisted to localStorage
   var flushing = false, sb = null, session = null, authSub = null;
   var lastCloudSig = "";            // signature of the last-rendered board — skip no-op re-renders
-  var boardU = 0;                   // last local board write (ms) — stale pulls must not undo a fresh star
   var firstPull = true;             // animate the entrance only on the very first cloud load
 
   function load(k) { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch (e) { return {}; } }
@@ -199,7 +198,7 @@
   var DRAG = { id: null, type: null, kind: null };
 
   function renderAll() {
-    pruneTargets(); renderPulse(); renderFive(); renderCols(); renderMeta();
+    pruneTargets(); renderPulse(); renderFive(); renderColumn("app"); renderColumn("study"); renderMeta();
     if (ENTER) { ENTER = false; setTimeout(function () { var ns = document.querySelectorAll(".wf-enter"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("wf-enter"); }, 720); }
     lastCloudSig = boardSig();
   }
@@ -262,55 +261,6 @@
     $("fiveCount").textContent = targetOrder.length + "/" + MAX_TARGETS;
   }
 
-  /* ---- Special: life-admin errands, always visible, never in the columns ---- */
-  function isSpecialItem(it) { return !!it && (it.group || "").trim().toLowerCase() === "special"; }
-  function renderCols() { renderColumn("app"); renderColumn("study"); renderSpecial(); }
-  function spordOf(id) { var e = entries[id]; return (e && e.spord != null) ? e.spord : null; }
-  function specialSorted() {
-    var items = activeItems("app").concat(activeItems("study")).filter(isSpecialItem);
-    items.sort(function (a, b) {
-      var oa = spordOf(a.id), ob = spordOf(b.id);
-      if (oa != null && ob != null) return oa - ob;
-      if (oa != null) return -1; if (ob != null) return 1;
-      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-    });
-    return items;
-  }
-  function renderSpecial() {
-    var sec = $("specialSec"), host = $("specialHost"); if (!sec || !host) return;
-    var items = specialSorted();
-    sec.style.display = (items.length || document.body.classList.contains("special-mode")) ? "" : "none";
-    host.innerHTML = "";
-    var totDone = 0, tot = 0;
-    items.forEach(function (it) {
-      var id = it.id, sv = visibleSubs(subs(id)), done = sv.filter(function (x) { return x.done; }).length;
-      totDone += done; tot += sv.length;
-      var open = !!detailOpen[id];
-      var card = document.createElement("div");
-      card.className = "sp-card" + (open ? " open" : "");
-      card.setAttribute("data-key", id); card.setAttribute("data-kind", kindOf(id));
-      card.style.setProperty("--sp-h", hueFor(it.name));
-      var rows = sv.map(function (x) {
-        return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-          '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' +
-          '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button></li>';
-      }).join("");
-      card.innerHTML =
-        '<div class="sp-head">' +
-          '<span class="sp-grip" title="Drag to reorder">\u22ee\u22ee</span>' +
-          '<span class="sp-name" data-act="open">' + esc(it.name) + '</span>' +
-          (sv.length ? '<span class="sp-count' + (done === sv.length ? " all" : "") + '">' + done + "/" + sv.length + '</span>' : '') +
-          '<button class="caret-btn" data-act="open">' + IC.chev + '</button>' +
-        '</div>' +
-        (open
-          ? detailHtml(id)
-          : '<ul class="subs sp-subs">' + rows + '</ul>' +
-            '<div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a task\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>');
-      host.appendChild(card);
-    });
-    var cnt = $("specialCount"); if (cnt) cnt.textContent = tot ? totDone + "/" + tot : "";
-  }
-
   /* ---- a column (apps or study) ---- */
   function renderColumn(kind) {
     var ids = kind === "app"
@@ -319,7 +269,7 @@
     var host = $(ids.host), back = $(ids.back);
     host.innerHTML = ""; back.innerHTML = "";
     if (ENTER) host.classList.add("wf-enter");
-    var arr = arrFor(kind), active = activeItems(kind).filter(function (x) { return !isSpecialItem(x); }), backlog = backlogItems(kind);
+    var arr = arrFor(kind), active = activeItems(kind), backlog = backlogItems(kind);
     $(ids.n).textContent = active.length;
 
     if (!arr.length) host.innerHTML = emptyZone("No " + ids.noun + "s yet. Tap <b>+ Add " + ids.noun + "</b> below to create your first one." + (cloudConfigured() ? "" : "<br><span class='ez-dim'>Connect <b>Cloud</b> to sync across your devices.</span>"));
@@ -449,8 +399,8 @@
   function openPicker() {
     var body = $("pickBody"); body.innerHTML = "";
     var rows = [];
-    activeItems("app").forEach(function (a) { if (isSpecialItem(a)) return; rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
-    activeItems("study").forEach(function (s) { if (isSpecialItem(s)) return; rows.push({ key: s.id, name: s.name, crumb: s.group, tag: "Study", color: "oklch(0.55 0.13 " + hueFor(s.group) + ")" }); });
+    activeItems("app").forEach(function (a) { rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
+    activeItems("study").forEach(function (s) { rows.push({ key: s.id, name: s.name, crumb: s.group, tag: "Study", color: "oklch(0.55 0.13 " + hueFor(s.group) + ")" }); });
     if (!rows.length) { body.innerHTML = '<div class="modal-empty">No active items yet.<br>Switch on an app or topic first, then pick your targets from them.</div>'; }
     else rows.forEach(function (r) {
       var taken = isTarget(r.key);
@@ -497,7 +447,7 @@
     var pk = e.target.closest("[data-pick]");
     if (pk) { var k = pk.getAttribute("data-pick"); if (addTarget(k)) { renderAll(); openPicker(); } else toast("The Five is full \u2014 remove one first."); return; }
     var seg = e.target.closest("[data-pri]");
-    if (seg) { patch(keyOf(seg), { pri: seg.getAttribute("data-pri") }); renderCols(); return; }
+    if (seg) { patch(keyOf(seg), { pri: seg.getAttribute("data-pri") }); renderColumn("app"); renderColumn("study"); return; }
     var act = e.target.closest("[data-act]");
     if (!act) return;
     var a = act.getAttribute("data-act");
@@ -516,7 +466,7 @@
     if (a === "tdrop") { removeTarget(act.closest("[data-tkey]").getAttribute("data-tkey")); renderAll(); return; }
 
     var key = keyOf(act);
-    if (a === "open") { detailOpen[key] = !detailOpen[key]; OPENING = detailOpen[key] ? key : null; renderCols(); OPENING = null; return; }
+    if (a === "open") { detailOpen[key] = !detailOpen[key]; OPENING = detailOpen[key] ? key : null; renderColumn("app"); renderColumn("study"); OPENING = null; return; }
     if (a === "off") { patch(key, { active: false }); removeTarget(key); detailOpen[key] = false; renderAll(); return; }
     if (a === "on") { patch(key, { active: true }); renderAll(); return; }
     if (a === "star") {
@@ -532,12 +482,12 @@
       var sid = e.target.closest("[data-sid]").getAttribute("data-sid");
       var subs_norm = normSubs(subs(key));   // backfill ids
       patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid ? Object.assign({}, x, { done: !x.done, u: Date.now() }) : x; }) });
-      renderCols(); renderPulse(); renderFive(); return;
+      renderColumn("app"); renderColumn("study"); renderPulse(); renderFive(); return;
     }
     if (a === "subdel") {
       var sid2 = e.target.closest("[data-sid]").getAttribute("data-sid");
       var subs_norm = normSubs(subs(key));   // backfill ids
-      patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderCols(); renderPulse(); renderFive(); return;
+      patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderColumn("app"); renderColumn("study"); renderPulse(); renderFive(); return;
     }
     if (a === "subedit-start") { startSubEdit(act, key); return; }
     if (a === "subadd") { addSub(act, key); return; }
@@ -554,7 +504,7 @@
     var box = fromEl.closest(".sub-add").querySelector(".sub-new");
     var v = (box.value || "").trim(); if (!v) return;
     patch(key, { subtasks: subs(key).concat([{ id: uid(), t: v, done: false, u: Date.now() }]) });
-    renderCols(); renderPulse(); renderFive();
+    renderColumn("app"); renderColumn("study"); renderPulse(); renderFive();
     var node = document.querySelector('[data-key="' + cssEsc(key) + '"] .sub-new'); if (node) node.focus();
   }
   function cssEsc(s) { return s.replace(/(["\\])/g, "\\$1"); }
@@ -571,7 +521,7 @@
     function finish(saveIt) {
       if (settled) return; settled = true;
       if (saveIt && input.value !== cur) { var subs_norm = normSubs(subs(key)); patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid ? Object.assign({}, x, { t: input.value, u: Date.now() }) : x; }) }); }
-      renderCols();
+      renderColumn("app"); renderColumn("study");
     }
     input.addEventListener("keydown", function (ev) {
       if (ev.key === "Enter") { ev.preventDefault(); finish(true); }
@@ -647,7 +597,7 @@
     delete outbox["entry:" + key];                    // drop any pending upsert for it
     queue("del:" + key, { method: "delete", table: "weekly_focus_entries", match: { board_id: cloud.board, item_key: key } });
   }
-  function cloudPushBoard() { boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta, u: boardU }); }
+  function cloudPushBoard() { cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta }); }
   function cloudPushInv() {
     if (!cloudConfigured()) return;
     queue("inv", { table: "weekly_focus_inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, apps: state.apps, study: state.study, updated_at: invTs || nowISO() } });
@@ -712,7 +662,7 @@
         if (qk.indexOf("entry:") === 0) map[outbox[qk].row.item_key] = outbox[qk].row.payload;
         if (qk.indexOf("del:") === 0) { delete map[qk.slice(4)]; delete remoteSubsBy[qk.slice(4)]; }
       });
-      if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; delete map[BOARD_ITEM]; if ((b.u || 0) >= boardU) { if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; boardU = b.u || 0; } }
+      if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; delete map[BOARD_ITEM]; if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; }
       Object.keys(map).forEach(function (k) {                     // union-merge subtasks: remote ∪ local-current
         if (k === BOARD_ITEM) return;
         var remoteSubs = remoteSubsBy[k] || [];
@@ -903,37 +853,6 @@
     save();
   }
 
-  /* ---- Special: pointer-based reorder (works on touch too) ---- */
-  function wireSpecialDrag() {
-    var host = $("specialHost"); if (!host) return;
-    var dragEl = null;
-    host.addEventListener("pointerdown", function (e) {
-      var g = e.target.closest(".sp-grip"); if (!g) return;
-      dragEl = g.closest(".sp-card"); if (!dragEl) return;
-      dragEl.classList.add("dragging");
-      try { g.setPointerCapture(e.pointerId); } catch (x) {}
-      e.preventDefault();
-    });
-    host.addEventListener("pointermove", function (e) {
-      if (!dragEl) return;
-      var over = document.elementFromPoint(e.clientX, e.clientY);
-      var card = over && over.closest ? over.closest(".sp-card") : null;
-      if (!card || card === dragEl || card.parentNode !== host) return;
-      var r = card.getBoundingClientRect();
-      var before = (e.clientY < r.top + r.height / 2) || (e.clientY < r.bottom && e.clientX < r.left + r.width / 2);
-      host.insertBefore(dragEl, before ? card : card.nextSibling);
-    });
-    function endSpDrag() {
-      if (!dragEl) return;
-      dragEl.classList.remove("dragging"); dragEl = null;
-      var ids = Array.prototype.map.call(host.querySelectorAll(".sp-card[data-key]"), function (n) { return n.getAttribute("data-key"); });
-      ids.forEach(function (id, i) { entries[id] = Object.assign({}, entries[id], { spord: i }); cloudPushEntry(id, entries[id]); });
-      save(); renderSpecial();
-    }
-    host.addEventListener("pointerup", endSpDrag);
-    host.addEventListener("pointercancel", endSpDrag);
-  }
-
   function wireDragDrop() {
     document.addEventListener("dragstart", function (e) {
       if (!e.target.closest) return;
@@ -950,7 +869,7 @@
       var d = document.querySelectorAll(".dragging"); for (var i = 0; i < d.length; i++) d[i].classList.remove("dragging");
       var r = document.querySelectorAll(".drag-reveal"); for (var j = 0; j < r.length; j++) r[j].classList.remove("drag-reveal");
       clearHot(); var wasItem = DRAG.type === "item"; DRAG = { id: null, type: null, kind: null };
-      if (wasItem) { renderCols(); }
+      if (wasItem) { renderColumn("app"); renderColumn("study"); }
     });
 
     // The Five — drag to reorder
@@ -1073,27 +992,6 @@
     $("btnPrint").onclick = function () { window.print(); };
     $("addAppBtn").onclick = function () { openAdd("app"); };
     $("addStudyBtn").onclick = function () { openAdd("study"); };
-    var asb = $("addSpecialBtn"); if (asb) asb.onclick = function () { openAdd("app"); $("addTitle").textContent = "Add special list"; $("addGroup").value = "Special"; };
-    var smb = $("specialModeBtn");
-    function applySpecialMode(on) { document.body.classList.toggle("special-mode", !!on); if (smb) smb.textContent = on ? "Exit focus" : "Focus"; if (on) { var ss = $("specialSec"); if (ss) ss.classList.remove("collapsed"); } renderSpecial(); }
-    if (smb) {
-      smb.onclick = function () {
-        var on = !document.body.classList.contains("special-mode");
-        try { localStorage.setItem("wf2_special_mode", on ? "1" : ""); } catch (e) {}
-        applySpecialMode(on);
-      };
-      try { if (localStorage.getItem("wf2_special_mode") === "1") applySpecialMode(true); } catch (e) {}
-    }
-    wireSpecialDrag();
-    var shb = $("specialHideBtn");
-    if (shb) {
-      shb.onclick = function () {
-        var ss = $("specialSec"), c = !ss.classList.contains("collapsed");
-        try { localStorage.setItem("wf2_special_collapsed", c ? "1" : ""); } catch (e) {}
-        ss.classList.toggle("collapsed", c);
-      };
-      try { if (localStorage.getItem("wf2_special_collapsed") === "1") $("specialSec").classList.add("collapsed"); } catch (e) {}
-    }
     $("addSave").onclick = commitAdd;
     $("addClose").onclick = closeAdd;
     $("addModal").addEventListener("click", function (e) { if (e.target === this) closeAdd(); });
