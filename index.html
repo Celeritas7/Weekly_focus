@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#161620">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Weekly Focus">
+<title>Weekly Focus</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="weekly-focus.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<!-- ===================== TOP BAR ===================== -->
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="wordmark">
+      <span class="dot"></span>
+      <h1>Weekly Focus</h1>
+      <span class="live">Live</span>
+    </div>
+    <div class="boardpick" id="boardPick">
+      <button class="boardbtn" id="boardBtn">
+        <span class="bp-k">Board</span>
+        <span id="boardName">my-week</span>
+        <svg viewBox="0 0 16 16" width="11" height="11"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="boardmenu" id="boardMenu" hidden></div>
+    </div>
+    <span class="spacer"></span>
+    <span class="cloud-pill off" id="cloudPill" title="Cloud sync status">&#9729; Cloud off</span>
+    <label class="weekfield">Week of
+      <input id="weekInput" type="text" placeholder="2026-06-08" data-act="week">
+    </label>
+    <div class="toolset">
+      <button class="tbtn primary" id="btnPrint" title="Print focus sheet"></button>
+    </div>
+  </div>
+</header>
+
+<main class="app">
+
+  <!-- ===================== SIGN-IN BANNER ===================== -->
+  <div class="signin-banner" id="signinBanner" style="display:none">
+    <span>Your week lives in the cloud. <b>Sign in</b> to load it on this device &mdash; nothing is stored locally.</span>
+    <button class="tbtn primary" id="bannerSignIn">Sign in</button>
+  </div>
+
+  <!-- ===================== WEEKLY PULSE ===================== -->
+  <section class="pulse" id="pulse"></section>
+
+  <!-- ===================== THE FIVE ===================== -->
+  <section class="five">
+    <div class="sec-head">
+      <span class="k">The Five</span>
+      <span class="sub">the targets that actually have to move this week</span>
+      <span class="count" id="fiveCount">0/5</span>
+    </div>
+    <div class="five-grid" id="fiveGrid"></div>
+  </section>
+
+  <!-- ===================== SPECIAL ===================== -->
+  <section class="special" id="specialSec" style="display:none">
+    <div class="sec-head">
+      <span class="k">Special</span>
+      <span class="sub">life admin &amp; errands &mdash; visible, but never the focus</span>
+      <span class="count" id="specialCount"></span>
+      <button class="sp-mode-btn" id="specialModeBtn" title="Show only Special">Focus</button>
+      <button class="caret-btn sp-hide-btn" id="specialHideBtn" title="Hide / show section"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+    <div class="sp-grid" id="specialHost"></div>
+    <button class="add-row" id="addSpecialBtn">+ Add special list</button>
+  </section>
+
+  <!-- ===================== COLUMNS ===================== -->
+  <section class="cols">
+    <!-- APPS -->
+    <div class="col col-apps">
+      <div class="col-head">
+        <span class="cdot"></span>
+        <span class="ctitle">Apps</span>
+        <span class="cn" id="appsN">0</span>
+      </div>
+      <div id="appsActive"></div>
+      <button class="add-row" id="addAppBtn">+ Add app</button>
+      <div class="backlog" id="appsBacklogWrap">
+        <div class="backlog-head" id="appsBacklogHead">
+          <span class="bcaret">&#9662;</span> Backlog
+          <span class="bn" id="appsBacklogN">0</span>
+        </div>
+        <div class="backlog-body" id="appsBacklog"></div>
+      </div>
+    </div>
+
+    <!-- STUDY -->
+    <div class="col col-study">
+      <div class="col-head">
+        <span class="cdot"></span>
+        <span class="ctitle">Study</span>
+        <span class="cn" id="studyN">0</span>
+      </div>
+      <div id="studyActive"></div>
+      <button class="add-row" id="addStudyBtn">+ Add topic</button>
+      <div class="backlog" id="studyBacklogWrap">
+        <div class="backlog-head" id="studyBacklogHead">
+          <span class="bcaret">&#9662;</span> Backlog
+          <span class="bn" id="studyBacklogN">0</span>
+        </div>
+        <div class="backlog-body" id="studyBacklog"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== END OF WEEK ===================== -->
+  <section class="eow">
+    <div class="sec-head">
+      <span class="k">End of Week</span>
+      <span class="sub">close the loop before you re-curate</span>
+    </div>
+    <div class="eow-grid">
+      <div class="eow-field">
+        <label>What got done</label>
+        <textarea id="eowDone" data-act="eowDone" rows="3" placeholder="The wins worth logging&hellip;"></textarea>
+      </div>
+      <div class="eow-field">
+        <label>Carry over</label>
+        <textarea id="eowCarry" data-act="eowCarry" rows="3" placeholder="What rolls into next week&hellip;"></textarea>
+      </div>
+      <div class="eow-field full">
+        <label>Notes &amp; decisions</label>
+        <textarea id="eowNotes" data-act="eowNotes" rows="2" placeholder="Anything to remember&hellip;"></textarea>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===================== TARGET PICKER ===================== -->
+<div class="modal-bg" id="pickModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Add a target</h3>
+      <p>Pick from what you've switched on this week &mdash; max five.</p>
+    </div>
+    <div class="modal-body" id="pickBody"></div>
+    <div class="modal-foot">
+      <button class="tbtn" id="pickClose" data-act="pickclose">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<datalist id="grp-app"></datalist>
+<datalist id="grp-study"></datalist>
+
+<!-- ===================== ADD ITEM ===================== -->
+<div class="modal-bg" id="addModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="addTitle">Add app</h3>
+      <p>Create it here &mdash; it syncs to every device. New items start active this week.</p>
+    </div>
+    <div class="modal-body" style="padding:16px 20px;">
+      <div class="cfield"><label>Name</label><input id="addName" type="text" autocomplete="off"></div>
+      <div class="cfield"><label>Group</label><input id="addGroup" type="text" list="grp-app" autocomplete="off"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="tbtn primary" id="addSave">Add</button>
+      <button class="tbtn" id="addClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CLOUD SYNC ===================== -->
+<div class="modal-bg" id="cloudModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Cloud sync</h3>
+      <p>Your week lives in Supabase &mdash; this device just needs to be signed in. Sign in with a magic link below; your data loads automatically and stays in sync across every device.</p>
+    </div>
+    <div class="modal-body" style="padding:0;">
+      <div class="dsect">
+        <h4>Connection</h4>
+        <p class="dhelp">This build is permanently wired to your Supabase project &mdash; the connection is baked into the app, so it can never drop out the way the old setup did. Just sign in below to load your week.</p>
+      </div>
+      <div class="dsect">
+        <h4>Account</h4>
+        <div id="authSignedOut">
+          <p class="dhelp">Sign in with a magic link &mdash; your week is private to your account.</p>
+          <div class="cfield"><label>Email</label><input id="cfEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
+          <div class="dbtns" style="margin-top:12px;"><button class="tbtn" id="cloudSignIn">Send magic link</button></div>
+        </div>
+        <div id="authSignedIn" style="display:none;">
+          <p class="dhelp">Signed in as <b id="authWho">your account</b>.</p>
+          <div class="dbtns"><button class="tbtn primary" id="cloudPull">Pull from cloud</button><button class="tbtn" id="cloudSignOut">Sign out</button></div>
+        </div>
+        <p class="dstatus" id="cloudStatus">Cloud is off. Connect a project above to sync across devices.</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="buildtag">build 14 &middot; cloud-first</span>
+      <button class="tbtn" id="cloudClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="weekly-focus-app.js"></script>
+<script>
+  // inject toolbar icons + labels (kept out of markup for clarity)
+  (function () {
+    var b = function (id, svg, label) { var el = document.getElementById(id); if (el) el.innerHTML = svg + '<span>' + label + '</span>'; };
+    b("btnPrint", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><path d="M7 17h10v4H7z"/></svg>', 'Print');
+  })();
+
+  // PWA: register the service worker (only on http/https — no-op in sandboxed previews)
+  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+  }
+</script>
+
+</body>
+</html>
