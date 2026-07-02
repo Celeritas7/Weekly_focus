@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  ============================================================================
+  WRITTEN TEST · PRACTICE  ·  Command Centre / Commonplace design system
+  ============================================================================
+  Self-contained static page. No build step. Reads ALL data from Supabase
+  (written_test_* schema); never from local files.
+
+  Auth: shared magic-link session via supabase-js v2 default localStorage
+  storage key (sb-<ref>-auth-token) — same origin as the other Command Centre
+  apps, so a session created in Commonplace logs you in here automatically.
+
+  RLS is enforced server-side and this client respects it:
+    - topics & problems   : authenticated read-only
+    - attempts            : owner-only CRUD; user_id auto-stamps from auth.uid()
+                            -> we NEVER send user_id on insert
+    - written_test_progress: security_invoker view -> already scoped to the user
+  ============================================================================
+-->
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Written Test · Practice · Commonplace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper:#efe7d6; --paper-2:#f6f0e2; --paper-3:#fbf7ec;
+    --ink:#211b13; --ink-soft:#564b3a; --ink-mute:#8a7c63;
+    --rule:#cdbfa3; --rule-soft:#ddd1b8;
+    --oxblood:#8a2f22; --oxblood-2:#6f2317;
+    --grid-paper:#fbfaf6; --grid-line:#c9dcc9; --grid-margin:#d98b8b; --plot:#2f6b4f;
+    --good:#1f8a4e; --bad:#a23b2b;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; font-family: "EB Garamond", Georgia, serif; color: var(--ink);
+    background-color: var(--paper);
+    background-image:
+      radial-gradient(circle at 16% 10%, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 38%),
+      radial-gradient(circle at 86% 80%, rgba(160,138,96,0.10) 0%, rgba(160,138,96,0) 44%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    line-height: 1.6; font-size: 18px; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 30px 32px 96px; }
+  a { color: var(--oxblood); }
+  button { font-family: "JetBrains Mono", monospace; cursor: pointer; }
+
+  .crumb { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--ink-mute); margin-bottom: 38px; }
+  .crumb a { color: var(--ink-mute); text-decoration: none; }
+  .crumb a:hover { color: var(--oxblood); }
+  .crumb .sep { color: var(--rule); }
+  .crumb .here { color: var(--ink); }
+
+  .masthead { display: grid; grid-template-columns: 1fr auto; gap: 28px; align-items: end; margin-bottom: 16px; }
+  .masthead .kicker { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--oxblood); margin-bottom: 10px; }
+  .masthead h1 { font-family: "Cormorant Garamond", serif; font-weight: 600; font-size: clamp(54px, 10vw, 96px); line-height: 0.9; letter-spacing: -1px; margin: 0; }
+  .masthead .tagline { font-style: italic; font-size: 20px; color: var(--ink-soft); margin: 14px 0 0; max-width: 46ch; text-wrap: pretty; }
+  .masthead .seal { font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: 1.5px; line-height: 1.7; color: var(--ink-mute); text-align: right; border: 1px solid var(--rule); border-radius: 3px; padding: 10px 14px; white-space: nowrap; }
+  .masthead .seal b { color: var(--ink-soft); }
+  .masthead .seal .who { color: var(--ink-soft); text-transform: none; letter-spacing: 0.5px; }
+  .masthead .seal .signout { display: inline-block; margin-top: 6px; background: none; border: none; padding: 0; color: var(--oxblood); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; }
+  .masthead .gen-link { display: inline-block; margin-top: 18px; font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: #fff; background: var(--oxblood); border: 1px solid var(--oxblood); border-radius: 4px; padding: 9px 16px; text-decoration: none; transition: background 0.15s; }
+  .masthead .gen-link:hover { background: var(--oxblood-2); }
+
+  .shead { display: flex; align-items: baseline; gap: 16px; margin: 52px 0 22px; }
+  .shead .n { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--oxblood); }
+  .shead h2 { font-family: "Cormorant Garamond", serif; font-weight: 600; font-size: 32px; line-height: 1; letter-spacing: -0.4px; margin: 0; white-space: nowrap; }
+  .shead .ln { flex: 1; height: 1px; background: var(--rule); transform: translateY(-4px); }
+
+  /* ---- progress dashboard ---- */
+  .dash { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .stat { background: var(--paper-2); border: 1px solid var(--rule); border-radius: 5px; padding: 14px 16px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset; border-left: 4px solid var(--accent, var(--rule)); }
+  .stat .name { font-family: "Cormorant Garamond", serif; font-size: 22px; font-weight: 600; line-height: 1.05; margin: 0 0 8px; }
+  .stat .nums { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 0.5px; color: var(--ink-mute); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .stat .nums b { color: var(--ink-soft); font-weight: 700; }
+  .bar { height: 6px; border-radius: 3px; background: var(--rule-soft); margin-top: 10px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent, var(--oxblood)); }
+
+  /* ---- topic / branch cards ---- */
+  .branches { display: flex; flex-direction: column; gap: 16px; }
+  .branch { background: var(--paper-2); border: 1px solid var(--rule); border-radius: 5px; overflow: hidden;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset, 0 10px 26px -18px rgba(40,30,15,0.5); }
+  .branch .head { display: grid; grid-template-columns: 76px 1fr auto; align-items: center; cursor: pointer; }
+  .branch .plate { align-self: stretch; min-height: 84px; display: flex; align-items: center; justify-content: center;
+    font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 22px; color: #fff;
+    background: var(--accent, var(--oxblood)); }
+  .branch .info { padding: 16px 20px; }
+  .branch .info h3 { font-family: "Cormorant Garamond", serif; font-weight: 600; font-size: 30px; line-height: 1; letter-spacing: -0.4px; margin: 0 0 5px; }
+  .branch .info p { font-size: 15px; color: var(--ink-soft); margin: 0; max-width: 60ch; }
+  .branch .tally { padding: 0 22px; text-align: right; font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 0.5px; color: var(--ink-mute); white-space: nowrap; }
+  .branch .tally .arr { display: inline-block; margin-left: 12px; transition: transform 0.2s; color: var(--oxblood); }
+  .branch.open .tally .arr { transform: rotate(90deg); }
+
+  .plist { display: none; border-top: 1px solid var(--rule); }
+  .branch.open .plist { display: block; }
+  .prow { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 10px;
+    padding: 11px 22px; border-top: 1px solid var(--rule-soft); cursor: pointer; transition: background 0.15s; }
+  .prow:first-child { border-top: none; }
+  .prow:hover { background: var(--paper-3); }
+  .prow .pnum { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; color: var(--oxblood); }
+  .prow .ptitle { font-size: 17px; }
+  .prow .ptitle small { display: block; font-size: 12.5px; color: var(--ink-mute); }
+  .prow .pstate { font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; padding: 3px 8px; border-radius: 3px; border: 1px solid var(--rule); color: var(--ink-mute); }
+  .prow .pstate.pass { color: var(--good); border-color: #1f8a4e55; background: #1f8a4e12; }
+  .prow .pstate.fail { color: var(--bad); border-color: #a23b2b55; background: #a23b2b12; }
+
+  /* ---- problem modal ---- */
+  .scrim { position: fixed; inset: 0; background: rgba(33,27,19,0.55); display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 40px 18px; z-index: 50; }
+  .scrim.show { display: flex; }
+  .modal { width: 100%; max-width: 720px; background: var(--paper-2); border: 1px solid var(--rule); border-radius: 6px;
+    box-shadow: 0 30px 70px -20px rgba(20,12,4,0.7); }
+  .modal .mhead { padding: 22px 26px 16px; border-bottom: 1px solid var(--rule); position: relative; }
+  .modal .mkicker { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--oxblood); margin-bottom: 6px; }
+  .modal h3 { font-family: "Cormorant Garamond", serif; font-weight: 600; font-size: 30px; line-height: 1.05; margin: 0; }
+  .modal .close { position: absolute; top: 18px; right: 20px; background: none; border: none; font-size: 22px; color: var(--ink-mute); cursor: pointer; line-height: 1; }
+  .modal .mbody { padding: 22px 26px 26px; }
+  .prompt { font-size: 18px; margin: 0 0 16px; text-wrap: pretty; }
+  .given { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--ink-soft); white-space: pre-wrap;
+    background-color: var(--grid-paper);
+    background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 19px 19px, 19px 19px;
+    border: 1px solid var(--rule); border-radius: 4px; padding: 14px 16px; margin: 0 0 20px; }
+  .given .glbl { display: block; font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: #6f7d6f; margin-bottom: 6px; }
+
+  .field { margin-bottom: 16px; }
+  .field > label { display: block; font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-mute); margin-bottom: 7px; }
+  textarea, input[type="number"] { width: 100%; font-family: "JetBrains Mono", monospace; font-size: 14px; color: var(--ink);
+    background: var(--paper-3); border: 1px solid var(--rule); border-radius: 4px; padding: 11px 13px; resize: vertical; }
+  textarea { min-height: 120px; line-height: 1.55; }
+  textarea:focus, input:focus { outline: none; border-color: var(--ink-mute); }
+
+  .grade { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .seg { display: flex; gap: 8px; flex-wrap: wrap; }
+  .seg button { background: var(--paper-3); border: 1px solid var(--rule); border-radius: 4px; padding: 7px 13px; font-size: 12px; letter-spacing: 0.5px; color: var(--ink-soft); }
+  .seg button.on { color: #fff; border-color: transparent; }
+  .seg button.on.pass { background: var(--good); }
+  .seg button.on.fail { background: var(--bad); }
+  .seg button.on.rate { background: var(--oxblood); }
+  .smallnums { display: flex; gap: 12px; }
+  .smallnums .field { flex: 1; margin: 0; }
+
+  .mfoot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--rule); }
+  .mfoot .timer { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--ink-mute); letter-spacing: 1px; }
+  .btn { background: var(--oxblood); color: #fff; border: none; border-radius: 4px; padding: 11px 22px; font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+  .btn:hover { background: var(--oxblood-2); }
+  .btn[disabled] { opacity: 0.5; cursor: default; }
+
+  .history { margin-top: 24px; }
+  .history h4 { font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-mute); margin: 0 0 10px; }
+  .hrow { display: grid; grid-template-columns: auto auto 1fr; gap: 12px; align-items: baseline; font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: var(--ink-soft); padding: 7px 0; border-top: 1px solid var(--rule-soft); }
+  .hrow .hdate { color: var(--ink-mute); }
+  .hrow .hbadge.pass { color: var(--good); } .hrow .hbadge.fail { color: var(--bad); }
+  .hrow .hnote { color: var(--ink-mute); font-family: "EB Garamond", serif; font-size: 14px; }
+  .hempty { font-family: "EB Garamond", serif; font-style: italic; color: var(--ink-mute); font-size: 15px; }
+
+  .colophon { margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--rule); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 1px; color: var(--ink-mute); }
+  .colophon a { color: var(--oxblood); text-decoration: none; }
+  .colophon .motto { font-family: "EB Garamond", serif; font-style: italic; letter-spacing: 0; font-size: 16px; color: var(--ink-soft); }
+
+  /* ---- auth gate ---- */
+  .gate { max-width: 460px; margin: 8vh auto 0; background: var(--paper-2); border: 1px solid var(--rule); border-radius: 6px;
+    box-shadow: 0 20px 50px -22px rgba(40,30,15,0.6); padding: 34px 34px 30px; }
+  .gate .kicker { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--oxblood); margin-bottom: 12px; }
+  .gate h1 { font-family: "Cormorant Garamond", serif; font-weight: 600; font-size: 46px; line-height: 0.95; margin: 0 0 10px; }
+  .gate p { font-size: 16px; color: var(--ink-soft); margin: 0 0 22px; }
+  .gate input[type="email"] { width: 100%; font-family: "JetBrains Mono", monospace; font-size: 14px; color: var(--ink);
+    background: var(--paper-3); border: 1px solid var(--rule); border-radius: 4px; padding: 12px 14px; margin-bottom: 14px; }
+  .gate .btn { width: 100%; padding: 13px; }
+  .gate .msg { font-family: "JetBrains Mono", monospace; font-size: 12px; letter-spacing: 0.5px; margin-top: 16px; min-height: 18px; color: var(--ink-mute); }
+  .gate .msg.ok { color: var(--good); } .gate .msg.err { color: var(--bad); }
+
+  .loading { font-family: "JetBrains Mono", monospace; font-size: 12px; letter-spacing: 1px; color: var(--ink-mute); text-align: center; padding: 14vh 0; text-transform: uppercase; }
+  .hide { display: none !important; }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 24px 18px 64px; }
+    .masthead { grid-template-columns: 1fr; }
+    .masthead .seal { display: none; }
+    .dash { grid-template-columns: 1fr; }
+    .branch .head { grid-template-columns: 60px 1fr; }
+    .branch .tally { grid-column: 1 / -1; text-align: left; padding: 0 20px 14px; }
+    .grade { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ AUTH GATE ============ -->
+<div id="gate-view" class="wrap hide">
+  <div class="gate">
+    <div class="kicker">Command Centre · Written Test</div>
+    <h1>Sign in</h1>
+    <p>Practice tracker for the written test. Enter your email and we'll send a magic link — the same sign-in you use across Commonplace.</p>
+    <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
+    <button id="send-link" class="btn">Send magic link</button>
+    <div id="gate-msg" class="msg"></div>
+  </div>
+</div>
+
+<!-- ============ LOADING ============ -->
+<div id="loading-view" class="loading">Connecting…</div>
+
+<!-- ============ APP ============ -->
+<div id="app-view" class="wrap hide">
+
+  <nav class="crumb">
+    <a href="https://celeritas7.github.io/Commonplace/">Commonplace</a>
+    <span class="sep">/</span>
+    <span class="here">Written Test</span>
+  </nav>
+
+  <header class="masthead">
+    <div>
+      <div class="kicker">Practice · Self-graded</div>
+      <h1>Written Test</h1>
+      <p class="tagline">Six branches, thirty problems. Work each by hand, then record how it went — your history builds the dashboard.</p>
+    <a class="gen-link" href="app.html">Generate a worksheet &rarr;</a>
+    </div>
+    <div class="seal">
+      TOPICS · <b id="seal-topics">—</b><br/>
+      ATTEMPTED · <b id="seal-attempted">—</b><br/>
+      CORRECT · <b id="seal-correct">—</b><br/>
+      <span class="who" id="seal-who">—</span>
+      <button class="signout" id="signout">sign out</button>
+    </div>
+  </header>
+
+  <div class="shead">
+    <span class="n">§</span>
+    <h2>Progress</h2>
+    <span class="ln"></span>
+  </div>
+  <div id="dash" class="dash"></div>
+
+  <div class="shead">
+    <span class="n">§</span>
+    <h2>The Branches</h2>
+    <span class="ln"></span>
+  </div>
+  <div id="branches" class="branches"></div>
+
+  <footer class="colophon">
+    <span class="motto">&ldquo;Solve it by hand, then mark it honestly.&rdquo;</span>
+    <span><a href="https://celeritas7.github.io/Commonplace/">&larr; Commonplace</a></span>
+  </footer>
+</div>
+
+<!-- ============ PROBLEM MODAL ============ -->
+<div id="scrim" class="scrim">
+  <div class="modal">
+    <div class="mhead">
+      <div class="mkicker" id="m-kicker">—</div>
+      <h3 id="m-title">—</h3>
+      <button class="close" id="m-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="mbody">
+      <p class="prompt" id="m-prompt">—</p>
+      <div class="given" id="m-given"><span class="glbl">Given / Data</span><span id="m-given-text"></span></div>
+
+      <div class="field">
+        <label for="m-answer">Your working &amp; answer</label>
+        <textarea id="m-answer" placeholder="Work the problem here…"></textarea>
+      </div>
+
+      <div class="grade">
+        <div class="field">
+          <label>Outcome</label>
+          <div class="seg" id="seg-correct">
+            <button type="button" data-v="true">Correct</button>
+            <button type="button" data-v="false">Wrong</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Rating (confidence / quality)</label>
+          <div class="seg" id="seg-rating">
+            <button type="button" data-v="1">1</button>
+            <button type="button" data-v="2">2</button>
+            <button type="button" data-v="3">3</button>
+            <button type="button" data-v="4">4</button>
+            <button type="button" data-v="5">5</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="smallnums">
+        <div class="field">
+          <label for="m-score">Score</label>
+          <input id="m-score" type="number" step="0.5" min="0" placeholder="—" />
+        </div>
+        <div class="field">
+          <label for="m-max">Max score</label>
+          <input id="m-max" type="number" step="0.5" min="0" placeholder="1" />
+        </div>
+        <div class="field">
+          <label for="m-time">Time (sec)</label>
+          <input id="m-time" type="number" step="1" min="0" placeholder="auto" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="m-notes">Notes (optional — what went wrong / why)</label>
+        <textarea id="m-notes" style="min-height:70px" placeholder="Optional feedback…"></textarea>
+      </div>
+
+      <div class="mfoot">
+        <span class="timer" id="m-timer">00:00</span>
+        <span id="m-status" class="timer"></span>
+        <button class="btn" id="m-record">Record attempt</button>
+      </div>
+
+      <div class="history">
+        <h4>History for this problem</h4>
+        <div id="m-history"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---- Supabase client (shared session: default auth, default storage key) ----
+  const SUPABASE_URL = "https://wylxvmkcrexwfpjpbhyy.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5bHh2bWtjcmV4d2ZwanBiaHl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg2MzkxMDYsImV4cCI6MjA4NDIxNTEwNn0.6Bxo42hx4jwlJGWnfjiTpiDUsYfc1QLTN3YtrU1efak";
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ---- DOM helpers ----
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const show = (el) => el.classList.remove("hide");
+  const hideEl = (el) => el.classList.add("hide");
+
+  // ---- App state ----
+  let TOPICS = [];      // [{id, branch_no, name, tagline, accent}]
+  let PROBLEMS = {};    // topic_id -> [problem,...]
+  let PROGRESS = {};    // topic_id -> progress row
+  let LATEST = {};      // problem_id -> latest attempt (for the row badge)
+  let current = null;   // open problem
+  let pick = { correct: null, rating: null };
+  let timer = { start: 0, h: null };
+
+  // =====================================================================
+  // AUTH
+  // =====================================================================
+  function renderGate() {
+    hideEl($("loading-view")); hideEl($("app-view")); show($("gate-view"));
+  }
+  $("send-link").addEventListener("click", async () => {
+    const email = $("email").value.trim();
+    const msg = $("gate-msg");
+    if (!email) { msg.className = "msg err"; msg.textContent = "Enter your email first."; return; }
+    msg.className = "msg"; msg.textContent = "Sending…";
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href.split("#")[0] }
+    });
+    if (error) { msg.className = "msg err"; msg.textContent = error.message; }
+    else { msg.className = "msg ok"; msg.textContent = "Check your inbox for the magic link."; }
+  });
+  $("email").addEventListener("keydown", (e) => { if (e.key === "Enter") $("send-link").click(); });
+  $("signout").addEventListener("click", async () => { await sb.auth.signOut(); });
+
+  // =====================================================================
+  // DATA LOADING
+  // =====================================================================
+  async function loadAll() {
+    const [topicsRes, problemsRes] = await Promise.all([
+      sb.from("written_test_topics").select("*").order("branch_no", { ascending: true }),
+      sb.from("written_test_problems").select("*").order("topic_id", { ascending: true }).order("number", { ascending: true })
+    ]);
+    if (topicsRes.error) throw topicsRes.error;
+    if (problemsRes.error) throw problemsRes.error;
+
+    TOPICS = topicsRes.data || [];
+    PROBLEMS = {};
+    (problemsRes.data || []).forEach((p) => { (PROBLEMS[p.topic_id] = PROBLEMS[p.topic_id] || []).push(p); });
+
+    await Promise.all([loadProgress(), loadLatest()]);
+    renderDash();
+    renderBranches();
+  }
+
+  async function loadProgress() {
+    const { data, error } = await sb.from("written_test_progress").select("*").order("branch_no", { ascending: true });
+    if (error) throw error;
+    PROGRESS = {};
+    (data || []).forEach((r) => { PROGRESS[r.topic_id] = r; });
+  }
+
+  // latest attempt per problem (owner-scoped by RLS) -> drives the per-problem badge
+  async function loadLatest() {
+    const { data, error } = await sb.from("written_test_attempts")
+      .select("problem_id, correct, attempted_at")
+      .order("attempted_at", { ascending: false });
+    if (error) throw error;
+    LATEST = {};
+    (data || []).forEach((a) => { if (!LATEST[a.problem_id]) LATEST[a.problem_id] = a; });
+  }
+
+  // =====================================================================
+  // RENDER
+  // =====================================================================
+  function renderSeal(session) {
+    let attempted = 0, correct = 0;
+    TOPICS.forEach((t) => { const p = PROGRESS[t.id]; if (p) { attempted += p.attempted || 0; correct += p.correct || 0; } });
+    $("seal-topics").textContent = TOPICS.length;
+    $("seal-attempted").textContent = attempted;
+    $("seal-correct").textContent = correct;
+    $("seal-who").textContent = (session && session.user && session.user.email) || "";
+  }
+
+  function renderDash() {
+    const dash = $("dash");
+    dash.innerHTML = TOPICS.map((t) => {
+      const p = PROGRESS[t.id] || { total_problems: (PROBLEMS[t.id] || []).length, attempted: 0, correct: 0, pct_correct: null, avg_rating: null };
+      const pct = p.pct_correct == null ? 0 : Number(p.pct_correct);
+      const pctTxt = p.pct_correct == null ? "—" : pct + "%";
+      const rate = p.avg_rating == null ? "—" : Number(p.avg_rating).toFixed(2);
+      return `<div class="stat" style="--accent:${esc(t.accent)}">
+        <p class="name">${esc(t.name)}</p>
+        <div class="nums">
+          <span><b>${p.attempted || 0}</b>/${p.total_problems || 0} done</span>
+          <span><b>${p.correct || 0}</b> correct</span>
+          <span>${pctTxt} pass</span>
+          <span>★ ${rate}</span>
+        </div>
+        <div class="bar"><span style="width:${pct}%"></span></div>
+      </div>`;
+    }).join("");
+  }
+
+  function badgeFor(problemId) {
+    const a = LATEST[problemId];
+    if (!a) return `<span class="pstate">untried</span>`;
+    if (a.correct === true) return `<span class="pstate pass">correct</span>`;
+    if (a.correct === false) return `<span class="pstate fail">wrong</span>`;
+    return `<span class="pstate">logged</span>`;
+  }
+
+  function renderBranches() {
+    const wrap = $("branches");
+    wrap.innerHTML = TOPICS.map((t) => {
+      const probs = PROBLEMS[t.id] || [];
+      const p = PROGRESS[t.id] || {};
+      const rows = probs.map((pr) => `
+        <div class="prow" data-pid="${esc(pr.id)}">
+          <span class="pnum">№ ${pr.number}</span>
+          <span class="ptitle">${esc(pr.subtitle)}<small>${esc(pr.prompt)}</small></span>
+          ${badgeFor(pr.id)}
+        </div>`).join("");
+      return `<div class="branch" data-tid="${esc(t.id)}">
+        <div class="head">
+          <div class="plate" style="--accent:${esc(t.accent)}">${t.branch_no}</div>
+          <div class="info"><h3>${esc(t.name)}</h3><p>${esc(t.tagline)}</p></div>
+          <div class="tally">${p.attempted || 0}/${p.total_problems || probs.length} done<span class="arr">&rsaquo;</span></div>
+        </div>
+        <div class="plist">${rows}</div>
+      </div>`;
+    }).join("");
+
+    wrap.querySelectorAll(".branch .head").forEach((h) => {
+      h.addEventListener("click", () => h.parentElement.classList.toggle("open"));
+    });
+    wrap.querySelectorAll(".prow").forEach((row) => {
+      row.addEventListener("click", () => openProblem(row.getAttribute("data-pid")));
+    });
+  }
+
+  // =====================================================================
+  // PROBLEM MODAL
+  // =====================================================================
+  function findProblem(pid) {
+    for (const tid in PROBLEMS) { const hit = PROBLEMS[tid].find((p) => p.id === pid); if (hit) return hit; }
+    return null;
+  }
+
+  function setSeg(container, value) {
+    container.querySelectorAll("button").forEach((b) => {
+      const on = b.getAttribute("data-v") === String(value);
+      b.classList.toggle("on", on);
+      if (container.id === "seg-correct") b.classList.toggle(b.getAttribute("data-v") === "true" ? "pass" : "fail", on);
+      if (container.id === "seg-rating") b.classList.toggle("rate", on);
+    });
+  }
+
+  async function openProblem(pid) {
+    const pr = findProblem(pid);
+    if (!pr) return;
+    current = pr;
+    pick = { correct: null, rating: null };
+
+    const topic = TOPICS.find((t) => t.id === pr.topic_id);
+    $("m-kicker").textContent = (topic ? topic.name : pr.topic_id) + " · № " + pr.number;
+    $("m-title").textContent = pr.subtitle;
+    $("m-prompt").textContent = pr.prompt;
+    $("m-given-text").textContent = pr.given_data || "—";
+    $("m-given").style.display = pr.given_data ? "block" : "none";
+
+    $("m-answer").value = ""; $("m-notes").value = "";
+    $("m-score").value = ""; $("m-max").value = ""; $("m-time").value = "";
+    $("m-status").textContent = "";
+    setSeg($("seg-correct"), null); setSeg($("seg-rating"), null);
+    $("m-record").disabled = false;
+
+    show($("scrim")); $("scrim").classList.add("show");
+    startTimer();
+    loadHistory(pid);
+  }
+
+  function closeProblem() {
+    $("scrim").classList.remove("show");
+    stopTimer();
+    current = null;
+  }
+  $("m-close").addEventListener("click", closeProblem);
+  $("scrim").addEventListener("click", (e) => { if (e.target === $("scrim")) closeProblem(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("scrim").classList.contains("show")) closeProblem(); });
+
+  $("seg-correct").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    pick.correct = b.getAttribute("data-v") === "true"; setSeg($("seg-correct"), pick.correct);
+  });
+  $("seg-rating").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    pick.rating = Number(b.getAttribute("data-v")); setSeg($("seg-rating"), pick.rating);
+  });
+
+  // ---- timer ----
+  function startTimer() {
+    timer.start = Date.now();
+    $("m-timer").textContent = "00:00";
+    stopTimer();
+    timer.h = setInterval(() => {
+      const s = Math.floor((Date.now() - timer.start) / 1000);
+      $("m-timer").textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    }, 1000);
+  }
+  function stopTimer() { if (timer.h) { clearInterval(timer.h); timer.h = null; } }
+  function elapsedSeconds() { return Math.max(0, Math.round((Date.now() - timer.start) / 1000)); }
+
+  // ---- history ----
+  async function loadHistory(pid) {
+    const box = $("m-history");
+    box.innerHTML = `<div class="hempty">Loading…</div>`;
+    const { data, error } = await sb.from("written_test_attempts")
+      .select("attempted_at, correct, rating, score, max_score, notes")
+      .eq("problem_id", pid)
+      .order("attempted_at", { ascending: false });
+    if (error) { box.innerHTML = `<div class="hempty">Couldn't load history: ${esc(error.message)}</div>`; return; }
+    if (!data || !data.length) { box.innerHTML = `<div class="hempty">No attempts recorded yet.</div>`; return; }
+    box.innerHTML = data.map((a) => {
+      const d = new Date(a.attempted_at);
+      const date = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+      const mark = a.correct === true ? `<span class="hbadge pass">PASS</span>`
+                 : a.correct === false ? `<span class="hbadge fail">FAIL</span>` : `<span class="hbadge">—</span>`;
+      const rate = a.rating ? "★".repeat(a.rating) : "";
+      const score = (a.score != null) ? ` · ${a.score}/${a.max_score != null ? a.max_score : 1}` : "";
+      return `<div class="hrow">
+        <span class="hdate">${esc(date)}</span>
+        <span>${mark} ${esc(rate)}${esc(score)}</span>
+        <span class="hnote">${esc(a.notes || "")}</span>
+      </div>`;
+    }).join("");
+  }
+
+  // ---- record attempt (INSERT — no user_id; auth.uid() auto-stamps) ----
+  $("m-record").addEventListener("click", async () => {
+    if (!current) return;
+    const status = $("m-status");
+
+    const row = { problem_id: current.id, topic_id: current.topic_id, graded_by: "self" };
+    if (pick.correct !== null) row.correct = pick.correct;
+    if (pick.rating !== null) row.rating = pick.rating;
+
+    const scoreV = $("m-score").value.trim();
+    const maxV = $("m-max").value.trim();
+    if (scoreV !== "") row.score = Number(scoreV);
+    if (maxV !== "") row.max_score = Number(maxV);
+
+    const timeV = $("m-time").value.trim();
+    row.time_taken_seconds = timeV !== "" ? Number(timeV) : elapsedSeconds();
+
+    // Working/answer + notes both fold into the notes column.
+    const answer = $("m-answer").value.trim();
+    const notes = $("m-notes").value.trim();
+    const combined = [answer && ("Working:\n" + answer), notes && ("Notes:\n" + notes)].filter(Boolean).join("\n\n");
+    if (combined) row.notes = combined;
+
+    $("m-record").disabled = true;
+    status.className = "timer"; status.textContent = "Saving…";
+
+    const { error } = await sb.from("written_test_attempts").insert(row);
+    if (error) {
+      status.style.color = "var(--bad)"; status.textContent = "Error: " + error.message;
+      $("m-record").disabled = false;
+      return;
+    }
+    status.style.color = "var(--good)"; status.textContent = "Recorded ✓";
+
+    // refresh dashboards + badges + this problem's history
+    await Promise.all([loadProgress(), loadLatest()]);
+    renderDash(); renderBranches();
+    const { data: sess } = await sb.auth.getSession();
+    renderSeal(sess.session);
+    loadHistory(current.id);
+    setTimeout(() => { $("m-record").disabled = false; }, 400);
+  });
+
+  // =====================================================================
+  // BOOT
+  // =====================================================================
+  async function boot(session) {
+    if (!session) { renderGate(); return; }
+    hideEl($("gate-view")); show($("loading-view")); hideEl($("app-view"));
+    try {
+      await loadAll();
+      renderSeal(session);
+      hideEl($("loading-view")); show($("app-view"));
+    } catch (e) {
+      $("loading-view").textContent = "Couldn't load: " + (e.message || e);
+    }
+  }
+
+  // React to session changes (covers magic-link return + sign-in/out)
+  let booted = false;
+  sb.auth.onAuthStateChange((_event, session) => {
+    if (session && !booted) { booted = true; boot(session); }
+    else if (!session) { booted = false; renderGate(); }
+  });
+
+  // Initial check
+  sb.auth.getSession().then(({ data }) => {
+    if (data.session) { if (!booted) { booted = true; boot(data.session); } }
+    else { renderGate(); }
+  });
+})();
+</script>
+</body>
+</html>
