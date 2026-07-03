@@ -12,8 +12,7 @@
   var IC = {
     chev: '<svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     star: '<svg viewBox="0 0 24 24"><path d="M12 2.6l2.85 5.9 6.5.8-4.8 4.5 1.25 6.4L12 17.7 6.2 20.6l1.25-6.4L2.65 9.3l6.5-.8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>',
-    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>',
-    cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>'
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>'
   };
 
   /* ---------------- helpers ---------------- */
@@ -163,7 +162,7 @@
   function normSubs(arr) {
     return (Array.isArray(arr) ? arr : []).map(function (s) {
       if (!s) return null;
-      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "" };
+      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del };
     }).filter(Boolean);
   }
   function mergeSubs(a, b) {
@@ -172,13 +171,13 @@
       var ex = by[s.id];
       if (!ex) { by[s.id] = s; order.push(s.id); return; }
       if ((s.u || 0) > (ex.u || 0)) by[s.id] = s;
-      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when };
+      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del };
     }
     normSubs(a).forEach(take); normSubs(b).forEach(take);
     return order.map(function (id) { return by[id]; });
   }
   function visibleSubs(arr) { return normSubs(arr).filter(function (s) { return !s.del; }); }
-  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0, s.when || ""]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
+  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
   function subsDiffer(a, b) { return subsKey(a) !== subsKey(b); }
 
   /* ---------------- targets (The Five) ---------------- */
@@ -263,65 +262,6 @@
     $("fiveCount").textContent = targetOrder.length + "/" + MAX_TARGETS;
   }
 
-  /* ---- scheduled tasks: date (+ optional time) on Special subtasks ---- */
-  var WF_DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  var WF_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  function fmtTime(t) { var h = parseInt(t.slice(0, 2), 10), m = t.slice(3, 5), ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return h + ":" + m + " " + ap; }
-  function whenInfo(w) {
-    var ds = w.slice(0, 10), tm = w.length > 10 ? w.slice(11, 16) : "";
-    var d = new Date(ds + "T00:00:00"), now = new Date();
-    if (isNaN(d)) return null;
-    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    var diff = Math.round((d - today) / 86400000);
-    var lbl = diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : diff === -1 ? "Yesterday"
-      : (diff > 1 && diff < 7) ? WF_DOW[d.getDay()] : WF_MON[d.getMonth()] + " " + d.getDate();
-    var time = tm ? fmtTime(tm) : "";
-    return {
-      diff: diff, day: d.getDate(), dow: WF_DOW[d.getDay()], time: time,
-      label: lbl + (time ? " \u00b7 " + time : ""),
-      rel: diff === 0 ? "today" : diff === 1 ? "tomorrow" : diff < 0 ? (-diff) + "d overdue" : "in " + diff + " days",
-      cls: diff < 0 ? " over" : diff === 0 ? " today" : "",
-      full: WF_DOW[d.getDay()] + ", " + WF_MON[d.getMonth()] + " " + d.getDate() + (time ? " at " + time : "")
-    };
-  }
-  function whenChipHtml(x) {
-    if (!x.when) return '<button class="sub-when add" data-act="whenedit" title="Add a date">' + IC.cal + '</button>';
-    var w = whenInfo(x.when);
-    if (!w) return '<button class="sub-when add" data-act="whenedit" title="Add a date">' + IC.cal + '</button>';
-    return '<button class="sub-when' + (x.done ? " done" : w.cls) + '" data-act="whenedit" title="' + esc(w.full) + ' \u2014 click to change">' + esc(w.label) + '</button>';
-  }
-  /* click-to-edit a task's date: swap the chip for date + time inputs */
-  function startWhenEdit(btn, key) {
-    var li = btn.closest("[data-sid]"); if (!li) return;
-    var sid = li.getAttribute("data-sid"), cur = "";
-    normSubs(subs(key)).forEach(function (x) { if (x.id === sid) cur = x.when || ""; });
-    var wrap = document.createElement("span"); wrap.className = "when-edit";
-    var dv = cur.slice(0, 10), tv = cur.length > 10 ? cur.slice(11, 16) : "";
-    wrap.innerHTML = '<input type="date" class="we-d" value="' + esc(dv) + '"><input type="time" class="we-t" value="' + esc(tv) + '">' +
-      '<button class="we-ok" title="Save">\u2713</button>' +
-      (cur ? '<button class="we-x" title="Remove date">\u00d7</button>' : '');
-    btn.replaceWith(wrap);
-    var settled = false;
-    function commit(val) {
-      if (settled) return; settled = true;
-      if (val !== null && val !== cur) {
-        patch(key, { subtasks: normSubs(subs(key)).map(function (x) { return x.id === sid ? Object.assign({}, x, { when: val, u: Date.now() }) : x; }) });
-      }
-      renderCols();
-    }
-    wrap.querySelector(".we-ok").onclick = function () {
-      var d = wrap.querySelector(".we-d").value, t = wrap.querySelector(".we-t").value;
-      commit(d ? d + (t ? "T" + t : "") : "");
-    };
-    var wx = wrap.querySelector(".we-x");
-    if (wx) wx.onclick = function () { commit(""); };
-    wrap.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter") { ev.preventDefault(); wrap.querySelector(".we-ok").click(); }
-      else if (ev.key === "Escape") { ev.preventDefault(); commit(null); }
-    });
-    wrap.querySelector(".we-d").focus();
-  }
-
   /* ---- Special: life-admin errands, always visible, never in the columns ---- */
   function isSpecialItem(it) { return !!it && (it.group || "").trim().toLowerCase() === "special"; }
   function renderCols() { renderColumn("app"); renderColumn("study"); renderSpecial(); }
@@ -340,7 +280,6 @@
     var sec = $("specialSec"), host = $("specialHost"); if (!sec || !host) return;
     var items = specialSorted();
     sec.style.display = (items.length || document.body.classList.contains("special-mode")) ? "" : "none";
-    renderAgenda(items);
     host.innerHTML = "";
     var totDone = 0, tot = 0;
     items.forEach(function (it) {
@@ -354,7 +293,6 @@
       var rows = sv.map(function (x) {
         return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
           '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' +
-          whenChipHtml(x) +
           '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button></li>';
       }).join("");
       card.innerHTML =
@@ -371,29 +309,6 @@
       host.appendChild(card);
     });
     var cnt = $("specialCount"); if (cnt) cnt.textContent = tot ? totDone + "/" + tot : "";
-  }
-
-  /* ---- Coming up: every dated, unfinished Special task, soonest first ---- */
-  function renderAgenda(items) {
-    var ag = $("spAgenda"); if (!ag) return;
-    var rows = [];
-    items.forEach(function (it) {
-      visibleSubs(subs(it.id)).forEach(function (x) {
-        if (x.when && !x.done && whenInfo(x.when)) rows.push({ key: it.id, card: it.name, hue: hueFor(it.name), sub: x });
-      });
-    });
-    rows.sort(function (a, b) { return a.sub.when < b.sub.when ? -1 : a.sub.when > b.sub.when ? 1 : 0; });
-    ag.style.display = rows.length ? "" : "none";
-    ag.innerHTML = rows.map(function (r) {
-      var w = whenInfo(r.sub.when);
-      return '<div class="ag-item' + w.cls + '" data-key="' + esc(r.key) + '" data-sid="' + esc(r.sub.id) + '" style="--sp-h:' + r.hue + '">' +
-        '<span class="ag-cal"><i>' + w.dow + '</i><b>' + w.day + '</b></span>' +
-        '<div class="ag-txt"><span class="ag-name">' + esc(r.sub.t || "task") + '</span>' +
-        '<span class="ag-src">' + esc(r.card) + (w.time ? ' \u00b7 ' + w.time : '') + '</span></div>' +
-        '<span class="ag-chip">' + esc(w.rel) + '</span>' +
-        '<button class="sub-check" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
-        '</div>';
-    }).join("");
   }
 
   /* ---- a column (apps or study) ---- */
@@ -489,7 +404,6 @@
       var t = x.t || "";
       return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
         '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' +
-        (isSpecialItem(it) ? whenChipHtml(x) : '') +
         '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button></li>';
     }).join("");
     var priCtl = '<div class="pri-row"><span class="pri-lbl">Priority</span>' +
@@ -626,7 +540,6 @@
       patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderCols(); renderPulse(); renderFive(); return;
     }
     if (a === "subedit-start") { startSubEdit(act, key); return; }
-    if (a === "whenedit") { startWhenEdit(act, key); return; }
     if (a === "subadd") { addSub(act, key); return; }
   });
 

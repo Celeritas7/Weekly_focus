@@ -617,8 +617,7 @@ button { font-family: inherit; }
   @page { size: letter; margin: 0.5in; }
   html, body { background: #fff; }
   .topbar, .toolset, .backlog, .star, .tgl, .caret-btn, .tdrop, .sub-add, .sub-del,
-  .modal-bg, .toast, .pchip, .five, .pri-row, .cloud-pill, .add-row, .manage-row,
-  .sub-when.add, .when-edit, .ag-item .sub-check { display: none !important; }
+  .modal-bg, .toast, .pchip, .five, .pri-row, .cloud-pill, .add-row, .manage-row { display: none !important; }
 
   .app { max-width: none; padding: 0; }
 
@@ -722,78 +721,5 @@ body.special-mode .special { margin-top: 26px; }
 /* collapsible Special section */
 .sp-hide-btn { margin-left: 2px; transform: rotate(180deg); }
 .special.collapsed .sp-hide-btn { transform: rotate(0deg); }
-.special.collapsed .sp-grid, .special.collapsed .add-row, .special.collapsed .sp-agenda { display: none !important; }
+.special.collapsed .sp-grid, .special.collapsed .add-row { display: none; }
 .special.collapsed .sec-head { margin-bottom: 0; }
-
-
-/* ============================================================
-   SCHEDULED — dated Special tasks (appointments, events)
-   ============================================================ */
-
-/* per-task date chip */
-.sub-when {
-  flex: 0 0 auto; font-family: inherit; font-size: 10.5px; font-weight: 700; white-space: nowrap;
-  color: var(--mid); background: var(--card-2); border: 1px solid var(--hair);
-  border-radius: 20px; padding: 2px 8px; cursor: pointer; line-height: 1.4;
-}
-.sub-when:hover { border-color: var(--brand-line); color: var(--brand); }
-.sub-when.today { color: var(--brand); background: var(--brand-soft); border-color: var(--brand-line); }
-.sub-when.over { color: var(--pri-h); background: oklch(0.97 0.02 27); border-color: oklch(0.88 0.06 27); }
-.sub-when.done { opacity: .5; }
-.sub-when.add {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 20px; padding: 0; opacity: 0; color: var(--faint); background: none; border-color: transparent;
-}
-.sub-when.add svg { width: 13px; height: 13px; }
-.subs li:hover .sub-when.add { opacity: .75; }
-.sub-when.add:hover { opacity: 1; color: var(--brand); border-color: var(--brand-line); background: var(--brand-soft); }
-@media (hover: none) { .sub-when.add { opacity: .5; } }
-
-/* inline date editor */
-.when-edit { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; }
-.when-edit input {
-  font-family: inherit; font-size: 11px; color: var(--ink);
-  border: 1px solid var(--brand-line); border-radius: 6px; background: #fff; padding: 2px 4px;
-}
-.when-edit input:focus { outline: none; border-color: var(--brand); }
-.we-ok, .we-x {
-  border: 1px solid var(--hair); background: var(--card-2); color: var(--mid);
-  border-radius: 6px; font-size: 12px; line-height: 1; padding: 3px 7px; cursor: pointer;
-}
-.we-ok:hover { color: var(--on); border-color: var(--on); }
-.we-x:hover { color: var(--pri-h); border-color: var(--pri-h); }
-
-/* Coming up — agenda strip of dated tasks, soonest first */
-.sp-agenda { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 14px; }
-.ag-item {
-  display: flex; align-items: center; gap: 11px;
-  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-md);
-  box-shadow: var(--shadow-card); padding: 8px 12px 8px 8px;
-  border-left: 3px solid oklch(0.62 0.13 var(--sp-h, 300));
-}
-.ag-cal {
-  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  width: 41px; height: 43px; border-radius: 9px; line-height: 1;
-  background: var(--card-2); border: 1px solid var(--hair);
-}
-.ag-cal i { font-style: normal; font-size: 8.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
-.ag-cal b { font-size: 17px; font-weight: 800; color: var(--ink); margin-top: 2px; }
-.ag-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ag-name { font-size: 13px; font-weight: 700; color: var(--ink); }
-.ag-src { font-size: 10.5px; font-weight: 600; color: var(--faint); }
-.ag-chip {
-  flex: 0 0 auto; margin-left: 4px; font-size: 10px; font-weight: 800; white-space: nowrap;
-  color: var(--mid); background: var(--card-2); border-radius: 20px; padding: 2px 8px;
-}
-.ag-item .sub-check { margin-right: 2px; }
-/* today — brand highlight */
-.ag-item.today { border-color: var(--brand-line); }
-.ag-item.today .ag-cal { background: var(--brand); border-color: var(--brand); }
-.ag-item.today .ag-cal i, .ag-item.today .ag-cal b { color: #fff; }
-.ag-item.today .ag-chip { color: var(--brand); background: var(--brand-soft); }
-/* overdue — red until checked off */
-.ag-item.over { border-color: oklch(0.88 0.06 27); }
-.ag-item.over .ag-cal { background: oklch(0.97 0.02 27); border-color: oklch(0.88 0.06 27); }
-.ag-item.over .ag-cal i, .ag-item.over .ag-cal b { color: var(--pri-h); }
-.ag-item.over .ag-chip { color: #fff; background: var(--pri-h); }
-@media (max-width: 640px) { .ag-item { flex: 1 1 100%; } }
