@@ -13,7 +13,9 @@
     chev: '<svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     star: '<svg viewBox="0 0 24 24"><path d="M12 2.6l2.85 5.9 6.5.8-4.8 4.5 1.25 6.4L12 17.7 6.2 20.6l1.25-6.4L2.65 9.3l6.5-.8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>',
     trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>',
-    cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>'
+    cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+    flag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4.5"/><path d="M5 4.5c4.2-2 6.3 2 10.5 0V13c-4.2 2-6.3-2-10.5 0z"/></svg>',
+    timer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 10v3.5l2.5 1.5M9.5 2.5h5"/></svg>'
   };
 
   /* ---------------- helpers ---------------- */
@@ -163,7 +165,7 @@
   function normSubs(arr) {
     return (Array.isArray(arr) ? arr : []).map(function (s) {
       if (!s) return null;
-      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "" };
+      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl };
     }).filter(Boolean);
   }
   function mergeSubs(a, b) {
@@ -172,13 +174,13 @@
       var ex = by[s.id];
       if (!ex) { by[s.id] = s; order.push(s.id); return; }
       if ((s.u || 0) > (ex.u || 0)) by[s.id] = s;
-      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when };
+      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when, md: ex.md !== "b" ? ex.md : s.md, urg: ex.urg || s.urg, dl: ex.dl || s.dl };
     }
     normSubs(a).forEach(take); normSubs(b).forEach(take);
     return order.map(function (id) { return by[id]; });
   }
   function visibleSubs(arr) { return normSubs(arr).filter(function (s) { return !s.del; }); }
-  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0, s.when || ""]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
+  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0, s.when || "", s.md || "b", s.urg ? 1 : 0, s.dl ? 1 : 0]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
   function subsDiffer(a, b) { return subsKey(a) !== subsKey(b); }
 
   /* ---------------- targets (The Five) ---------------- */
@@ -276,50 +278,162 @@
     var lbl = diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : diff === -1 ? "Yesterday"
       : (diff > 1 && diff < 7) ? WF_DOW[d.getDay()] : WF_MON[d.getMonth()] + " " + d.getDate();
     var time = tm ? fmtTime(tm) : "";
+    /* deadline zone (build 17): overdue, past its time today, or inside the
+       final 3 hours before a timed deadline \u2192 the task turns ASAP-red. */
+    var minsLeft = null, pastDue = diff < 0;
+    if (diff === 0 && tm) {
+      minsLeft = (parseInt(tm.slice(0, 2), 10) * 60 + parseInt(tm.slice(3, 5), 10)) - (now.getHours() * 60 + now.getMinutes());
+      if (minsLeft < 0) pastDue = true;
+    }
+    var asap = pastDue || (diff === 0 && (!tm || minsLeft <= 180));
     return {
       diff: diff, day: d.getDate(), dow: WF_DOW[d.getDay()], time: time,
+      hasTime: !!tm, minsLeft: minsLeft, pastDue: pastDue, asap: asap,
       label: lbl + (time ? " \u00b7 " + time : ""),
-      rel: diff === 0 ? "today" : diff === 1 ? "tomorrow" : diff < 0 ? (-diff) + "d overdue" : "in " + diff + " days",
-      cls: diff < 0 ? " over" : diff === 0 ? " today" : "",
+      rel: diff < 0 ? (-diff) + "d overdue" : pastDue ? "past due" : diff === 0 ? "today" : diff === 1 ? "tomorrow" : "in " + diff + " days",
+      cls: pastDue ? " over" : diff === 0 ? " today" : "",
       full: WF_DOW[d.getDay()] + ", " + WF_MON[d.getMonth()] + " " + d.getDate() + (time ? " at " + time : "")
     };
   }
   function whenChipHtml(x) {
     if (!x.when) return '<button class="sub-when add" data-act="whenedit" title="Add a date">' + IC.cal + '</button>';
-    var w = whenInfo(x.when);
-    if (!w) return '<button class="sub-when add" data-act="whenedit" title="Add a date">' + IC.cal + '</button>';
-    return '<button class="sub-when' + (x.done ? " done" : w.cls) + '" data-act="whenedit" title="' + esc(w.full) + ' \u2014 click to change">' + esc(w.label) + '</button>';
+    var v = whenView(x);
+    if (!v) return '<button class="sub-when add" data-act="whenedit" title="Add a date">' + IC.cal + '</button>';
+    return '<button class="sub-when' + (x.done ? " done" : v.cls) + '" data-act="whenedit" title="' + esc(v.w.full) + ' \u2014 click to change">' + esc(v.label) + '</button>';
   }
-  /* click-to-edit a task's date: swap the chip for date + time inputs */
-  function startWhenEdit(btn, key) {
-    var li = btn.closest("[data-sid]"); if (!li) return;
-    var sid = li.getAttribute("data-sid"), cur = "";
-    normSubs(subs(key)).forEach(function (x) { if (x.id === sid) cur = x.when || ""; });
-    var wrap = document.createElement("span"); wrap.className = "when-edit";
-    var dv = cur.slice(0, 10), tv = cur.length > 10 ? cur.slice(11, 16) : "";
-    wrap.innerHTML = '<input type="date" class="we-d" value="' + esc(dv) + '"><input type="time" class="we-t" value="' + esc(tv) + '">' +
-      '<button class="we-ok" title="Save">\u2713</button>' +
-      (cur ? '<button class="we-x" title="Remove date">\u00d7</button>' : '');
-    btn.replaceWith(wrap);
-    var settled = false;
-    function commit(val) {
-      if (settled) return; settled = true;
-      if (val !== null && val !== cur) {
-        patch(key, { subtasks: normSubs(subs(key)).map(function (x) { return x.id === sid ? Object.assign({}, x, { when: val, u: Date.now() }) : x; }) });
-      }
-      renderCols();
+  /* ---- task metadata (build 17): mode tag + urgent flag ---- */
+  var spReveal = {};   // per-card: temporarily reveal tasks hidden by the mode filter
+  function subModeOk(md, mode) { md = md || "b"; return md === "b" || md === (mode === "office" ? "o" : "p"); }
+  function subRank(x) {
+    if (x.done) return 6;
+    var v = whenView(x);
+    if (v && v.w.pastDue) return 0;   // overdue outranks everything \u2014 even urgent
+    if (x.urg) return 1;
+    if (!v) return 5;
+    return v.asap ? 2 : v.soon ? 3 : 4;
+  }
+  function subModeTag(x) {
+    var md = x.md || "b";
+    if (md === "b") return "";
+    return '<span class="sub-mode ' + md + '">' + (md === "o" ? "Office" : "Personal") + "</span>";
+  }
+  function subFlagBtn(x) {
+    return '<button class="sub-flag' + (x.urg ? " on" : "") + '" data-act="urgtoggle" title="' + (x.urg ? "Urgent \u2014 tap to clear" : "Mark urgent \u2014 pins it on top in red") + '">' + IC.flag + "</button>";
+  }
+
+  /* ---- dated view of a task. Countdown-deadline (dl) tasks escalate:
+     "N days left" \u2014 amber inside 7 days, red/ASAP inside 2. ---- */
+  function whenView(x) {
+    if (!x.when) return null;
+    var w = whenInfo(x.when); if (!w) return null;
+    var v = { w: w, label: w.label, rel: w.rel, cls: w.cls, asap: w.asap, soon: false };
+    if (x.dl && w.diff > 0) {
+      v.label = w.diff + (w.diff === 1 ? " day left" : " days left");
+      v.rel = v.label;
+      if (w.diff <= 2) { v.asap = true; v.cls = " over"; }
+      else if (w.diff <= 7) { v.soon = true; v.cls = " soon"; }
+      else v.cls = "";
     }
-    wrap.querySelector(".we-ok").onclick = function () {
-      var d = wrap.querySelector(".we-d").value, t = wrap.querySelector(".we-t").value;
-      commit(d ? d + (t ? "T" + t : "") : "");
+    return v;
+  }
+
+  /* ---- mode hours: when single-mode tasks are live on the Today screen ---- */
+  function modeHours() {
+    var h = meta.hours || {};
+    return { p: Array.isArray(h.p) ? h.p : ["19:00", "22:00"], o: Array.isArray(h.o) ? h.o : ["09:00", "18:00"] };
+  }
+  function hhmmNow() { var n = new Date(); return String(n.getHours()).padStart(2, "0") + ":" + String(n.getMinutes()).padStart(2, "0"); }
+  function inWindow(md) {
+    if (!md || md === "b") return true;
+    var r = modeHours()[md], n = hhmmNow();
+    if (!r || !r[0] || !r[1]) return true;
+    return r[0] <= r[1] ? (n >= r[0] && n <= r[1]) : (n >= r[0] || n <= r[1]);
+  }
+  function fmtRange(r) { return fmtTime(r[0]) + "\u2013" + fmtTime(r[1]); }
+  function openHours() {
+    var h = modeHours();
+    $("hrOs").value = h.o[0]; $("hrOe").value = h.o[1];
+    $("hrPs").value = h.p[0]; $("hrPe").value = h.p[1];
+    $("hoursModal").classList.add("open");
+  }
+  function saveHours() {
+    meta.hours = {
+      o: [$("hrOs").value || "09:00", $("hrOe").value || "18:00"],
+      p: [$("hrPs").value || "19:00", $("hrPe").value || "22:00"]
     };
-    var wx = wrap.querySelector(".we-x");
-    if (wx) wx.onclick = function () { commit(""); };
-    wrap.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter") { ev.preventDefault(); wrap.querySelector(".we-ok").click(); }
-      else if (ev.key === "Escape") { ev.preventDefault(); commit(null); }
+    save(); cloudPushBoard();
+    $("hoursModal").classList.remove("open");
+    renderHome(); toast("Hours saved.");
+  }
+
+  /* ---- task sheet: date + time + mode + urgent in one tap-friendly editor ---- */
+  var TSK = { key: null, sid: null, date: "", time: "", md: "b", urg: false };
+  var TK_TIMES = ["", "09:00", "12:00", "15:00", "18:00", "21:00"];
+  function openTaskSheet(key, sid) {
+    var x = null; normSubs(subs(key)).forEach(function (s) { if (s.id === sid) x = s; });
+    if (!x) return;
+    TSK = { key: key, sid: sid, date: (x.when || "").slice(0, 10), time: (x.when || "").length > 10 ? x.when.slice(11, 16) : "", md: x.md || "b", urg: !!x.urg, dl: !!x.dl };
+    $("tkName").textContent = x.t || "task";
+    renderTaskSheet();
+    $("taskModal").classList.add("open");
+  }
+  function tkDateChips() {
+    var out = [{ v: "", l: "No date" }], d = new Date();
+    for (var i = 0; i < 7; i++) {
+      out.push({ v: hIso(d), l: i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" }) });
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }
+  function renderTaskSheet() {
+    var dc = tkDateChips();
+    var known = dc.some(function (c) { return c.v === TSK.date; });
+    $("tkDates").innerHTML = dc.map(function (c) {
+      return '<button type="button" class="chip' + (c.v === TSK.date ? " on" : "") + '" data-tkdate="' + c.v + '">' + c.l + "</button>";
+    }).join("") + '<label class="chip pickc' + (!known && TSK.date ? " on" : "") + '">' + (!known && TSK.date ? esc(hFmt(TSK.date)) : "Pick\u2026") + '<input type="date" id="tkDateInput" value="' + esc(TSK.date) + '"></label>';
+    var knownT = TK_TIMES.indexOf(TSK.time) >= 0;
+    var dis = TSK.date ? "" : " disabled";
+    $("tkTimes").innerHTML = TK_TIMES.map(function (t) {
+      return '<button type="button" class="chip' + (t === TSK.time ? " on" : "") + '" data-tktime="' + t + '"' + dis + ">" + (t ? fmtTime(t) : "No time") + "</button>";
+    }).join("") + '<label class="chip pickc' + (!knownT ? " on" : "") + '"' + dis + ">" + (!knownT && TSK.time ? fmtTime(TSK.time) : "Pick\u2026") + '<input type="time" id="tkTimeInput" value="' + esc(TSK.time) + '"' + dis + "></label>";
+    $("tkMode").innerHTML = [["p", "Personal"], ["o", "Office"], ["b", "Both"]].map(function (m) {
+      return '<button type="button" class="chip' + (TSK.md === m[0] ? " on" : "") + '" data-tkmd="' + m[0] + '">' + m[1] + "</button>";
+    }).join("");
+    var ub = $("tkUrg");
+    ub.classList.toggle("on", TSK.urg);
+    ub.innerHTML = IC.flag + "<span>" + (TSK.urg ? "Urgent \u2014 pinned on top in red" : "Mark as urgent") + "</span>";
+    var db = $("tkDl");
+    if (db) {
+      var dlOn = !!(TSK.dl && TSK.date);
+      db.classList.toggle("on", dlOn);
+      if (TSK.date) db.removeAttribute("disabled"); else db.setAttribute("disabled", "");
+      db.innerHTML = IC.timer + "<span>" + (dlOn ? "Countdown on \u2014 escalates as the date nears" : TSK.date ? "Add countdown \u2014 escalate as the date nears" : "Pick a date to add a countdown") + "</span>";
+    }
+    var di = $("tkDateInput"); if (di) di.onchange = function () { TSK.date = di.value; if (!TSK.date) TSK.time = ""; renderTaskSheet(); };
+    var ti = $("tkTimeInput"); if (ti) ti.onchange = function () { TSK.time = ti.value; renderTaskSheet(); };
+  }
+  function saveTaskSheet() {
+    var when = TSK.date ? TSK.date + (TSK.time ? "T" + TSK.time : "") : "";
+    patch(TSK.key, { subtasks: normSubs(subs(TSK.key)).map(function (x) { return x.id === TSK.sid ? Object.assign({}, x, { when: when, md: TSK.md, urg: TSK.urg, dl: !!(TSK.dl && TSK.date), u: Date.now() }) : x; }) });
+    $("taskModal").classList.remove("open");
+    renderCols(); renderHome();
+    toast("Task updated.");
+  }
+  function wireTaskSheet() {
+    var tm = $("taskModal"); if (!tm) return;
+    tm.addEventListener("click", function (e) {
+      if (e.target === tm) { tm.classList.remove("open"); return; }
+      var b = e.target.closest("[data-tkdate],[data-tktime],[data-tkmd]");
+      if (!b) return;
+      if (b.hasAttribute("data-tkdate")) { TSK.date = b.getAttribute("data-tkdate"); if (!TSK.date) TSK.time = ""; }
+      else if (b.hasAttribute("data-tktime")) TSK.time = b.getAttribute("data-tktime");
+      else TSK.md = b.getAttribute("data-tkmd");
+      renderTaskSheet();
     });
-    wrap.querySelector(".we-d").focus();
+    $("tkUrg").onclick = function () { TSK.urg = !TSK.urg; renderTaskSheet(); };
+    var dlb = $("tkDl"); if (dlb) dlb.onclick = function () { TSK.dl = !TSK.dl; renderTaskSheet(); };
+    $("tkSave").onclick = saveTaskSheet;
+    $("tkClose").onclick = function () { $("taskModal").classList.remove("open"); };
   }
 
   /* ---- Special: life-admin errands, always visible, never in the columns ---- */
@@ -351,12 +465,22 @@
       card.className = "sp-card" + (open ? " open" : "");
       card.setAttribute("data-key", id); card.setAttribute("data-kind", kindOf(id));
       card.style.setProperty("--sp-h", hueFor(it.name));
-      var rows = sv.map(function (x) {
-        return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
+      var mode = getMode();
+      var svMatch = sv.filter(function (x) { return subModeOk(x.md, mode); });
+      var hiddenN = sv.length - svMatch.length;
+      var svShown = (spReveal[id] ? sv : svMatch).slice().sort(function (a, b) { return subRank(a) - subRank(b); });
+      var rows = svShown.map(function (x) {
+        var v = !x.done ? whenView(x) : null;
+        var od = !!(v && v.w.pastDue);
+        var liCls = x.done ? "" : od ? " od" : x.urg ? " urg" : (v && v.asap ? " asap" : "");
+        var metaBits = subModeTag(x) + (x.when ? whenChipHtml(x) : "");
+        return '<li data-sid="' + esc(x.id) + '" class="spli' + liCls + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
           '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' +
-          whenChipHtml(x) +
-          '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button></li>';
+          (x.when ? "" : whenChipHtml(x)) + subFlagBtn(x) +
+          '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button>' +
+          (metaBits ? '<span class="sub-meta">' + metaBits + "</span>" : "") + "</li>";
       }).join("");
+      if (hiddenN > 0) rows += '<li class="sub-hidden-note"><button data-act="spreveal">' + (spReveal[id] ? "Hide" : "Show") + " " + hiddenN + " " + (mode === "office" ? "personal" : "office") + " task" + (hiddenN === 1 ? "" : "s") + "</button></li>";
       card.innerHTML =
         '<div class="sp-head">' +
           '<span class="sp-grip" title="Drag to reorder">\u22ee\u22ee</span>' +
@@ -373,24 +497,37 @@
     var cnt = $("specialCount"); if (cnt) cnt.textContent = tot ? totDone + "/" + tot : "";
   }
 
-  /* ---- Coming up: every dated, unfinished Special task, soonest first ---- */
+  /* ---- Coming up: urgent tasks first (ASAP), then dated tasks soonest first ---- */
   function renderAgenda(items) {
     var ag = $("spAgenda"); if (!ag) return;
-    var rows = [];
+    var mode = getMode(), rows = [];
     items.forEach(function (it) {
       visibleSubs(subs(it.id)).forEach(function (x) {
-        if (x.when && !x.done && whenInfo(x.when)) rows.push({ key: it.id, card: it.name, hue: hueFor(it.name), sub: x });
+        if (x.done || !subModeOk(x.md, mode)) return;
+        var v = whenView(x);
+        if (!v && !x.urg) return;
+        rows.push({ key: it.id, card: it.name, hue: hueFor(it.name), sub: x, v: v });
       });
     });
-    rows.sort(function (a, b) { return a.sub.when < b.sub.when ? -1 : a.sub.when > b.sub.when ? 1 : 0; });
+    rows.sort(function (a, b) {
+      function rk(r) { var od = r.v && r.v.w.pastDue ? 0 : r.sub.urg ? 1 : 2; return od; }
+      var ra = rk(a), rb = rk(b);
+      if (ra !== rb) return ra - rb;
+      var aw = a.sub.when || "9999", bw = b.sub.when || "9999";
+      return aw < bw ? -1 : aw > bw ? 1 : 0;
+    });
     ag.style.display = rows.length ? "" : "none";
     ag.innerHTML = rows.map(function (r) {
-      var w = whenInfo(r.sub.when);
-      return '<div class="ag-item' + w.cls + '" data-key="' + esc(r.key) + '" data-sid="' + esc(r.sub.id) + '" style="--sp-h:' + r.hue + '">' +
-        '<span class="ag-cal"><i>' + w.dow + '</i><b>' + w.day + '</b></span>' +
+      var v = r.v, w = v && v.w, urg = !!r.sub.urg;
+      var od = !!(w && w.pastDue);
+      var cls = od ? " odrow" : urg ? " urgrow" : v.cls;
+      var cal = w ? '<span class="ag-cal' + (urg && !od ? " flagged" : "") + '"><i>' + w.dow + '</i><b>' + w.day + '</b></span>'
+                  : '<span class="ag-cal flag">' + IC.flag + '</span>';
+      return '<div class="ag-item' + cls + '" data-key="' + esc(r.key) + '" data-sid="' + esc(r.sub.id) + '" style="--sp-h:' + r.hue + '">' +
+        cal +
         '<div class="ag-txt"><span class="ag-name">' + esc(r.sub.t || "task") + '</span>' +
-        '<span class="ag-src">' + esc(r.card) + (w.time ? ' \u00b7 ' + w.time : '') + '</span></div>' +
-        '<span class="ag-chip">' + esc(w.rel) + '</span>' +
+        '<span class="ag-src">' + esc(r.card) + (w && w.time ? ' \u00b7 ' + w.time : '') + '</span></div>' +
+        '<span class="ag-chip">' + esc(od ? v.rel.toUpperCase() : urg ? "ASAP" : v.rel) + '</span>' +
         '<button class="sub-check" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
         '</div>';
     }).join("");
@@ -633,7 +770,17 @@
       patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderCols(); renderPulse(); renderFive(); return;
     }
     if (a === "subedit-start") { startSubEdit(act, key); return; }
-    if (a === "whenedit") { startWhenEdit(act, key); return; }
+    if (a === "whenedit") { var wli = act.closest("[data-sid]"); if (wli) openTaskSheet(key, wli.getAttribute("data-sid")); return; }
+    if (a === "urgtoggle") {
+      var uli = act.closest("[data-sid]");
+      if (uli) {
+        var usid = uli.getAttribute("data-sid");
+        patch(key, { subtasks: normSubs(subs(key)).map(function (x) { return x.id === usid ? Object.assign({}, x, { urg: !x.urg, u: Date.now() }) : x; }) });
+        renderCols(); renderHome();
+      }
+      return;
+    }
+    if (a === "spreveal") { spReveal[key] = !spReveal[key]; renderCols(); return; }
     if (a === "subadd") { addSub(act, key); return; }
   });
 
@@ -1178,6 +1325,7 @@
   function modeOf(itemId) { return kindOf(itemId) === "office" ? "office" : "personal"; }
 
   var HIC = {
+    pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.5-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.5 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.3"/></svg>',
     check: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>',
     link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 10a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2"/></svg>',
     flame: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5.5-3 9a3 3 0 0 0 6 .2c1.2 1 2 2.5 2 4.3A5 5 0 0 1 7 16c0-5 5-7 5-14z"/></svg>',
@@ -1235,21 +1383,242 @@
       "</div>";
   }
 
+  /* ============================================================
+     PLACES (build 17) — condition-based lists (e.g. Shin-Ōkubo
+     shopping). A place = name + optional coords + checklist.
+     It surfaces on Today when: planned for today (tap a plan chip)
+     OR the device is detected within ~700 m of the spot.
+       place defs   meta.places = [{ id, name, lat, lng, items:[{id,t}] }]
+       place state  entries["place:<id>"] = { plan, done:{itemId:true} }
+     Geo: one position fix when the app opens / on the 📍 button —
+     no continuous tracking.
+     ============================================================ */
+  function placeList() { return Array.isArray(meta.places) ? meta.places : []; }
+  var nearIds = {};   // placeId -> distance (m), from the last geo fix
+  function havM(la1, lo1, la2, lo2) {
+    var R = 6371000, r = Math.PI / 180;
+    var a = Math.sin((la2 - la1) * r / 2), b = Math.sin((lo2 - lo1) * r / 2);
+    var h = a * a + Math.cos(la1 * r) * Math.cos(la2 * r) * b * b;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  var GEO_KEY = "wf2_geo";   // "1" once the user has opted in via the 📍 button
+  function geoCheck(manual) {
+    if (!navigator.geolocation) { if (manual) toast("No location support on this device."); return; }
+    if (!manual && localStorage.getItem(GEO_KEY) !== "1") return;
+    var withCoords = placeList().filter(function (p) { return p.lat != null && p.lng != null; });
+    if (!withCoords.length) { if (manual) toast("No place has a location yet — edit one and tap \u201cUse my location\u201d."); return; }
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      localStorage.setItem(GEO_KEY, "1");
+      var changed = false, near = {};
+      withCoords.forEach(function (p) {
+        var d = havM(pos.coords.latitude, pos.coords.longitude, p.lat, p.lng);
+        if (d <= (p.rad || 700)) near[p.id] = Math.round(d);
+      });
+      changed = JSON.stringify(near) !== JSON.stringify(nearIds);
+      nearIds = near;
+      if (manual) toast(Object.keys(near).length ? "You're near " + placeList().filter(function (p) { return near[p.id] != null; }).map(function (p) { return p.name; }).join(", ") + " — list is on Today." : "No saved place nearby.");
+      if (changed || manual) { renderTodayScreen(); renderPlaces(); }
+    }, function () { if (manual) toast("Couldn't get your location — check the browser's location permission."); }, { maximumAge: 120000, timeout: 8000, enableHighAccuracy: false });
+  }
+  /* ---- weekly check-in nudge: "Going to Shin-\u014ckubo?" ---- */
+  function placeNudges(t) {
+    var now = new Date(), out = [];
+    placeList().forEach(function (p) {
+      if (!p.ask || p.ask.d == null) return;
+      if (now.getDay() !== p.ask.d) return;
+      if (hhmmNow() < (p.ask.t || "18:00")) return;
+      var st = getEntry("place:" + p.id);
+      if (st.askedDate === t || st.plan === t) return;
+      out.push(p);
+    });
+    return out;
+  }
+  function nudgeCard(p) {
+    return '<div class="nudge">' + HIC.pin +
+      '<span class="nudge-q">Going to <b>' + esc(p.name) + "</b>?</span>" +
+      '<button class="chip on" data-hact="plyes" data-hkey="' + esc(p.id) + '">Yes, today</button>' +
+      '<button class="chip" data-hact="plno" data-hkey="' + esc(p.id) + '">Not this time</button></div>';
+  }
+
+  function placeActive(p, t) {
+    var st = getEntry("place:" + p.id);
+    return st.plan === t || nearIds[p.id] != null;
+  }
+  function placeCard(p, t, onToday) {
+    var st = getEntry("place:" + p.id), dn = st.done || {};
+    var items = Array.isArray(p.items) ? p.items : [];
+    var doneN = items.filter(function (i) { return dn[i.id]; }).length;
+    var near = nearIds[p.id] != null;
+    var planned = st.plan === t;
+    var why = near ? '<span class="hchip nearby">' + HIC.pin + "you're nearby" + "</span>" : planned ? '<span class="hchip planned">planned today</span>' : "";
+    var list = items.map(function (i) {
+      return '<label class="plitem' + (dn[i.id] ? " done" : "") + '"><button class="sub-check' + (dn[i.id] ? " on" : "") + '" data-hact="plitem" data-hkey="' + esc(p.id) + '" data-hsid="' + esc(i.id) + '" aria-label="done"></button><span>' + esc(i.t) + "</span></label>";
+    }).join("") || '<span class="pl-none">List is empty — edit the place to add items.</span>';
+    var plans = onToday ? "" :
+      '<div class="pl-plan">' +
+      '<button class="chip' + (planned ? " on" : "") + '" data-hact="plplan" data-hkey="' + esc(p.id) + '">' + (planned ? "Planned today \u2713" : "Going today") + "</button>" +
+      (doneN ? '<button class="chip" data-hact="plreset" data-hkey="' + esc(p.id) + '">Uncheck all</button>' : "") +
+      "</div>";
+    return '<div class="place-card' + ((near || planned) ? " live" : "") + '">' +
+      '<div class="pl-head"><span class="pl-name">' + HIC.pin + esc(p.name) + "</span>" + why +
+      '<span class="pl-count">' + doneN + "/" + items.length + "</span>" +
+      '<button class="redit" data-hact="pledit" data-hkey="' + esc(p.id) + '" title="Edit place">' + HIC.pen + "</button></div>" +
+      '<div class="pl-items">' + list + "</div>" + plans + "</div>";
+  }
+  function renderPlaces() {
+    var host = $("placeRows"); if (!host) return;
+    var t = hTodayIso();
+    host.innerHTML = placeList().map(function (p) { return placeCard(p, t, false); }).join("") ||
+      '<div class="hs-empty">No places yet — add Shin-Ōkubo and its shopping list below.</div>';
+  }
+
+  /* ---- place editor ---- */
+  var plEditing = null, plAskSel = null;
+  function openPlaceEd(id) {
+    plEditing = id || null;
+    var p = id ? placeList().find(function (x) { return x.id === id; }) : null;
+    $("plTitle").textContent = p ? "Edit place" : "Add place";
+    $("plName").value = p ? p.name : "";
+    $("plCoords").value = p && p.lat != null ? p.lat + ", " + p.lng : "";
+    $("plItems").value = p ? (p.items || []).map(function (i) { return i.t; }).join("\n") : "";
+    plAskSel = p && p.ask ? p.ask.d : null;
+    $("plAskT").value = p && p.ask && p.ask.t ? p.ask.t : "18:00";
+    Array.prototype.forEach.call($("plAskDays").children, function (b) { b.classList.toggle("on", plAskSel === +b.getAttribute("data-hday")); });
+    $("plDelete").style.display = p ? "" : "none";
+    $("placeModal").classList.add("open");
+    setTimeout(function () { $("plName").focus(); }, 30);
+  }
+  function savePlaceEd() {
+    var name = $("plName").value.trim(); if (!name) { $("plName").focus(); return; }
+    var old = plEditing ? placeList().find(function (x) { return x.id === plEditing; }) : null;
+    var oldItems = old ? (old.items || []) : [];
+    var m = $("plCoords").value.trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+    var items = $("plItems").value.split("\n").map(function (s) { return s.trim(); }).filter(Boolean).map(function (txt) {
+      var keep = oldItems.find(function (i) { return i.t === txt; });
+      return { id: keep ? keep.id : "pi" + Math.random().toString(36).slice(2, 8), t: txt };
+    });
+    var p = { id: plEditing || "pl" + Date.now().toString(36), name: name, items: items };
+    if (m) { p.lat = parseFloat(m[1]); p.lng = parseFloat(m[2]); }
+    if (plAskSel != null) p.ask = { d: plAskSel, t: $("plAskT").value || "18:00" };
+    if (!Array.isArray(meta.places)) meta.places = [];
+    var i = meta.places.findIndex(function (x) { return x.id === p.id; });
+    if (i >= 0) meta.places[i] = p; else meta.places.push(p);
+    save(); cloudPushBoard();
+    $("placeModal").classList.remove("open");
+    renderPlaces(); renderTodayScreen();
+    toast("Place saved.");
+  }
+  function deletePlaceEd() {
+    if (!plEditing) return;
+    if (!confirm("Delete this place and its list?")) return;
+    meta.places = placeList().filter(function (x) { return x.id !== plEditing; });
+    delete entries["place:" + plEditing]; save(); cloudDeleteEntry("place:" + plEditing); cloudPushBoard();
+    $("placeModal").classList.remove("open");
+    renderPlaces(); renderTodayScreen();
+    toast("Place deleted.");
+  }
+
   /* ---------------- SCREEN: TODAY ---------------- */
+  /* Routines scheduled today \u2014 commute-friendly: they ignore mode hours
+     and sit just below the priority tasks, above the weekly targets. */
+  function effStreak(r, st, t) {
+    return (st.doneDate === t || st.doneDate === prevScheduledIso(r, t)) ? (st.streak || 0) : 0;
+  }
+  function streakChip(n) {
+    return n > 0 ? '<span class="streak" title="Current streak">' + HIC.flame + n + " day" + (n === 1 ? "" : "s") + "</span>" : "";
+  }
+  function hRoutineRow(r, isDone, eff) {
+    return '<div class="trow rtn' + (isDone ? " done" : "") + '">' +
+      '<button class="hcheck' + (isDone ? " on" : "") + '" data-hact="rtoggle2" data-hkey="' + esc(r.id) + '" aria-label="Toggle done">' + HIC.check + "</button>" +
+      '<div class="tmain"><div class="hname">' + esc(r.name) + "</div>" +
+      '<div class="hsub"><span class="hchip rtn">' + esc((r.cat || "").trim() || "Routine") + "</span>" + streakChip(eff) + linkChips(r.links) + "</div></div></div>";
+  }
+  /* Special tasks that belong on today's plate: urgent (even undated),
+     due today, or overdue \u2014 filtered by the current mode. */
+  function todaySpecialRows(mode) {
+    var out = [];
+    activeItems("app").concat(activeItems("study")).filter(isSpecialItem).forEach(function (it) {
+      visibleSubs(subs(it.id)).forEach(function (x) {
+        if (!subModeOk(x.md, mode)) return;
+        var v = whenView(x), w = v && v.w;
+        var overdue = !!(w && w.pastDue && !x.done);
+        var isToday = !!(w && w.diff === 0);
+        var soon = !!(v && v.soon && !x.done);   // countdown deadline inside 7 days
+        if (!(x.urg || isToday || overdue || soon)) return;
+        out.push({ it: it, x: x, v: v, w: w, od: overdue, asap: !x.done && (x.urg || (v && v.asap)), soon: soon });
+      });
+    });
+    out.sort(function (a, b) {
+      function rk(o) { return o.x.done ? 6 : o.od ? 0 : o.x.urg ? 1 : o.asap ? 2 : o.soon ? 3 : 4; }
+      var ra = rk(a), rb = rk(b); if (ra !== rb) return ra - rb;
+      var aw = a.x.when || "9999", bw = b.x.when || "9999";
+      return aw < bw ? -1 : aw > bw ? 1 : 0;
+    });
+    return out;
+  }
+  var trayOpen = false;
+  function hSubRow(r, dim) {
+    var v = r.v;
+    var odDays = r.od ? Math.max(0, -(r.w.diff)) : 0;
+    var chip = r.od ? "" : v ? '<span class="hwhen' + (r.x.done ? "" : v.cls) + '">' + esc(v.label) + "</span>" : "";
+    return '<div class="trow' + (r.x.done ? " done" : "") + (r.od ? " od" : r.asap ? " asap" : "") + (r.soon ? " soon" : "") + (dim ? " dim" : "") + '">' +
+      '<button class="hcheck' + (r.x.done ? " on" : "") + '" data-hact="sub2" data-hkey="' + esc(r.it.id) + '" data-hsid="' + esc(r.x.id) + '" aria-label="Toggle done">' + HIC.check + "</button>" +
+      '<div class="tmain"><div class="hname">' + esc(r.x.t || "task") + "</div>" +
+      '<div class="hsub">' +
+      (r.od ? '<span class="hchip odflag">OVERDUE' + (odDays > 0 ? " \u00b7 " + odDays + (odDays === 1 ? " day" : " days") : " \u00b7 today") + "</span>" : r.asap ? '<span class="hchip asapflag">' + IC.flag + "ASAP</span>" : "") +
+      '<span class="hsrc">' + esc(r.it.name) + "</span>" + chip + subModeTag(r.x) + "</div></div></div>";
+  }
   function renderTodayScreen() {
     var host = $("todayRows"); if (!host) return;
     var mode = getMode(), t = hTodayIso();
     var rows = [], total = 0, done = 0;
+    /* 0 \u2014 weekly place check-ins (e.g. "Going to Shin-\u014ckubo?" on Friday evening) */
+    placeNudges(t).forEach(function (p) { rows.push(nudgeCard(p)); });
+    /* 1 \u2014 urgent / due / overdue Special tasks (window-suppressed unless ASAP) */
+    var live = [], tray = [];
+    todaySpecialRows(mode).forEach(function (r) { (!r.asap && !r.od && !inWindow(r.x.md) ? tray : live).push(r); });
+    /* overdue banner \u2014 the guilt trip is the point */
+    var odRows = live.filter(function (r) { return r.od; });
+    if (odRows.length) {
+      var maxD = Math.max.apply(null, odRows.map(function (r) { return Math.max(1, -(r.w.diff)); }));
+      rows.push('<div class="od-banner">' + IC.flag + "<b>" + odRows.length + " overdue</b><span>" +
+        (maxD >= 2 ? "oldest has waited " + maxD + " days \u2014 " : "") +
+        "one tap each and the slate is clean.</span></div>");
+    }
+    live.forEach(function (r) { total++; if (r.x.done) done++; rows.push(hSubRow(r)); });
+    /* 2 \u2014 place lists: planned for today, or you're near the spot */
+    placeList().forEach(function (p) { if (placeActive(p, t)) rows.push(placeCard(p, t, true)); });
+    /* 3 \u2014 routines scheduled today (tests etc. \u2014 doable on the commute, so no hour-tray) */
+    var dow = new Date().getDay();
+    var rlist = routineList().filter(function (r) { return (r.mode || "personal") === mode && (r.days || []).indexOf(dow) >= 0; });
+    rlist.sort(function (a, b) {
+      var ad = getEntry("routine:" + a.id).doneDate === t ? 1 : 0, bd = getEntry("routine:" + b.id).doneDate === t ? 1 : 0;
+      return ad - bd || String(a.cat || "").toLowerCase().localeCompare(String(b.cat || "").toLowerCase()) || String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase());
+    });
+    rlist.forEach(function (r) {
+      var st = getEntry("routine:" + r.id), isDone = st.doneDate === t;
+      total++; if (isDone) done++;
+      rows.push(hRoutineRow(r, isDone, effStreak(r, st, t)));
+    });
+    /* 4 \u2014 weekly targets */
     targetOrder.forEach(function (id) {
       if (modeOf(id) !== mode) return;
       total++; if (targetDone(id)) done++;
       rows.push(hTaskRow({ itemId: id, done: targetDone(id), star: true, act: "ttoggle" }));
     });
+    /* 5 \u2014 tasks scheduled onto today from the Calendar tab */
     schedList(t, mode).forEach(function (s) {
       if (targetOrder.indexOf(s.itemId) >= 0) return;
       total++; if (s.done) done++;
       rows.push(hTaskRow({ key: s.key, itemId: s.itemId, done: s.done, act: "stoggle" }));
     });
+    /* 6 \u2014 tray: single-mode tasks waiting for their hours */
+    if (tray.length) {
+      tray.forEach(function (r) { total++; if (r.x.done) done++; });
+      var hrs = modeHours()[mode === "office" ? "o" : "p"];
+      rows.push('<button class="htray" data-hact="tray">' + (trayOpen ? "Hide" : "Show") + " " + tray.length + " task" + (tray.length === 1 ? "" : "s") + " waiting for " + mode + " hours (" + fmtRange(hrs) + ")</button>");
+      if (trayOpen) tray.forEach(function (r) { rows.push(hSubRow(r, true)); });
+    }
     var cnt = $("todayCount"); if (cnt) cnt.textContent = done + "/" + total;
     host.innerHTML = rows.join("") || '<div class="hs-empty">Nothing on today\u2019s plate \u2014 star a weekly target or schedule a task from the Calendar tab.</div>';
     var now = new Date();
@@ -1325,10 +1694,30 @@
 
   /* ---------------- SCREEN: ROUTINES ---------------- */
   function routineList() { return Array.isArray(meta.routines) ? meta.routines : []; }
+  function routineCats() {
+    var seen = {}, out = [];
+    routineList().forEach(function (r) { var c = (r.cat || "").trim(); if (c && !seen[c.toLowerCase()]) { seen[c.toLowerCase()] = 1; out.push(c); } });
+    return out.sort();
+  }
   function prevScheduledIso(r, fromIso) {
     var d = new Date(fromIso + "T00:00:00");
     for (var i = 1; i <= 7; i++) { d.setDate(d.getDate() - 1); if ((r.days || []).indexOf(d.getDay()) >= 0) return hIso(d); }
     return null;
+  }
+  /* 14-day history strip: did the tests actually happen every day? */
+  function histStrip(r, st, t) {
+    var hist = Array.isArray(st.hist) ? st.hist : [];
+    var cells = "", d = new Date(t + "T00:00:00");
+    d.setDate(d.getDate() - 13);
+    for (var i = 0; i < 14; i++) {
+      var iso = hIso(d), sched = (r.days || []).indexOf(d.getDay()) >= 0;
+      var dDone = hist.indexOf(iso) >= 0 || st.doneDate === iso;
+      var cls = dDone ? "d" : !sched ? "off" : iso === t ? "p" : "m";
+      var tip = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) + (dDone ? " \u2014 done" : !sched ? "" : iso === t ? " \u2014 today" : " \u2014 missed");
+      cells += '<i class="' + cls + '" title="' + esc(tip) + '"></i>';
+      d.setDate(d.getDate() + 1);
+    }
+    return '<span class="rhist" title="Last 14 days">' + cells + "</span>";
   }
   function renderRoutinesScreen() {
     var host = $("routineRows"); if (!host) return;
@@ -1340,10 +1729,21 @@
       return at - bt || String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase());
     });
     var todayN = 0, doneN = 0, html = "";
+    /* group by category \u2014 e.g. "Quick tests", "Written tests"; uncategorised last */
+    var cats = [], byCat = {};
     list.forEach(function (r) {
+      var c = (r.cat || "").trim();
+      if (!byCat[c]) { byCat[c] = []; cats.push(c); }
+      byCat[c].push(r);
+    });
+    cats.sort(function (a, b) { return (a === "") - (b === "") || a.toLowerCase().localeCompare(b.toLowerCase()); });
+    cats.forEach(function (c) {
+      if (c || cats.length > 1) html += '<div class="rcat">' + (c ? esc(c) : "Other") + '<span class="rcat-n">' + byCat[c].length + "</span></div>";
+      byCat[c].forEach(function (r) {
       var isToday = (r.days || []).indexOf(dow) >= 0;
       var st = getEntry("routine:" + r.id);
       var isDone = st.doneDate === t;
+      var eff = effStreak(r, st, t);
       if (isToday) { todayN++; if (isDone) doneN++; }
       var dots = DL.map(function (l, i) {
         var jsDay = (i + 1) % 7;
@@ -1352,12 +1752,12 @@
       html += '<div class="rrow' + (isToday ? "" : " offday") + (isDone && isToday ? " done" : "") + '">' +
         '<button class="hcheck' + (isDone ? " on" : "") + '" data-hact="rtoggle" data-hkey="' + esc(r.id) + '" aria-label="Toggle done">' + HIC.check + "</button>" +
         '<div class="rmain"><span class="rname">' + esc(r.name) + "</span>" +
-        '<div class="rmeta">' +
-        ((st.streak || 0) > 0 ? '<span class="streak" title="Current streak">' + HIC.flame + (st.streak || 0) + " day" + (st.streak === 1 ? "" : "s") + "</span>" : "") +
-        linkChips(r.links) + "</div>" +
+        '<div class="rmeta">' + streakChip(eff) + linkChips(r.links) + "</div>" +
+        histStrip(r, st, t) +
         '<span class="daydots">' + dots + "</span></div>" +
         '<button class="redit" data-hact="redit" data-hkey="' + esc(r.id) + '" title="Edit routine">' + HIC.pen + "</button>" +
         "</div>";
+      });
     });
     var cnt = $("routineCount"); if (cnt) cnt.textContent = doneN + "/" + todayN;
     host.innerHTML = html || '<div class="hs-empty">No ' + esc(mode) + ' routines yet \u2014 add one below.</div>';
@@ -1365,14 +1765,17 @@
   function toggleRoutine(id) {
     var r = routineList().find(function (x) { return x.id === id; }); if (!r) return;
     var rk = "routine:" + id, st = getEntry(rk), t = hTodayIso();
+    var hist = Array.isArray(st.hist) ? st.hist.slice() : [];
     if (st.doneDate === t) {
       var prev = st.prev || {};
-      patch(rk, { doneDate: prev.doneDate || null, streak: prev.streak || 0, prev: null });
+      patch(rk, { doneDate: prev.doneDate || null, streak: prev.streak || 0, prev: null, hist: hist.filter(function (d) { return d !== t; }) });
     } else {
       var cont = !!(st.doneDate && st.doneDate === prevScheduledIso(r, t));
-      patch(rk, { prev: { doneDate: st.doneDate || null, streak: st.streak || 0 }, doneDate: t, streak: cont ? (st.streak || 0) + 1 : 1 });
+      if (hist.indexOf(t) < 0) hist.push(t);
+      hist.sort(); if (hist.length > 120) hist = hist.slice(hist.length - 120);
+      patch(rk, { prev: { doneDate: st.doneDate || null, streak: st.streak || 0 }, doneDate: t, streak: cont ? (st.streak || 0) + 1 : 1, hist: hist });
     }
-    renderRoutinesScreen();
+    renderRoutinesScreen(); renderTodayScreen();
   }
 
   /* ---- routine editor ---- */
@@ -1384,6 +1787,8 @@
     $("rtName").value = r ? r.name : "";
     rtDaySel = r ? (r.days || []).slice() : [1, 2, 3, 4, 5];
     var rMode = r ? (r.mode || "personal") : getMode();
+    $("rtCat").value = r ? (r.cat || "") : "";
+    $("rtCatList").innerHTML = routineCats().map(function (c) { return '<option value="' + esc(c) + '"></option>'; }).join("");
     Array.prototype.forEach.call($("rtDays").children, function (b) { b.classList.toggle("on", rtDaySel.indexOf(+b.getAttribute("data-hday")) >= 0); });
     Array.prototype.forEach.call($("rtMode").children, function (b) { b.classList.toggle("on", b.getAttribute("data-hmode") === rMode); });
     $("rtLinks").value = r ? linksToText(r.links) : "";
@@ -1399,6 +1804,7 @@
       id: rtEditing || uid(),
       name: name,
       days: rtDaySel.slice().sort(),
+      cat: $("rtCat").value.trim(),
       mode: modeBtn ? modeBtn.getAttribute("data-hmode") : "personal",
       links: parseLinksText($("rtLinks").value)
     };
@@ -1452,12 +1858,13 @@
   /* ---------------- MODE + TABS + WIRING ---------------- */
   function renderHome() {
     if (!$("scrToday")) return;
-    renderTodayScreen(); renderCalScreen(); renderRoutinesScreen();
+    renderTodayScreen(); renderCalScreen(); renderRoutinesScreen(); renderPlaces();
   }
 
   function applyMode(mode, focusSeg) {
     setMode(mode);
     document.body.setAttribute("data-mode", mode);
+    renderCols();   // build 17: Special section + agenda on the Week tab follow the mode too
     var seg = $("modeSeg"); if (!seg) return;
     seg.setAttribute("data-active", mode);
     Array.prototype.forEach.call(seg.querySelectorAll(".seg"), function (btn) {
@@ -1509,6 +1916,13 @@
     $("hCalNext").onclick = function () { hNavCal(1); };
     $("hCalExpand").onclick = function () { hMonthMode = !hMonthMode; hAnchor = new Date(hSel + "T00:00:00"); renderCalScreen(); };
     $("hAddSched").onclick = openSched;
+
+    /* mode hours + task sheet (build 17) */
+    var hb = $("hoursBtn"); if (hb) hb.onclick = openHours;
+    var hsv = $("hrSave"); if (hsv) hsv.onclick = saveHours;
+    var hcl = $("hrClose"); if (hcl) hcl.onclick = function () { $("hoursModal").classList.remove("open"); };
+    var hmm = $("hoursModal"); if (hmm) hmm.addEventListener("click", function (e) { if (e.target === hmm) hmm.classList.remove("open"); });
+    wireTaskSheet();
     $("schedTabs").addEventListener("click", function (e) {
       var b = e.target.closest("[data-hkind]"); if (!b) return;
       schedKind = b.getAttribute("data-hkind"); renderSchedSheet();
@@ -1532,8 +1946,39 @@
     $("rtDelete").onclick = deleteRoutineEd;
     $("rtClose").onclick = closeRoutineEd;
     $("routineModal").addEventListener("click", function (e) { if (e.target === this) closeRoutineEd(); });
+
+    /* places */
+    $("addPlaceBtn").onclick = function () { openPlaceEd(null); };
+    $("plSave").onclick = savePlaceEd;
+    $("plDelete").onclick = deletePlaceEd;
+    $("plClose").onclick = function () { $("placeModal").classList.remove("open"); };
+    $("placeModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
+    $("plHere").onclick = function () {
+      if (!navigator.geolocation) { toast("No location support on this device."); return; }
+      $("plGeoHint").textContent = "Getting your location\u2026";
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        localStorage.setItem(GEO_KEY, "1");
+        $("plCoords").value = pos.coords.latitude.toFixed(5) + ", " + pos.coords.longitude.toFixed(5);
+        $("plGeoHint").textContent = "Saved \u2014 the list will surface when you're within ~700 m of here.";
+      }, function () { $("plGeoHint").textContent = "Couldn't get a fix \u2014 allow location access and try again."; }, { timeout: 8000 });
+    };
+    var gb = $("geoBtn"); if (gb) gb.onclick = function () { geoCheck(true); };
+    geoCheck(false);   // silent check on open if the user opted in before
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) geoCheck(false); });
+    /* minute tick: lets check-in nudges + ASAP states appear without a reload */
+    setInterval(function () { renderTodayScreen(); }, 60000);
+    var pad = $("plAskDays");
+    if (pad) pad.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-hday]"); if (!b) return;
+      var d = +b.getAttribute("data-hday");
+      plAskSel = plAskSel === d ? null : d;
+      Array.prototype.forEach.call(pad.children, function (x) { x.classList.toggle("on", plAskSel === +x.getAttribute("data-hday")); });
+    });
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") { closeRoutineEd(); var sm = $("schedModal"); if (sm) sm.classList.remove("open"); }
+      if (e.key === "Escape") {
+        closeRoutineEd();
+        ["schedModal", "taskModal", "hoursModal", "placeModal"].forEach(function (id) { var m = $(id); if (m) m.classList.remove("open"); });
+      }
     });
 
     /* home-screen actions (separate namespace from the board's data-act) */
@@ -1543,6 +1988,12 @@
       if (a === "day") { hSel = k; renderCalScreen(); return; }
       if (a === "ttoggle") { patch(k, { targetDone: !targetDone(k) }); renderPulse(); renderFive(); renderTodayScreen(); return; }
       if (a === "stoggle") { patch(k, { done: !(entries[k] && entries[k].done) }); renderTodayScreen(); renderCalScreen(); return; }
+      if (a === "sub2") {
+        var sid2h = el.getAttribute("data-hsid");
+        patch(k, { subtasks: normSubs(subs(k)).map(function (x) { return x.id === sid2h ? Object.assign({}, x, { done: !x.done, u: Date.now() }) : x; }) });
+        renderTodayScreen(); renderCols(); return;
+      }
+      if (a === "tray") { trayOpen = !trayOpen; renderTodayScreen(); return; }
       if (a === "sdel") { delete entries[k]; save(); cloudDeleteEntry(k); renderTodayScreen(); renderCalScreen(); toast("Removed from that day."); return; }
       if (a === "spick") {
         var sk = "sched:" + hSel + ":" + k;
@@ -1553,6 +2004,23 @@
         return;
       }
       if (a === "rtoggle") { toggleRoutine(k); return; }
+      if (a === "rtoggle2") { toggleRoutine(k); return; }
+      if (a === "plitem") {
+        var pk = "place:" + k, pst = getEntry(pk), dnm = Object.assign({}, pst.done || {});
+        var pid = el.getAttribute("data-hsid");
+        if (dnm[pid]) delete dnm[pid]; else dnm[pid] = true;
+        patch(pk, { done: dnm });
+        renderPlaces(); renderTodayScreen(); return;
+      }
+      if (a === "plplan") {
+        var pk2 = "place:" + k, pst2 = getEntry(pk2), tt = hTodayIso();
+        patch(pk2, { plan: pst2.plan === tt ? null : tt });
+        renderPlaces(); renderTodayScreen(); return;
+      }
+      if (a === "plreset") { patch("place:" + k, { done: {} }); renderPlaces(); renderTodayScreen(); return; }
+      if (a === "plyes") { patch("place:" + k, { plan: hTodayIso(), askedDate: hTodayIso() }); renderPlaces(); renderTodayScreen(); return; }
+      if (a === "plno") { patch("place:" + k, { askedDate: hTodayIso() }); renderTodayScreen(); return; }
+      if (a === "pledit") { openPlaceEd(k); return; }
       if (a === "redit") { openRoutineEd(k); return; }
     });
 
@@ -1608,7 +2076,16 @@
     renderAll();           // renders empty until your Supabase data arrives
     if (navigator.storage && navigator.storage.persist) { try { navigator.storage.persist(); } catch (e) {} }
     wireHome();            // Today / Calendar / Routines tabs + mode toggle (build 16)
-    startCloud();          // connects with the baked-in config, then loads your week once signed in
+    if (window.__WF_SEED) { // preview/demo hook \u2014 never defined in the deployed app
+      try {
+        var SD = window.__WF_SEED;
+        state.apps = SD.apps || []; state.study = SD.study || []; state.office = SD.office || [];
+        rebuildIndex(); entries = SD.entries || {}; targetOrder = SD.targets || []; meta = SD.meta || {};
+        ENTER = true; refreshGroupLists(); renderAll();
+      } catch (e) {}
+    } else {
+      startCloud();        // connects with the baked-in config, then loads your week once signed in
+    }
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();

@@ -57,7 +57,7 @@ body[data-mode="office"]  { --accent: var(--office); --accent-soft: var(--office
   border-top: 1px solid var(--hair);
   padding-bottom: env(safe-area-inset-bottom);
 }
-.htabbar-in { max-width: 600px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
+.htabbar-in { max-width: 600px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); }
 .htab {
   border: none; background: none; cursor: pointer; font-family: inherit;
   display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -283,3 +283,254 @@ body[data-mode="office"]  { --accent: var(--office); --accent-soft: var(--office
   #scrWeek { display: block !important; }
   .weekbar { display: none !important; }
 }
+
+/* ============================================================
+   build 17 — per-task mode + hours, urgent flag, ASAP deadline
+   zone, quick date/time task sheet, waiting tray
+   ============================================================ */
+
+/* urgent flag on Special subtask rows */
+.sub-flag {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer;
+  padding: 0 2px; line-height: 0; color: var(--faint); opacity: 0;
+  transition: color .12s, opacity .12s;
+}
+.sub-flag svg { width: 13px; height: 13px; }
+.subs li:hover .sub-flag { opacity: .8; }
+.sub-flag:hover { color: var(--pri-h); }
+.sub-flag.on { opacity: 1; color: var(--pri-h); }
+.sub-flag.on svg { fill: var(--pri-h); }
+@media (hover: none) { .sub-flag { opacity: .45; } }
+
+/* urgent / deadline-zone subtask text */
+.sp-subs li.urg .sub-text-editable { color: var(--pri-h); font-weight: 700; }
+
+/* per-task mode tag */
+.sub-mode {
+  flex: 0 0 auto; font-size: 8.5px; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; padding: 2px 6px; border-radius: 999px; white-space: nowrap;
+}
+.sub-mode.o { color: var(--office); background: var(--office-soft); }
+.sub-mode.p { color: var(--brand); background: var(--brand-soft); }
+
+/* "N office tasks hidden" note on Special cards */
+.sub-hidden-note { list-style: none; }
+.sub-hidden-note button {
+  border: none; background: none; font-family: inherit; cursor: pointer;
+  font-size: 10.5px; font-weight: 700; color: var(--faint); padding: 3px 0;
+}
+.sub-hidden-note button:hover { color: var(--accent); }
+
+/* agenda strip: urgent (ASAP) rows */
+.ag-cal.flag { color: var(--pri-h); background: oklch(0.97 0.02 27); border-color: oklch(0.88 0.06 27); }
+.ag-cal.flag svg { width: 16px; height: 16px; fill: var(--pri-h); }
+.ag-item.urgrow { border-color: oklch(0.88 0.06 27); }
+.ag-item.urgrow .ag-chip { color: #fff; background: var(--pri-h); }
+.ag-item.urgrow .ag-name { color: var(--pri-h); }
+
+/* Today rows: source crumb, date chip, ASAP treatment */
+.hsrc { font-weight: 600; }
+.hwhen {
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  color: var(--mid); background: var(--card-2); border: 1px solid var(--hair); white-space: nowrap;
+}
+.hwhen.today { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-line); }
+.hwhen.over { color: var(--pri-h); background: oklch(0.97 0.02 27); border-color: oklch(0.88 0.06 27); }
+.hchip.asapflag { display: inline-flex; align-items: center; gap: 3px; color: #fff; background: var(--pri-h); }
+.hchip.asapflag svg { width: 9px; height: 9px; fill: #fff; stroke: #fff; }
+.trow.asap { border-color: oklch(0.88 0.06 27); box-shadow: var(--shadow-card), inset 3px 0 0 var(--pri-h); }
+.trow.asap .hname { color: var(--pri-h); }
+.trow.dim { opacity: .6; }
+
+/* tray: tasks waiting for their mode hours */
+.htray {
+  border: 1.5px dashed var(--hair); background: none; border-radius: var(--r-md);
+  font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--faint);
+  padding: 10px; cursor: pointer; text-align: center; transition: color .12s, border-color .12s;
+}
+.htray:hover { color: var(--accent); border-color: var(--accent-line); }
+
+/* hours button in the Top Tasks header */
+.hrs-btn {
+  border: none; background: none; color: var(--faint); cursor: pointer;
+  padding: 4px; border-radius: 7px; line-height: 0; margin-left: 2px;
+}
+.hrs-btn svg { width: 15px; height: 15px; }
+.hrs-btn:hover { color: var(--accent); background: var(--accent-soft); }
+.hourrow { display: flex; align-items: center; gap: 8px; }
+.hourrow input {
+  font-family: inherit; font-size: 13px; color: var(--ink);
+  border: 1px solid var(--hair); border-radius: 8px; background: var(--card-2); padding: 7px 9px;
+}
+.hourrow input:focus { outline: none; border-color: var(--accent); background: #fff; }
+.hourrow span { font-size: 11px; color: var(--faint); font-weight: 700; }
+
+/* task sheet: chip pickers */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  position: relative; border: 1px solid var(--hair); background: var(--card-2);
+  border-radius: 999px; font-family: inherit; font-size: 12px; font-weight: 700;
+  color: var(--mid); padding: 6px 13px; cursor: pointer;
+  flex: 0 0 auto; white-space: nowrap;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.chip:hover { border-color: var(--accent-line); color: var(--accent); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip[disabled] { opacity: .35; pointer-events: none; }
+label.chip {
+  display: inline-flex; align-items: center; width: auto;
+  font-size: 12px; font-weight: 700; text-transform: none; letter-spacing: normal;
+  color: var(--mid); margin: 0;
+}
+label.chip.on { color: #fff; }
+.chip.pickc input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.urgbtn {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--hair); background: var(--card-2); border-radius: 999px;
+  font-family: inherit; font-size: 12px; font-weight: 700; color: var(--mid);
+  padding: 7px 14px; cursor: pointer; transition: background .12s, color .12s, border-color .12s;
+}
+.urgbtn svg { width: 13px; height: 13px; }
+.urgbtn:hover { border-color: oklch(0.88 0.06 27); color: var(--pri-h); }
+.urgbtn.on { color: #fff; background: var(--pri-h); border-color: var(--pri-h); }
+.urgbtn.on svg { fill: #fff; }
+
+@media print { .sub-flag, .sub-mode, .hrs-btn, .htray, .sub-hidden-note { display: none !important; } }
+
+/* ---- build 17.1: two-line task rows + countdown deadlines ---- */
+
+/* long task text keeps the full row width; tags + date drop to a second line */
+.sp-subs li.spli { flex-wrap: wrap; row-gap: 2px; }
+.sub-meta {
+  flex: 1 1 100%; display: flex; align-items: center; gap: 5px;
+  margin-left: 28px; padding-bottom: 2px;
+}
+.sub-meta .sub-when, .sub-meta .sub-mode { flex: 0 0 auto; }
+
+/* countdown deadline inside 7 days — amber "soon" zone */
+.sub-when.soon, .hwhen.soon { color: oklch(0.5 0.13 75); background: oklch(0.97 0.03 75); border-color: oklch(0.87 0.07 75); }
+.ag-item.soon { border-color: oklch(0.87 0.07 75); }
+.ag-item.soon .ag-cal { background: oklch(0.97 0.03 75); border-color: oklch(0.87 0.07 75); }
+.ag-item.soon .ag-cal i, .ag-item.soon .ag-cal b { color: oklch(0.5 0.13 75); }
+.ag-item.soon .ag-chip { color: #43330a; background: var(--pri-m); }
+.trow.soon { border-color: oklch(0.87 0.07 75); box-shadow: var(--shadow-card), inset 3px 0 0 var(--pri-m); }
+
+/* deadline toggle in the task sheet */
+.dlbtn.on { color: #43330a; background: var(--pri-m); border-color: var(--pri-m); }
+.dlbtn.on svg { stroke: #43330a; }
+.dlbtn[disabled] { opacity: .4; pointer-events: none; }
+
+/* ---- build 17.2: routines on Today + 14-day history strip ---- */
+.hchip.rtn { color: var(--on); background: var(--on-soft); }
+.trow.rtn.done { opacity: .55; }
+.trow.rtn.done .hname { text-decoration: line-through; color: var(--mid); }
+.rhist { display: flex; gap: 3px; margin-top: 3px; }
+.rhist i {
+  width: 10px; height: 10px; border-radius: 3px;
+  background: var(--hair-2);
+}
+.rhist i.d { background: var(--on); }
+.rhist i.m { background: oklch(0.9 0.05 27); box-shadow: inset 0 0 0 1px oklch(0.82 0.08 27); }
+.rhist i.p { background: var(--card); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.rhist i.off { opacity: .35; }
+
+/* ---- build 17.3: Places — condition/location-based lists ---- */
+.place-head { margin-top: 26px; }
+.place-head .hs-note { flex: 1 1 auto; font-size: 10.5px; color: var(--faint); }
+.place-card {
+  background: var(--card); border: 1px solid var(--hair);
+  border-radius: var(--r-md); padding: 11px 13px; box-shadow: var(--shadow-card);
+}
+.place-card.live { border-color: var(--accent-line); box-shadow: var(--shadow-card), inset 3px 0 0 var(--accent); }
+.pl-head { display: flex; align-items: center; gap: 7px; }
+.pl-name { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; flex: 0 1 auto; min-width: 0; }
+.pl-name svg { width: 13px; height: 13px; color: var(--accent); flex: 0 0 auto; }
+.pl-count { margin-left: auto; font-size: 10px; font-weight: 800; color: var(--faint); }
+.pl-head .redit { margin: -2px -4px -2px 0; }
+.hchip.nearby { display: inline-flex; align-items: center; gap: 3px; color: #fff; background: var(--accent); }
+.hchip.nearby svg { width: 9px; height: 9px; }
+.hchip.planned { color: var(--accent); background: var(--accent-soft); }
+.pl-items { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.plitem { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; padding: 2px 0; }
+.plitem.done span { text-decoration: line-through; color: var(--faint); }
+.pl-none { font-size: 11px; color: var(--faint); }
+.pl-plan { display: flex; gap: 6px; margin-top: 10px; }
+.cfield-hint { font-size: 10.5px; color: var(--faint); margin: 5px 0 0; }
+#plName, #plCoords {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid var(--hair); border-radius: var(--r-sm); background: var(--card-2);
+  font: 500 13px/1.4 var(--font); color: var(--ink); padding: 8px 10px;
+}
+#plName:focus, #plCoords:focus { outline: none; border-color: var(--accent); background: #fff; }
+@media print { .place-head, #placeRows, #addPlaceBtn { display: none !important; } }
+
+/* ---- build 17.4: check-in nudge + routine categories ---- */
+.nudge {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  background: var(--accent-soft); border: 1.5px dashed var(--accent-line);
+  border-radius: var(--r-md); padding: 11px 13px;
+}
+.nudge > svg { width: 15px; height: 15px; color: var(--accent); flex: 0 0 auto; }
+.nudge-q { font-size: 13px; font-weight: 600; flex: 1 1 auto; }
+.nudge-q b { font-weight: 800; }
+.rcat {
+  display: flex; align-items: baseline; gap: 7px;
+  font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--faint); margin: 10px 2px 0;
+}
+.rcat:first-child { margin-top: 0; }
+.rcat-n { font-weight: 700; color: var(--hair-3, var(--faint)); opacity: .7; }
+#rtCat {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid var(--hair); border-radius: var(--r-sm); background: var(--card-2);
+  font: 500 13px/1.4 var(--font); color: var(--ink); padding: 8px 10px;
+}
+#rtCat:focus { outline: none; border-color: var(--accent); background: #fff; }
+
+/* ---- build 17.5: overdue = its own top severity tier ----
+   Design intent: urgency that pulls you in, not a punishment wall.
+   The row stays clean and readable; the crimson frame + counter say
+   "late", while the pulsing check button is the visible way out. */
+:root { --od: oklch(0.5 0.19 22); --od-ink: oklch(0.38 0.14 22); --od-soft: oklch(0.965 0.02 22); --od-line: oklch(0.85 0.08 22); }
+.od-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--od-soft); border: 1px solid var(--od-line);
+  border-radius: var(--r-md); padding: 11px 14px;
+  font-size: 12px; font-weight: 600; color: var(--od-ink);
+}
+.od-banner svg { display: none; }
+.od-banner::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--od); flex: 0 0 auto;
+  animation: od-dot 1.8s ease-in-out infinite;
+}
+.od-banner b { font-weight: 800; color: var(--od); }
+.od-banner span { opacity: .9; flex: 1 1 auto; }
+@keyframes od-dot {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.5 0.19 22 / .4); }
+  60% { box-shadow: 0 0 0 6px oklch(0.5 0.19 22 / 0); }
+}
+.trow.od {
+  background: var(--card); border: 1.5px solid var(--od-line);
+  box-shadow: 0 2px 10px oklch(0.5 0.19 22 / .1), inset 4px 0 0 var(--od);
+  animation: none;
+}
+.trow.od .hname { color: var(--ink); font-weight: 700; }
+.trow.od .hsrc { color: var(--mid); }
+/* the check button is the hero: a clear, inviting way to clear the slate */
+.trow.od .hcheck {
+  border-color: var(--od);
+  animation: od-dot 1.8s ease-in-out infinite;
+}
+.trow.od .hcheck:hover { background: var(--od); border-color: var(--od); color: #fff; transform: scale(1.06); }
+.hchip.odflag { color: #fff; background: var(--od); font-weight: 800; letter-spacing: .04em; }
+@media (prefers-reduced-motion: reduce) { .od-banner::before, .trow.od .hcheck { animation: none; } }
+/* Week tab: overdue subtask rows get a filled strip, not just red text */
+.sp-subs li.od { background: var(--od-soft); box-shadow: inset 3px 0 0 var(--od); border-radius: 7px; padding-left: 8px; margin-left: -8px; }
+.sp-subs li.od .sub-text-editable { color: var(--od-ink); font-weight: 700; }
+/* agenda strip */
+.ag-item.odrow { background: var(--card); border: 1.5px solid var(--od-line); box-shadow: inset 3px 0 0 var(--od); }
+.ag-item.odrow .ag-cal { background: var(--od-soft); border-color: var(--od-line); }
+.ag-item.odrow .ag-cal i, .ag-item.odrow .ag-cal b { color: var(--od); }
+.ag-item.odrow .ag-chip { color: #fff; background: var(--od); font-weight: 800; }
+.ag-item.odrow .sub-check { border-color: var(--od); }
