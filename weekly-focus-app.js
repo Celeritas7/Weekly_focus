@@ -36,7 +36,7 @@
      STATE + PERSISTENCE
      ============================================================ */
   var K = { entries: "wf2_entries", meta: "wf2_meta", targets: "wf2_targets", inv: "wf2_inv" };
-  var state = { apps: [], study: [] };
+  var state = { apps: [], study: [], office: [] };
   var itemIndex = {};               // id -> item (across apps + study)
   var invTs = "";                   // last-applied inventory timestamp (last-write-wins across devices)
   var entries = {};                 // id -> { active, pri, objective, subtasks[], notes, targetDone } — loaded from Supabase
@@ -68,10 +68,10 @@
   function patch(k, p) { entries[k] = Object.assign({}, entries[k], p); save(); cloudPushEntry(k, entries[k]); }
 
   /* ---------------- inventory (in-app, Supabase-backed) ---------------- */
-  function rebuildIndex() { itemIndex = {}; state.apps.forEach(function (a) { itemIndex[a.id] = a; }); state.study.forEach(function (s) { itemIndex[s.id] = s; }); }
+  function rebuildIndex() { itemIndex = {}; state.apps.forEach(function (a) { itemIndex[a.id] = a; }); state.study.forEach(function (s) { itemIndex[s.id] = s; }); (state.office || []).forEach(function (o) { itemIndex[o.id] = o; }); }
   function itemById(id) { return itemIndex[id] || null; }
-  function kindOf(id) { return id.indexOf("study:") === 0 ? "study" : "app"; }
-  function arrFor(kind) { return kind === "study" ? state.study : state.apps; }
+  function kindOf(id) { return id.indexOf("study:") === 0 ? "study" : id.indexOf("office:") === 0 ? "office" : "app"; }
+  function arrFor(kind) { return kind === "study" ? state.study : kind === "office" ? state.office : state.apps; }
 
   /* Convert legacy file-shaped inventory (apps w/ category, study as folder tree)
      into the flat in-app shape. IDs are kept identical to the old item_keys
@@ -200,7 +200,7 @@
   var DRAG = { id: null, type: null, kind: null };
 
   function renderAll() {
-    pruneTargets(); renderPulse(); renderFive(); renderCols(); renderMeta();
+    pruneTargets(); renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome();
     if (ENTER) { ENTER = false; setTimeout(function () { var ns = document.querySelectorAll(".wf-enter"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("wf-enter"); }, 720); }
     lastCloudSig = boardSig();
   }
@@ -324,7 +324,7 @@
 
   /* ---- Special: life-admin errands, always visible, never in the columns ---- */
   function isSpecialItem(it) { return !!it && (it.group || "").trim().toLowerCase() === "special"; }
-  function renderCols() { renderColumn("app"); renderColumn("study"); renderSpecial(); }
+  function renderCols() { renderColumn("app"); renderColumn("study"); renderColumn("office"); renderSpecial(); }
   function spordOf(id) { var e = entries[id]; return (e && e.spord != null) ? e.spord : null; }
   function specialSorted() {
     var items = activeItems("app").concat(activeItems("study")).filter(isSpecialItem);
@@ -400,7 +400,10 @@
   function renderColumn(kind) {
     var ids = kind === "app"
       ? { host: "appsActive", back: "appsBacklog", wrap: "appsBacklogWrap", bn: "appsBacklogN", n: "appsN", noun: "app" }
+      : kind === "office"
+      ? { host: "officeActive", back: "officeBacklog", wrap: "officeBacklogWrap", bn: "officeBacklogN", n: "officeN", noun: "office task" }
       : { host: "studyActive", back: "studyBacklog", wrap: "studyBacklogWrap", bn: "studyBacklogN", n: "studyN", noun: "topic" };
+    if (!$(ids.host)) return;
     var host = $(ids.host), back = $(ids.back);
     host.innerHTML = ""; back.innerHTML = "";
     if (ENTER) host.classList.add("wf-enter");
@@ -433,7 +436,7 @@
     var groups = [];
     if (kind === "app") groups = APP_CATS.slice();
     arr.forEach(function (a) { if (groups.indexOf(a.group) < 0) groups.push(a.group); });
-    if (kind === "study") groups.sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+    if (kind !== "app") groups.sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
     return groups.map(function (gr) {
       var items = arr.filter(function (a) { return a.group === gr; });
       items.sort(sortPri
@@ -497,6 +500,8 @@
         return '<button class="pseg pseg-' + p + (p === pri ? " on" : "") + '" data-pri="' + p + '">' + priName(p) + '</button>';
       }).join("") + '</div></div>';
     var listId = "grp-" + kindOf(id);
+    var linksRow = '<div class="links-block"><span class="notes-lbl">\u2197 Quick links</span>' +
+      '<textarea class="hlinks" data-act="links" placeholder="One per line: Label | https://url">' + esc(linksToText(it && it.links)) + '</textarea></div>';
     var manage = '<div class="manage-row">' +
       '<input class="mg-name" data-act="rename" value="' + esc(it ? it.name : "") + '" placeholder="Name">' +
       '<input class="mg-group" data-act="group" list="' + listId + '" value="' + esc(it ? it.group : "") + '" placeholder="Group">' +
@@ -508,12 +513,13 @@
       '<div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a checklist subtask\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
       '<div class="notes-block"><span class="notes-lbl">\u270e Notes</span>' +
       '<textarea class="notes" data-act="notes" placeholder="Longer notes \u2014 thinking, blockers, links\u2026">' + esc(e.notes || "") + '</textarea></div>' +
+      linksRow +
       manage +
     '</div>';
   }
 
   function refreshGroupLists() {
-    [["grp-app", "app"], ["grp-study", "study"]].forEach(function (pair) {
+    [["grp-app", "app"], ["grp-study", "study"], ["grp-office", "office"]].forEach(function (pair) {
       var dl = $(pair[0]); if (!dl) return;
       var groups = {}; if (pair[1] === "app") APP_CATS.forEach(function (g) { groups[g] = 1; });
       arrFor(pair[1]).forEach(function (it) { groups[it.group] = 1; });
@@ -537,6 +543,7 @@
     var rows = [];
     activeItems("app").forEach(function (a) { if (isSpecialItem(a)) return; rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
     activeItems("study").forEach(function (s) { if (isSpecialItem(s)) return; rows.push({ key: s.id, name: s.name, crumb: s.group, tag: "Study", color: "oklch(0.55 0.13 " + hueFor(s.group) + ")" }); });
+    activeItems("office").forEach(function (o) { if (isSpecialItem(o)) return; rows.push({ key: o.id, name: o.name, crumb: o.group, tag: "Office", color: "var(--office)" }); });
     if (!rows.length) { body.innerHTML = '<div class="modal-empty">No active items yet.<br>Switch on an app or topic first, then pick your targets from them.</div>'; }
     else rows.forEach(function (r) {
       var taken = isTarget(r.key);
@@ -558,10 +565,10 @@
   var addKind = "app";
   function openAdd(kind) {
     addKind = kind;
-    $("addTitle").textContent = kind === "app" ? "Add app" : "Add topic";
+    $("addTitle").textContent = kind === "app" ? "Add app" : kind === "office" ? "Add office task" : "Add topic";
     $("addName").value = ""; $("addGroup").value = "";
-    $("addName").setAttribute("placeholder", kind === "app" ? "e.g. LedgerLite" : "e.g. Kanji");
-    $("addGroup").setAttribute("placeholder", kind === "app" ? "Category (e.g. General Purpose)" : "Subject (e.g. Japanese)");
+    $("addName").setAttribute("placeholder", kind === "app" ? "e.g. LedgerLite" : kind === "office" ? "e.g. Quarterly deck" : "e.g. Kanji");
+    $("addGroup").setAttribute("placeholder", kind === "app" ? "Category (e.g. General Purpose)" : kind === "office" ? "Area (e.g. Meetings)" : "Subject (e.g. Japanese)");
     $("addGroup").setAttribute("list", "grp-" + kind);
     $("addModal").classList.add("open");
     setTimeout(function () { $("addName").focus(); }, 30);
@@ -570,7 +577,7 @@
   function commitAdd() {
     var name = $("addName").value.trim(); if (!name) { $("addName").focus(); return; }
     addItem(addKind, name, $("addGroup").value);
-    toast((addKind === "app" ? "App" : "Topic") + " added \u2014 it\u2019s active this week.");
+    toast((addKind === "app" ? "App" : addKind === "office" ? "Office task" : "Topic") + " added \u2014 it\u2019s active this week.");
     $("addName").value = ""; $("addGroup").value = ""; $("addName").focus();
   }
 
@@ -675,6 +682,7 @@
     if (a === "obj") patch(key, { objective: e.target.value });
     else if (a === "notes") patch(key, { notes: e.target.value });
     else if (a === "rename") renameItem(key, e.target.value);
+    else if (a === "links") { var itk = itemById(key); if (itk) { itk.links = parseLinksText(e.target.value); saveInv(); renderHome(); } }
     else if (a === "week") { meta.weekOf = e.target.value; save(); cloudPushBoard(); }
     else if (a === "eowDone") { meta.eowDone = e.target.value; save(); cloudPushBoard(); }
     else if (a === "eowCarry") { meta.eowCarry = e.target.value; save(); cloudPushBoard(); }
@@ -737,7 +745,7 @@
   function cloudPushBoard() { boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta, u: boardU }); }
   function cloudPushInv() {
     if (!cloudConfigured()) return;
-    queue("inv", { table: "weekly_focus_inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, apps: state.apps, study: state.study, updated_at: invTs || nowISO() } });
+    queue("inv", { table: "weekly_focus_inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, apps: state.apps, study: state.study, office: state.office || [], updated_at: invTs || nowISO() } });
   }
 
   async function flushOutbox() {
@@ -821,13 +829,14 @@
   async function cloudPullInventory(force) {
     if (!syncReady()) return false;
     try {
-      var r = await sb.from("weekly_focus_inventory").select("apps,study,updated_at").eq("board_id", cloud.board).limit(1);
+      var r = await sb.from("weekly_focus_inventory").select("apps,study,office,updated_at").eq("board_id", cloud.board).limit(1);
       if (r.error) throw r.error;
       var rows = r.data || []; if (!rows.length) return false;
       var remoteTs = rows[0].updated_at || "";
       var hasInvPending = !!outbox["inv"];
       if (force || (!hasInvPending && (!invTs || remoteTs > invTs))) {
         setInventory(rows[0].apps, rows[0].study, false);
+        state.office = Array.isArray(rows[0].office) ? rows[0].office : []; rebuildIndex();
         invTs = remoteTs || nowISO();
         ENTER = true; syncRender(); refreshGroupLists();
       }
@@ -837,7 +846,7 @@
   function initialSync() {
     // CLOUD-FIRST: a fresh device adopts the cloud copy; a device with local
     // data keeps it and seeds the cloud only if the board is empty.
-    var fresh = !state.apps.length && !state.study.length;
+    var fresh = !state.apps.length && !state.study.length && !state.office.length;
     cloudPullInventory(fresh).then(cloudPullEntries).then(flushOutbox);
   }
   function pendingCount() { return Object.keys(outbox).length; }
@@ -1091,7 +1100,7 @@
     name = (name || "").trim(); if (!name || name === cloud.board) { closeBoardMenu(); return; }
     cloud.board = name;
     try { localStorage.setItem("wf2_active_board", name); } catch (e) {}
-    state = { apps: [], study: [] }; itemIndex = {}; rebuildIndex();
+    state = { apps: [], study: [], office: [] }; itemIndex = {}; rebuildIndex();
     entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = "";
     ENTER = true; updateBoardUI(); refreshGroupLists(); renderAll(); updateCloudStatus(); closeBoardMenu();
     if (syncReady()) initialSync();           // pulls THIS board's inventory + entries
@@ -1151,15 +1160,418 @@
     document.addEventListener("click", function (e) { var p = $("boardPick"); if (p && !p.contains(e.target)) closeBoardMenu(); });
   }
 
+
+  /* ============================================================
+     HOME SCREENS (build 16) — Today / Calendar / Routines tabs +
+     Personal–Office mode. The Week tab is the untouched curation
+     space; these screens are mode-filtered views over the same data.
+     Storage map (NO new tables):
+       mode            localStorage "wf2_mode"  (per device)
+       last tab        localStorage "wf2_tab"   (per device)
+       scheduled task  entries["sched:<YYYY-MM-DD>:<itemId>"] = { done }
+       routine defs    meta.routines = [{ id, name, days[], mode, links[] }]
+       routine state   entries["routine:<id>"] = { streak, doneDate, prev }
+     ============================================================ */
+  var MODE_KEY = "wf2_mode", TAB_KEY = "wf2_tab";
+  function getMode() { try { return localStorage.getItem(MODE_KEY) || "personal"; } catch (e) { return "personal"; } }
+  function setMode(m) { try { localStorage.setItem(MODE_KEY, m); } catch (e) {} }
+  function modeOf(itemId) { return kindOf(itemId) === "office" ? "office" : "personal"; }
+
+  var HIC = {
+    check: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>',
+    link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 10a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2"/></svg>',
+    flame: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-3 5.5-3 9a3 3 0 0 0 6 .2c1.2 1 2 2.5 2 4.3A5 5 0 0 1 7 16c0-5 5-7 5-14z"/></svg>',
+    pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3.5l3.5 3.5L8 19.5 3.5 20.5 4.5 16z"/></svg>'
+  };
+
+  function hIso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function hTodayIso() { return hIso(new Date()); }
+  function hFmt(iso) { var d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }); }
+
+  var hSel = hTodayIso(), hMonthMode = false, hAnchor = new Date(), schedKind = "app";
+
+  /* ---- links: stored as [{label,url}]; edited as "Label | https://url" lines ---- */
+  function parseLinksText(text) {
+    return String(text || "").split("\n").map(function (line) {
+      line = line.trim(); if (!line) return null;
+      var i = line.indexOf("|");
+      var label = i >= 0 ? line.slice(0, i).trim() : "", url = (i >= 0 ? line.slice(i + 1) : line).trim();
+      if (!/^https?:\/\//i.test(url)) return null;
+      return { label: label || url.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0], url: url };
+    }).filter(Boolean);
+  }
+  function linksToText(links) {
+    return (Array.isArray(links) ? links : []).map(function (l) { return (l.label || "") + " | " + (l.url || ""); }).join("\n");
+  }
+  function linkChips(links) {
+    return (Array.isArray(links) ? links : []).map(function (l) {
+      return '<a class="linkchip" href="' + esc(l.url) + '" target="_blank" rel="noopener">' + HIC.link + esc(l.label || "link") + "</a>";
+    }).join("");
+  }
+
+  /* ---- scheduled tasks: entries["sched:<date>:<itemId>"] ---- */
+  function schedList(dateIso, mode) {
+    var pre = "sched:" + dateIso + ":", out = [];
+    Object.keys(entries).forEach(function (k) {
+      if (k.indexOf(pre) !== 0) return;
+      var itemId = k.slice(pre.length);
+      if (mode && modeOf(itemId) !== mode) return;
+      out.push({ key: k, itemId: itemId, done: !!(entries[k] && entries[k].done) });
+    });
+    out.sort(function (a, b) { var an = labelFor(a.itemId).name.toLowerCase(), bn = labelFor(b.itemId).name.toLowerCase(); return an < bn ? -1 : an > bn ? 1 : 0; });
+    return out;
+  }
+
+  function hTaskRow(o) {
+    var it = itemById(o.itemId), k = kindOf(o.itemId);
+    var chip = k === "study" ? "Study" : k === "office" ? "Office" : "App";
+    return '<div class="trow' + (o.done ? " done" : "") + '">' +
+      '<button class="hcheck' + (o.done ? " on" : "") + '" data-hact="' + o.act + '" data-hkey="' + esc(o.key || o.itemId) + '" aria-label="Toggle done">' + HIC.check + "</button>" +
+      '<div class="tmain"><div class="hname">' + esc(labelFor(o.itemId).name) + "</div>" +
+      '<div class="hsub"><span class="hchip ' + k + '">' + chip + "</span>" +
+      (o.star ? '<span class="hstar" title="Weekly target">\u2605</span>' : "") +
+      linkChips(it && it.links) + "</div></div>" +
+      (o.removable ? '<button class="hdel" data-hact="sdel" data-hkey="' + esc(o.key) + '" aria-label="Remove">' + IC.trash + "</button>" : "") +
+      "</div>";
+  }
+
+  /* ---------------- SCREEN: TODAY ---------------- */
+  function renderTodayScreen() {
+    var host = $("todayRows"); if (!host) return;
+    var mode = getMode(), t = hTodayIso();
+    var rows = [], total = 0, done = 0;
+    targetOrder.forEach(function (id) {
+      if (modeOf(id) !== mode) return;
+      total++; if (targetDone(id)) done++;
+      rows.push(hTaskRow({ itemId: id, done: targetDone(id), star: true, act: "ttoggle" }));
+    });
+    schedList(t, mode).forEach(function (s) {
+      if (targetOrder.indexOf(s.itemId) >= 0) return;
+      total++; if (s.done) done++;
+      rows.push(hTaskRow({ key: s.key, itemId: s.itemId, done: s.done, act: "stoggle" }));
+    });
+    var cnt = $("todayCount"); if (cnt) cnt.textContent = done + "/" + total;
+    host.innerHTML = rows.join("") || '<div class="hs-empty">Nothing on today\u2019s plate \u2014 star a weekly target or schedule a task from the Calendar tab.</div>';
+    var now = new Date();
+    var dw = $("todayDow"); if (dw) dw.textContent = now.toLocaleDateString("en-GB", { weekday: "long" });
+    var dd = $("todayDate"); if (dd) dd.textContent = now.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+  }
+
+  /* ---------------- SCREEN: CALENDAR ---------------- */
+  function hDcell(d, otherMonth) {
+    var dIso = hIso(d), tasks = schedList(dIso, getMode());
+    return '<button class="dcell' + (dIso === hTodayIso() ? " today" : "") + (dIso === hSel ? " sel" : "") + (otherMonth ? " othermonth" : "") + '" data-hact="day" data-hkey="' + dIso + '">' +
+      '<span class="dw">' + d.toLocaleDateString("en-GB", { weekday: "narrow" }) + "</span>" +
+      '<span class="dn">' + d.getDate() + "</span>" +
+      '<span class="dots">' + tasks.slice(0, 3).map(function (s) { var k = kindOf(s.itemId); return "<i" + (k !== "app" ? ' class="' + k + '"' : "") + "></i>"; }).join("") + "</span>" +
+      "</button>";
+  }
+  function renderCalScreen() {
+    var strip = $("hWeekstrip"); if (!strip) return;
+    var sel = new Date(hSel + "T00:00:00");
+    var monday = new Date(sel); monday.setDate(sel.getDate() - ((sel.getDay() + 6) % 7));
+    var sHtml = "";
+    for (var i = 0; i < 7; i++) { var d = new Date(monday); d.setDate(monday.getDate() + i); sHtml += hDcell(d, false); }
+    strip.innerHTML = sHtml;
+
+    var grid = $("hMonthgrid"), gHtml = "";
+    var first = new Date(hAnchor.getFullYear(), hAnchor.getMonth(), 1);
+    var start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
+    for (var j = 0; j < 42; j++) {
+      var dd = new Date(start); dd.setDate(start.getDate() + j);
+      gHtml += hDcell(dd, dd.getMonth() !== hAnchor.getMonth());
+    }
+    grid.innerHTML = gHtml;
+    $("hCalMonth").textContent = (hMonthMode ? hAnchor : sel).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+    $("hCalCard").classList.toggle("month", hMonthMode);
+    $("hCalExpand").textContent = hMonthMode ? "Week" : "Month";
+
+    $("hDayLabel").textContent = hSel === hTodayIso() ? "Today \u2014 " + hFmt(hSel) : hFmt(hSel);
+    var tasks = schedList(hSel, getMode());
+    $("hDayN").textContent = tasks.length ? tasks.length + (tasks.length === 1 ? " task" : " tasks") : "free";
+    $("hDayRows").innerHTML = tasks.map(function (s) {
+      return hTaskRow({ key: s.key, itemId: s.itemId, done: s.done, act: "stoggle", removable: true });
+    }).join("") || '<div class="hs-empty">No tasks on this day.</div>';
+  }
+  function hNavCal(dir) {
+    if (hMonthMode) hAnchor = new Date(hAnchor.getFullYear(), hAnchor.getMonth() + dir, 1);
+    else { var d = new Date(hSel + "T00:00:00"); d.setDate(d.getDate() + dir * 7); hSel = hIso(d); }
+    renderCalScreen();
+  }
+
+  /* ---- schedule sheet ---- */
+  function openSched() {
+    schedKind = getMode() === "office" ? "office" : "app";
+    $("schedDate").textContent = hFmt(hSel);
+    renderSchedSheet();
+    $("schedModal").classList.add("open");
+  }
+  function renderSchedSheet() {
+    var tabs = $("schedTabs");
+    Array.prototype.forEach.call(tabs.children, function (b) { b.classList.toggle("on", b.getAttribute("data-hkind") === schedKind); });
+    var body = $("schedBody"), rows = "";
+    arrFor(schedKind).forEach(function (it) {
+      if (isSpecialItem(it)) return;
+      var added = !!entries["sched:" + hSel + ":" + it.id];
+      var color = schedKind === "app" ? catColor(it.group) : "oklch(0.55 0.13 " + hueFor(it.group) + ")";
+      rows += '<button class="pick' + (added ? " added" : "") + '" data-hact="spick" data-hkey="' + esc(it.id) + '">' +
+        '<span class="pdot" style="background:' + color + '"></span>' +
+        '<span class="ptxt"><span class="pname">' + esc(it.name) + '</span><br><span class="pcrumb">' + esc(it.group) + "</span></span>" +
+        (added ? '<span class="ptag" style="background:var(--on)">Added</span>' : "") +
+        "</button>";
+    });
+    body.innerHTML = rows || '<div class="modal-empty">Nothing in this pool yet.<br>Add items on the Week tab first.</div>';
+  }
+
+  /* ---------------- SCREEN: ROUTINES ---------------- */
+  function routineList() { return Array.isArray(meta.routines) ? meta.routines : []; }
+  function prevScheduledIso(r, fromIso) {
+    var d = new Date(fromIso + "T00:00:00");
+    for (var i = 1; i <= 7; i++) { d.setDate(d.getDate() - 1); if ((r.days || []).indexOf(d.getDay()) >= 0) return hIso(d); }
+    return null;
+  }
+  function renderRoutinesScreen() {
+    var host = $("routineRows"); if (!host) return;
+    var mode = getMode(), t = hTodayIso(), dow = new Date().getDay();
+    var DL = ["M", "T", "W", "T", "F", "S", "S"];
+    var list = routineList().filter(function (r) { return (r.mode || "personal") === mode; });
+    list.sort(function (a, b) {
+      var at = (a.days || []).indexOf(dow) >= 0 ? 0 : 1, bt = (b.days || []).indexOf(dow) >= 0 ? 0 : 1;
+      return at - bt || String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase());
+    });
+    var todayN = 0, doneN = 0, html = "";
+    list.forEach(function (r) {
+      var isToday = (r.days || []).indexOf(dow) >= 0;
+      var st = getEntry("routine:" + r.id);
+      var isDone = st.doneDate === t;
+      if (isToday) { todayN++; if (isDone) doneN++; }
+      var dots = DL.map(function (l, i) {
+        var jsDay = (i + 1) % 7;
+        return "<i" + ((r.days || []).indexOf(jsDay) >= 0 ? ' class="on"' : "") + ">" + l + "</i>";
+      }).join("");
+      html += '<div class="rrow' + (isToday ? "" : " offday") + (isDone && isToday ? " done" : "") + '">' +
+        '<button class="hcheck' + (isDone ? " on" : "") + '" data-hact="rtoggle" data-hkey="' + esc(r.id) + '" aria-label="Toggle done">' + HIC.check + "</button>" +
+        '<div class="rmain"><span class="rname">' + esc(r.name) + "</span>" +
+        '<div class="rmeta">' +
+        ((st.streak || 0) > 0 ? '<span class="streak" title="Current streak">' + HIC.flame + (st.streak || 0) + " day" + (st.streak === 1 ? "" : "s") + "</span>" : "") +
+        linkChips(r.links) + "</div>" +
+        '<span class="daydots">' + dots + "</span></div>" +
+        '<button class="redit" data-hact="redit" data-hkey="' + esc(r.id) + '" title="Edit routine">' + HIC.pen + "</button>" +
+        "</div>";
+    });
+    var cnt = $("routineCount"); if (cnt) cnt.textContent = doneN + "/" + todayN;
+    host.innerHTML = html || '<div class="hs-empty">No ' + esc(mode) + ' routines yet \u2014 add one below.</div>';
+  }
+  function toggleRoutine(id) {
+    var r = routineList().find(function (x) { return x.id === id; }); if (!r) return;
+    var rk = "routine:" + id, st = getEntry(rk), t = hTodayIso();
+    if (st.doneDate === t) {
+      var prev = st.prev || {};
+      patch(rk, { doneDate: prev.doneDate || null, streak: prev.streak || 0, prev: null });
+    } else {
+      var cont = !!(st.doneDate && st.doneDate === prevScheduledIso(r, t));
+      patch(rk, { prev: { doneDate: st.doneDate || null, streak: st.streak || 0 }, doneDate: t, streak: cont ? (st.streak || 0) + 1 : 1 });
+    }
+    renderRoutinesScreen();
+  }
+
+  /* ---- routine editor ---- */
+  var rtEditing = null, rtDaySel = [];
+  function openRoutineEd(id) {
+    rtEditing = id || null;
+    var r = id ? routineList().find(function (x) { return x.id === id; }) : null;
+    $("rtTitle").textContent = r ? "Edit routine" : "Add routine";
+    $("rtName").value = r ? r.name : "";
+    rtDaySel = r ? (r.days || []).slice() : [1, 2, 3, 4, 5];
+    var rMode = r ? (r.mode || "personal") : getMode();
+    Array.prototype.forEach.call($("rtDays").children, function (b) { b.classList.toggle("on", rtDaySel.indexOf(+b.getAttribute("data-hday")) >= 0); });
+    Array.prototype.forEach.call($("rtMode").children, function (b) { b.classList.toggle("on", b.getAttribute("data-hmode") === rMode); });
+    $("rtLinks").value = r ? linksToText(r.links) : "";
+    $("rtDelete").style.display = r ? "" : "none";
+    $("routineModal").classList.add("open");
+    setTimeout(function () { $("rtName").focus(); }, 30);
+  }
+  function closeRoutineEd() { $("routineModal").classList.remove("open"); }
+  function saveRoutineEd() {
+    var name = $("rtName").value.trim(); if (!name) { $("rtName").focus(); return; }
+    var modeBtn = $("rtMode").querySelector(".on");
+    var r = {
+      id: rtEditing || uid(),
+      name: name,
+      days: rtDaySel.slice().sort(),
+      mode: modeBtn ? modeBtn.getAttribute("data-hmode") : "personal",
+      links: parseLinksText($("rtLinks").value)
+    };
+    if (!Array.isArray(meta.routines)) meta.routines = [];
+    var i = meta.routines.findIndex(function (x) { return x.id === r.id; });
+    if (i >= 0) meta.routines[i] = r; else meta.routines.push(r);
+    save(); cloudPushBoard();
+    closeRoutineEd(); renderRoutinesScreen();
+    toast("Routine saved.");
+  }
+  function deleteRoutineEd() {
+    if (!rtEditing) return;
+    if (!confirm("Delete this routine and its streak?")) return;
+    meta.routines = routineList().filter(function (x) { return x.id !== rtEditing; });
+    delete entries["routine:" + rtEditing]; save(); cloudDeleteEntry("routine:" + rtEditing); cloudPushBoard();
+    closeRoutineEd(); renderRoutinesScreen();
+    toast("Routine deleted.");
+  }
+
+  /* ---------------- live info cards (weather + trains via info-feeds.js) ---------------- */
+  function renderFeeds() {
+    if (!window.WF_FEEDS || !$("wxMain")) return;
+    WF_FEEDS.loadWeather().then(function (wx) {
+      var t = wx.today; if (!t) return;
+      $("wxMain").textContent = t.label + " \u00b7 " + t.tMax + "\u00b0 / " + t.tMin + "\u00b0";
+      $("wxSub").textContent = t.rainy ? "carry an umbrella" : "no rain expected";
+      $("wxCard").classList.toggle("warn", !!t.rainy);
+    }).catch(function () {
+      $("wxMain").textContent = "Offline";
+      $("wxSub").textContent = "couldn\u2019t reach the forecast";
+    });
+    var nt = WF_FEEDS.nextTrains();
+    if (nt.trains && nt.trains.length) {
+      var first = nt.trains[0];
+      $("trainMain").textContent = first.time + " \u00b7 in " + first.inMin + " min";
+      $("trainSub").textContent = nt.label + (nt.trains[1] ? " \u00b7 then " + nt.trains[1].time : "");
+    } else {
+      $("trainMain").textContent = "No trains";
+      $("trainSub").textContent = nt.note || "outside timetable window";
+    }
+    WF_FEEDS.checkDelays().then(function (d) {
+      var bad = Object.keys(d).filter(function (k) { return !d[k].ok; });
+      if (bad.length) {
+        $("trainCard").classList.add("warn");
+        var names = bad.map(function (k) { return WF_FEEDS.LINE_NAMES[k]; }).join(", ");
+        $("trainSub").textContent = names + ": " + (d[bad[0]].text || "delays reported").slice(0, 60);
+      } else $("trainCard").classList.remove("warn");
+    }).catch(function () {});
+  }
+
+  /* ---------------- MODE + TABS + WIRING ---------------- */
+  function renderHome() {
+    if (!$("scrToday")) return;
+    renderTodayScreen(); renderCalScreen(); renderRoutinesScreen();
+  }
+
+  function applyMode(mode, focusSeg) {
+    setMode(mode);
+    document.body.setAttribute("data-mode", mode);
+    var seg = $("modeSeg"); if (!seg) return;
+    seg.setAttribute("data-active", mode);
+    Array.prototype.forEach.call(seg.querySelectorAll(".seg"), function (btn) {
+      var on = btn.getAttribute("data-mode") === mode;
+      btn.setAttribute("aria-checked", on ? "true" : "false");
+      btn.tabIndex = on ? 0 : -1;
+      if (on && focusSeg) btn.focus();
+    });
+    renderHome();
+  }
+
+  function showScreen(id) {
+    if (!$(id)) id = "scrToday";
+    Array.prototype.forEach.call(document.querySelectorAll(".screen"), function (s) { s.classList.toggle("on", s.id === id); });
+    Array.prototype.forEach.call(document.querySelectorAll(".htab"), function (t) { t.classList.toggle("on", t.getAttribute("data-screen") === id); });
+    try { localStorage.setItem(TAB_KEY, id); } catch (e) {}
+    window.scrollTo({ top: 0 });
+  }
+
+  function wireHome() {
+    if (!$("scrToday")) return;
+
+    /* bottom tabs */
+    Array.prototype.forEach.call(document.querySelectorAll(".htab"), function (t) {
+      t.addEventListener("click", function () { showScreen(t.getAttribute("data-screen")); });
+    });
+    var t0 = "scrToday"; try { t0 = localStorage.getItem(TAB_KEY) || t0; } catch (e) {}
+    showScreen(t0);
+
+    /* mode segmented pill (click + roving-tabindex arrows) */
+    var seg = $("modeSeg");
+    var radios = Array.prototype.slice.call(seg.querySelectorAll(".seg"));
+    radios.forEach(function (btn) {
+      btn.addEventListener("click", function () { if (getMode() !== btn.getAttribute("data-mode")) applyMode(btn.getAttribute("data-mode"), true); });
+    });
+    seg.addEventListener("keydown", function (e) {
+      var idx = radios.findIndex(function (b) { return b.getAttribute("data-mode") === getMode(); });
+      var next = null;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (idx + 1) % radios.length;
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (idx - 1 + radios.length) % radios.length;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = radios.length - 1;
+      if (next !== null) { e.preventDefault(); applyMode(radios[next].getAttribute("data-mode"), true); }
+    });
+    applyMode(getMode());
+
+    /* calendar nav + schedule sheet */
+    $("hCalPrev").onclick = function () { hNavCal(-1); };
+    $("hCalNext").onclick = function () { hNavCal(1); };
+    $("hCalExpand").onclick = function () { hMonthMode = !hMonthMode; hAnchor = new Date(hSel + "T00:00:00"); renderCalScreen(); };
+    $("hAddSched").onclick = openSched;
+    $("schedTabs").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-hkind]"); if (!b) return;
+      schedKind = b.getAttribute("data-hkind"); renderSchedSheet();
+    });
+    $("schedClose").onclick = function () { $("schedModal").classList.remove("open"); };
+    $("schedModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
+
+    /* routine editor */
+    $("addRoutineBtn").onclick = function () { openRoutineEd(null); };
+    $("rtDays").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-hday]"); if (!b) return;
+      var d = +b.getAttribute("data-hday"), i = rtDaySel.indexOf(d);
+      if (i >= 0) rtDaySel.splice(i, 1); else rtDaySel.push(d);
+      b.classList.toggle("on", i < 0);
+    });
+    $("rtMode").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-hmode]"); if (!b) return;
+      Array.prototype.forEach.call($("rtMode").children, function (x) { x.classList.toggle("on", x === b); });
+    });
+    $("rtSave").onclick = saveRoutineEd;
+    $("rtDelete").onclick = deleteRoutineEd;
+    $("rtClose").onclick = closeRoutineEd;
+    $("routineModal").addEventListener("click", function (e) { if (e.target === this) closeRoutineEd(); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { closeRoutineEd(); var sm = $("schedModal"); if (sm) sm.classList.remove("open"); }
+    });
+
+    /* home-screen actions (separate namespace from the board's data-act) */
+    document.addEventListener("click", function (e) {
+      var el = e.target.closest("[data-hact]"); if (!el) return;
+      var a = el.getAttribute("data-hact"), k = el.getAttribute("data-hkey");
+      if (a === "day") { hSel = k; renderCalScreen(); return; }
+      if (a === "ttoggle") { patch(k, { targetDone: !targetDone(k) }); renderPulse(); renderFive(); renderTodayScreen(); return; }
+      if (a === "stoggle") { patch(k, { done: !(entries[k] && entries[k].done) }); renderTodayScreen(); renderCalScreen(); return; }
+      if (a === "sdel") { delete entries[k]; save(); cloudDeleteEntry(k); renderTodayScreen(); renderCalScreen(); toast("Removed from that day."); return; }
+      if (a === "spick") {
+        var sk = "sched:" + hSel + ":" + k;
+        if (entries[sk]) { toast("Already scheduled that day."); return; }
+        patch(sk, { done: false });
+        renderSchedSheet(); renderCalScreen(); renderTodayScreen();
+        toast("Scheduled for " + hFmt(hSel) + ".");
+        return;
+      }
+      if (a === "rtoggle") { toggleRoutine(k); return; }
+      if (a === "redit") { openRoutineEd(k); return; }
+    });
+
+    /* live weather + train cards */
+    renderFeeds();
+    setInterval(function () { if (document.visibilityState === "visible") renderFeeds(); }, 120000);
+  }
+
   /* ============================================================
      INIT
      ============================================================ */
   function init() {
     wireDisclosure("appsBacklogHead", "appsBacklogWrap");
     wireDisclosure("studyBacklogHead", "studyBacklogWrap");
+    wireDisclosure("officeBacklogHead", "officeBacklogWrap");
     $("btnPrint").onclick = function () { window.print(); };
     $("addAppBtn").onclick = function () { openAdd("app"); };
     $("addStudyBtn").onclick = function () { openAdd("study"); };
+    var aob = $("addOfficeBtn"); if (aob) aob.onclick = function () { openAdd("office"); };
     var asb = $("addSpecialBtn"); if (asb) asb.onclick = function () { openAdd("app"); $("addTitle").textContent = "Add special list"; $("addGroup").value = "Special"; };
     var smb = $("specialModeBtn");
     function applySpecialMode(on) { document.body.classList.toggle("special-mode", !!on); if (smb) smb.textContent = on ? "Exit focus" : "Focus"; if (on) { var ss = $("specialSec"); if (ss) ss.classList.remove("collapsed"); } renderSpecial(); }
@@ -1195,6 +1607,7 @@
     ENTER = true;
     renderAll();           // renders empty until your Supabase data arrives
     if (navigator.storage && navigator.storage.persist) { try { navigator.storage.persist(); } catch (e) {} }
+    wireHome();            // Today / Calendar / Routines tabs + mode toggle (build 16)
     startCloud();          // connects with the baked-in config, then loads your week once signed in
   }
 

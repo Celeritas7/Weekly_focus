@@ -1,9 +1,0 @@
-/* ============================================================
-   Weekly Focus — app logic (vanilla, self-contained)
-   Source of truth: Supabase (when connected) + localStorage cache.
-   Inventory (apps + study topics) is managed ENTIRELY IN-APP:
-   add / rename / re-group / delete. No files, no sample data, no
-   boot-time overwrite — nothing silently erases your week.
-   ============================================================ */
-(function () {
-  "use strict";

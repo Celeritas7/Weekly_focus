@@ -12,9 +12,10 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="weekly-focus.css">
+<link rel="stylesheet" href="home-screens.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
-<body>
+<body data-mode="personal">
 
 <!-- ===================== TOP BAR ===================== -->
 <header class="topbar">
@@ -28,15 +29,17 @@
       <button class="boardbtn" id="boardBtn">
         <span class="bp-k">Board</span>
         <span id="boardName">my-week</span>
-        <svg viewBox="0 0 16 16" width="11" height="11"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 16 16" width="11" height="11"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </button>
       <div class="boardmenu" id="boardMenu" hidden></div>
     </div>
+    <div class="modeseg" id="modeSeg" role="radiogroup" aria-label="Mode" data-active="personal">
+      <span class="thumb" aria-hidden="true"></span>
+      <button type="button" class="seg" role="radio" data-mode="personal" aria-checked="true" tabindex="0">Personal</button>
+      <button type="button" class="seg" role="radio" data-mode="office" aria-checked="false" tabindex="-1">Office</button>
+    </div>
     <span class="spacer"></span>
     <span class="cloud-pill off" id="cloudPill" title="Cloud sync status">&#9729; Cloud off</span>
-    <label class="weekfield">Week of
-      <input id="weekInput" type="text" placeholder="2026-06-08" data-act="week">
-    </label>
     <div class="toolset">
       <button class="tbtn primary" id="btnPrint" title="Print focus sheet"></button>
     </div>
@@ -51,95 +54,224 @@
     <button class="tbtn primary" id="bannerSignIn">Sign in</button>
   </div>
 
-  <!-- ===================== WEEKLY PULSE ===================== -->
-  <section class="pulse" id="pulse"></section>
-
-  <!-- ===================== THE FIVE ===================== -->
-  <section class="five">
-    <div class="sec-head">
-      <span class="k">The Five</span>
-      <span class="sub">the targets that actually have to move this week</span>
-      <span class="count" id="fiveCount">0/5</span>
-    </div>
-    <div class="five-grid" id="fiveGrid"></div>
-  </section>
-
-  <!-- ===================== SPECIAL ===================== -->
-  <section class="special" id="specialSec" style="display:none">
-    <div class="sec-head">
-      <span class="k">Special</span>
-      <span class="sub">life admin &amp; errands &mdash; visible, but never the focus</span>
-      <span class="count" id="specialCount"></span>
-      <button class="sp-mode-btn" id="specialModeBtn" title="Show only Special">Focus</button>
-      <button class="caret-btn sp-hide-btn" id="specialHideBtn" title="Hide / show section"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
-    </div>
-    <div class="sp-agenda" id="spAgenda" style="display:none"></div>
-    <div class="sp-grid" id="specialHost"></div>
-    <button class="add-row" id="addSpecialBtn">+ Add special list</button>
-  </section>
-
-  <!-- ===================== COLUMNS ===================== -->
-  <section class="cols">
-    <!-- APPS -->
-    <div class="col col-apps">
-      <div class="col-head">
-        <span class="cdot"></span>
-        <span class="ctitle">Apps</span>
-        <span class="cn" id="appsN">0</span>
+  <!-- ===================== SCREEN: TODAY ===================== -->
+  <section class="screen" id="scrToday" data-screen-label="Today">
+    <div class="hone">
+      <div class="bigdate">
+        <span class="dow" id="todayDow"></span>
+        <h2 id="todayDate"></h2>
       </div>
-      <div id="appsActive"></div>
-      <button class="add-row" id="addAppBtn">+ Add app</button>
-      <div class="backlog" id="appsBacklogWrap">
-        <div class="backlog-head" id="appsBacklogHead">
-          <span class="bcaret">&#9662;</span> Backlog
-          <span class="bn" id="appsBacklogN">0</span>
+      <div class="infogrid">
+        <div class="info-card" id="wxCard">
+          <span class="ik">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17a4.5 4.5 0 0 1 0-9 5.5 5.5 0 0 1 10.6-1.3A4 4 0 0 1 18 17z"></path><path d="M8 20l-.5 1.5M12 20l-.5 1.5M16 20l-.5 1.5"></path></svg>
+            Weather
+          </span>
+          <span class="iv" id="wxMain">&mdash;</span>
+          <span class="is" id="wxSub">loading forecast&hellip;</span>
         </div>
-        <div class="backlog-body" id="appsBacklog"></div>
-      </div>
-    </div>
-
-    <!-- STUDY -->
-    <div class="col col-study">
-      <div class="col-head">
-        <span class="cdot"></span>
-        <span class="ctitle">Study</span>
-        <span class="cn" id="studyN">0</span>
-      </div>
-      <div id="studyActive"></div>
-      <button class="add-row" id="addStudyBtn">+ Add topic</button>
-      <div class="backlog" id="studyBacklogWrap">
-        <div class="backlog-head" id="studyBacklogHead">
-          <span class="bcaret">&#9662;</span> Backlog
-          <span class="bn" id="studyBacklogN">0</span>
+        <div class="info-card" id="trainCard">
+          <span class="ik">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="13" rx="3"></rect><path d="M5 10.5h14M9 20l-1.5 2M15 20l1.5 2M9.5 13.8h.01M14.5 13.8h.01"></path></svg>
+            Train
+          </span>
+          <span class="iv" id="trainMain">&mdash;</span>
+          <span class="is" id="trainSub">checking lines&hellip;</span>
         </div>
-        <div class="backlog-body" id="studyBacklog"></div>
+      </div>
+      <div class="sec-head hsec">
+        <span class="k">Top Tasks</span>
+        <span class="sub">weekly targets + today&rsquo;s schedule</span>
+        <span class="count" id="todayCount">0/0</span>
+      </div>
+      <div class="hrows" id="todayRows"></div>
+    </div>
+  </section>
+
+  <!-- ===================== SCREEN: CALENDAR ===================== -->
+  <section class="screen" id="scrCal" data-screen-label="Calendar">
+    <div class="hone">
+      <div class="sec-head hsec">
+        <span class="k">Calendar</span>
+        <span class="sub">tap a day &middot; schedule tasks from your pools</span>
+      </div>
+      <div class="cal-card" id="hCalCard">
+        <div class="cal-top">
+          <span class="cal-month" id="hCalMonth"></span>
+          <div class="cal-nav">
+            <button id="hCalPrev" aria-label="Previous"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3L5 8l5 5"></path></svg></button>
+            <button id="hCalNext" aria-label="Next"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3l5 5-5 5"></path></svg></button>
+            <button class="cal-expand" id="hCalExpand">Month</button>
+          </div>
+        </div>
+        <div class="dowhead"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+        <div class="weekstrip" id="hWeekstrip"></div>
+        <div class="monthgrid" id="hMonthgrid"></div>
+        <div class="daypanel">
+          <div class="daypanel-head">
+            <span class="d" id="hDayLabel"></span>
+            <span class="n" id="hDayN"></span>
+          </div>
+          <div class="hrows" id="hDayRows"></div>
+          <button class="add-row" id="hAddSched">+ Schedule a task from your pools</button>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- ===================== END OF WEEK ===================== -->
-  <section class="eow">
-    <div class="sec-head">
-      <span class="k">End of Week</span>
-      <span class="sub">close the loop before you re-curate</span>
-    </div>
-    <div class="eow-grid">
-      <div class="eow-field">
-        <label>What got done</label>
-        <textarea id="eowDone" data-act="eowDone" rows="3" placeholder="The wins worth logging&hellip;"></textarea>
+  <!-- ===================== SCREEN: ROUTINES ===================== -->
+  <section class="screen" id="scrRoutines" data-screen-label="Routines">
+    <div class="hone">
+      <div class="sec-head hsec">
+        <span class="k">Daily Routines</span>
+        <span class="sub">streaks &middot; quick links</span>
+        <span class="count" id="routineCount">0/0</span>
       </div>
-      <div class="eow-field">
-        <label>Carry over</label>
-        <textarea id="eowCarry" data-act="eowCarry" rows="3" placeholder="What rolls into next week&hellip;"></textarea>
-      </div>
-      <div class="eow-field full">
-        <label>Notes &amp; decisions</label>
-        <textarea id="eowNotes" data-act="eowNotes" rows="2" placeholder="Anything to remember&hellip;"></textarea>
-      </div>
+      <div class="hrows" id="routineRows"></div>
+      <button class="add-row" id="addRoutineBtn">+ Add routine</button>
     </div>
   </section>
+
+  <!-- ===================== SCREEN: WEEK (curation board) ===================== -->
+  <section class="screen" id="scrWeek" data-screen-label="Week">
+
+    <div class="weekbar">
+      <label class="weekfield">Week of
+        <input id="weekInput" type="text" placeholder="2026-06-08" data-act="week">
+      </label>
+    </div>
+
+    <!-- ===================== WEEKLY PULSE ===================== -->
+    <section class="pulse" id="pulse"></section>
+
+    <!-- ===================== THE FIVE ===================== -->
+    <section class="five">
+      <div class="sec-head">
+        <span class="k">The Five</span>
+        <span class="sub">the targets that actually have to move this week</span>
+        <span class="count" id="fiveCount">0/5</span>
+      </div>
+      <div class="five-grid" id="fiveGrid"></div>
+    </section>
+
+    <!-- ===================== SPECIAL ===================== -->
+    <section class="special" id="specialSec" style="display:none">
+      <div class="sec-head">
+        <span class="k">Special</span>
+        <span class="sub">life admin &amp; errands &mdash; visible, but never the focus</span>
+        <span class="count" id="specialCount"></span>
+        <button class="sp-mode-btn" id="specialModeBtn" title="Show only Special">Focus</button>
+        <button class="caret-btn sp-hide-btn" id="specialHideBtn" title="Hide / show section"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      </div>
+      <div class="sp-agenda" id="spAgenda" style="display:none"></div>
+      <div class="sp-grid" id="specialHost"></div>
+      <button class="add-row" id="addSpecialBtn">+ Add special list</button>
+    </section>
+
+    <!-- ===================== COLUMNS ===================== -->
+    <section class="cols cols-3">
+      <!-- APPS -->
+      <div class="col col-apps">
+        <div class="col-head">
+          <span class="cdot"></span>
+          <span class="ctitle">Apps</span>
+          <span class="cn" id="appsN">0</span>
+        </div>
+        <div id="appsActive"></div>
+        <button class="add-row" id="addAppBtn">+ Add app</button>
+        <div class="backlog" id="appsBacklogWrap">
+          <div class="backlog-head" id="appsBacklogHead">
+            <span class="bcaret">&#9662;</span> Backlog
+            <span class="bn" id="appsBacklogN">0</span>
+          </div>
+          <div class="backlog-body" id="appsBacklog"></div>
+        </div>
+      </div>
+
+      <!-- STUDY -->
+      <div class="col col-study">
+        <div class="col-head">
+          <span class="cdot"></span>
+          <span class="ctitle">Study</span>
+          <span class="cn" id="studyN">0</span>
+        </div>
+        <div id="studyActive"></div>
+        <button class="add-row" id="addStudyBtn">+ Add topic</button>
+        <div class="backlog" id="studyBacklogWrap">
+          <div class="backlog-head" id="studyBacklogHead">
+            <span class="bcaret">&#9662;</span> Backlog
+            <span class="bn" id="studyBacklogN">0</span>
+          </div>
+          <div class="backlog-body" id="studyBacklog"></div>
+        </div>
+      </div>
+
+      <!-- OFFICE -->
+      <div class="col col-office">
+        <div class="col-head">
+          <span class="cdot"></span>
+          <span class="ctitle">Office</span>
+          <span class="cn" id="officeN">0</span>
+        </div>
+        <div id="officeActive"></div>
+        <button class="add-row" id="addOfficeBtn">+ Add office task</button>
+        <div class="backlog" id="officeBacklogWrap">
+          <div class="backlog-head" id="officeBacklogHead">
+            <span class="bcaret">&#9662;</span> Backlog
+            <span class="bn" id="officeBacklogN">0</span>
+          </div>
+          <div class="backlog-body" id="officeBacklog"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== END OF WEEK ===================== -->
+    <section class="eow">
+      <div class="sec-head">
+        <span class="k">End of Week</span>
+        <span class="sub">close the loop before you re-curate</span>
+      </div>
+      <div class="eow-grid">
+        <div class="eow-field">
+          <label>What got done</label>
+          <textarea id="eowDone" data-act="eowDone" rows="3" placeholder="The wins worth logging&hellip;"></textarea>
+        </div>
+        <div class="eow-field">
+          <label>Carry over</label>
+          <textarea id="eowCarry" data-act="eowCarry" rows="3" placeholder="What rolls into next week&hellip;"></textarea>
+        </div>
+        <div class="eow-field full">
+          <label>Notes &amp; decisions</label>
+          <textarea id="eowNotes" data-act="eowNotes" rows="2" placeholder="Anything to remember&hellip;"></textarea>
+        </div>
+      </div>
+    </section>
+
+  </section><!-- /scrWeek -->
 
 </main>
+
+<!-- ===================== BOTTOM TABS ===================== -->
+<nav class="htabbar">
+  <div class="htabbar-in">
+    <button class="htab" data-screen="scrToday">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"></path></svg>
+      Today
+    </button>
+    <button class="htab" data-screen="scrCal">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"></rect><path d="M3.5 10h17M8 3v4M16 3v4"></path></svg>
+      Calendar
+    </button>
+    <button class="htab" data-screen="scrRoutines">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"></path><path d="M3 11V9a2 2 0 0 1 2-2h16"></path><path d="M7 21l-4-4 4-4"></path><path d="M21 13v2a2 2 0 0 1-2 2H3"></path></svg>
+      Routines
+    </button>
+    <button class="htab" data-screen="scrWeek">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.5" y="4" width="7" height="16" rx="1.8"></rect><rect x="13.5" y="4" width="7" height="10" rx="1.8"></rect></svg>
+      Week
+    </button>
+  </div>
+</nav>
 
 <!-- ===================== TARGET PICKER ===================== -->
 <div class="modal-bg" id="pickModal">
@@ -155,10 +287,59 @@
   </div>
 </div>
 
+<!-- ===================== SCHEDULE SHEET ===================== -->
+<div class="modal-bg" id="schedModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Schedule for <span id="schedDate"></span></h3>
+      <p>Pick an existing item from your pools &mdash; it shows up in Today on that date.</p>
+    </div>
+    <div class="sheet-tabs" id="schedTabs">
+      <button class="stab on" data-hkind="app">Apps</button>
+      <button class="stab study" data-hkind="study">Study</button>
+      <button class="stab office" data-hkind="office">Office</button>
+    </div>
+    <div class="modal-body" id="schedBody"></div>
+    <div class="modal-foot">
+      <button class="tbtn" id="schedClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ROUTINE EDITOR ===================== -->
+<div class="modal-bg" id="routineModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="rtTitle">Add routine</h3>
+      <p>Runs on the days you pick, in one mode. Links open with one tap.</p>
+    </div>
+    <div class="modal-body" style="padding:16px 20px;">
+      <div class="cfield"><label>Name</label><input id="rtName" type="text" autocomplete="off" placeholder="e.g. Gym"></div>
+      <div class="cfield"><label>Days</label>
+        <div class="daypick" id="rtDays">
+          <button type="button" data-hday="1">M</button><button type="button" data-hday="2">T</button><button type="button" data-hday="3">W</button><button type="button" data-hday="4">T</button><button type="button" data-hday="5">F</button><button type="button" data-hday="6">S</button><button type="button" data-hday="0">S</button>
+        </div>
+      </div>
+      <div class="cfield"><label>Mode</label>
+        <div class="daypick modepick" id="rtMode">
+          <button type="button" data-hmode="personal" class="on">Personal</button><button type="button" data-hmode="office">Office</button>
+        </div>
+      </div>
+      <div class="cfield"><label>Links (one per line: Label | https://url)</label><textarea id="rtLinks" rows="3" placeholder="Anki | https://ankiweb.net"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="tbtn danger" id="rtDelete" style="display:none">Delete</button>
+      <button class="tbtn primary" id="rtSave">Save</button>
+      <button class="tbtn" id="rtClose">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <datalist id="grp-app"></datalist>
 <datalist id="grp-study"></datalist>
+<datalist id="grp-office"></datalist>
 
 <!-- ===================== ADD ITEM ===================== -->
 <div class="modal-bg" id="addModal">
@@ -205,13 +386,14 @@
       </div>
     </div>
     <div class="modal-foot">
-      <span class="buildtag">build 15 &middot; cloud-first</span>
+      <span class="buildtag">build 16 &middot; modes + screens</span>
       <button class="tbtn" id="cloudClose">Done</button>
     </div>
   </div>
 </div>
 
 <script src="config.js"></script>
+<script src="info-feeds.js"></script>
 <script src="weekly-focus-app.js"></script>
 <script>
   // inject toolbar icons + labels (kept out of markup for clarity)
