@@ -429,6 +429,18 @@ button { font-family: inherit; }
 .cat-gp { color: var(--cat-gp); } .cat-mech { color: var(--cat-mech); }
 .cat-lang { color: var(--cat-lang); } .cat-other { color: var(--cat-other); }
 
+/* view toggle (Flat / Groups) + category tags on cards */
+.viewbar { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin: 2px 0 10px; }
+.vb-k { font-size: 9.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+.vb-seg { display: inline-flex; border: 1px solid var(--hair); border-radius: 9px; overflow: hidden; background: var(--card); }
+.vb-seg button { border: none; background: none; font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--mid); padding: 5px 13px; cursor: pointer; transition: background .12s, color .12s; }
+.vb-seg button + button { border-left: 1px solid var(--hair); }
+.vb-seg button.on { background: var(--brand); color: #fff; }
+.gtag { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; margin-top: 3px; }
+.gtag .gdot { width: 6px; height: 6px; border-radius: 2px; background: currentColor; }
+.brow .gtag { margin: 0 0 0 8px; flex: 0 0 auto; }
+@media print { .viewbar { display: none; } }
+
 /* empty zone */
 .empty-zone {
   font-size: 12.5px; color: var(--faint); line-height: 1.55; text-align: center;

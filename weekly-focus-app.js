@@ -151,6 +151,11 @@
   var CAT_CLASS = { "General Purpose": "cat-gp", "Mechanical": "cat-mech", "Language Study": "cat-lang", "Other": "cat-other" };
   var PRI_RANK = { H: 0, M: 1, L: 2 };
 
+  /* view: false = flat list, categories shown as tags on cards (default);
+           true  = classic category sections. Persisted UI preference. */
+  var VIEW_GROUPED = false;
+  try { VIEW_GROUPED = localStorage.getItem("wf2_view_grouped") === "1"; } catch (e) {}
+
   /* ---------------- subtask progress ---------------- */
   function subs(k) { var a = getEntry(k).subtasks; return Array.isArray(a) ? a : []; }
   function subProgress(k) { var a = visibleSubs(subs(k)); if (!a.length) return null; var d = a.filter(function (x) { return x.done; }).length; return { done: d, total: a.length, pct: d / a.length }; }
@@ -549,25 +554,36 @@
 
     if (!arr.length) host.innerHTML = emptyZone("No " + ids.noun + "s yet. Tap <b>+ Add " + ids.noun + "</b> below to create your first one." + (cloudConfigured() ? "" : "<br><span class='ez-dim'>Connect <b>Cloud</b> to sync across your devices.</span>"));
     else if (!active.length) host.innerHTML = emptyZone("Nothing active. Switch a " + ids.noun + " on from the backlog, or add a new one.");
-    else groupItems(active, kind, true).forEach(function (g) {
+    else if (VIEW_GROUPED) groupItems(active, kind, true).forEach(function (g) {
       host.appendChild(catHead(kind, g.group, g.items.length));
       g.items.forEach(function (it) { host.appendChild(itemCard(it.id)); });
     });
+    else flatSortActive(active).forEach(function (it) { host.appendChild(itemCard(it.id)); });
 
     $(ids.wrap).style.display = backlog.length ? "" : "none";
     $(ids.bn).textContent = backlog.length;
-    if (backlog.length) groupItems(backlog, kind, false).forEach(function (g) {
-      back.appendChild(catHead(kind, g.group, g.items.length));
-      var ul = document.createElement("ul"); ul.className = "brows";
-      g.items.forEach(function (it) {
-        var li = document.createElement("li"); li.className = "brow"; li.setAttribute("data-key", it.id); li.setAttribute("draggable", "true");
-        li.innerHTML = '<button class="tgl tgl-sm" data-act="on" title="Bring into This Week"><span class="knob"></span></button>' +
-          '<span class="bname">' + esc(it.name) + '</span>' +
-          '<button class="brow-del" data-act="del" title="Delete forever">' + IC.trash + '</button>';
-        ul.appendChild(li);
+    function brow(it) {
+      var li = document.createElement("li"); li.className = "brow"; li.setAttribute("data-key", it.id); li.setAttribute("draggable", "true");
+      li.innerHTML = '<button class="tgl tgl-sm" data-act="on" title="Bring into This Week"><span class="knob"></span></button>' +
+        '<span class="bname">' + esc(it.name) + '</span>' +
+        (VIEW_GROUPED ? '' : gtagHtml(kind, it.group)) +
+        '<button class="brow-del" data-act="del" title="Delete forever">' + IC.trash + '</button>';
+      return li;
+    }
+    if (backlog.length) {
+      if (VIEW_GROUPED) groupItems(backlog, kind, false).forEach(function (g) {
+        back.appendChild(catHead(kind, g.group, g.items.length));
+        var ul = document.createElement("ul"); ul.className = "brows";
+        g.items.forEach(function (it) { ul.appendChild(brow(it)); });
+        back.appendChild(ul);
       });
-      back.appendChild(ul);
-    });
+      else {
+        var ul2 = document.createElement("ul"); ul2.className = "brows";
+        backlog.slice().sort(function (a, b) { return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); })
+          .forEach(function (it) { ul2.appendChild(brow(it)); });
+        back.appendChild(ul2);
+      }
+    }
   }
   function groupItems(arr, kind, sortPri) {
     var groups = [];
@@ -578,6 +594,8 @@
       var items = arr.filter(function (a) { return a.group === gr; });
       items.sort(sortPri
         ? function (a, b) {
+            var sa = isTarget(a.id) ? 0 : 1, sb2 = isTarget(b.id) ? 0 : 1;   // starred first
+            if (sa !== sb2) return sa - sb2;
             var oa = ordOf(a.id), ob = ordOf(b.id);
             if (oa != null && ob != null) return oa - ob;
             if (oa != null) return -1; if (ob != null) return 1;
@@ -596,6 +614,28 @@
   }
   function emptyZone(html) { return '<div class="empty-zone">' + html + '</div>'; }
 
+  /* flat view: starred (The Five) pulled to the top in Five order, then manual
+     order, then priority, then name */
+  function flatSortActive(arr) {
+    return arr.slice().sort(function (a, b) {
+      var sa = isTarget(a.id) ? 0 : 1, sb2 = isTarget(b.id) ? 0 : 1;
+      if (sa !== sb2) return sa - sb2;
+      if (!sa) return targetOrder.indexOf(a.id) - targetOrder.indexOf(b.id);
+      var oa = ordOf(a.id), ob = ordOf(b.id);
+      if (oa != null && ob != null) return oa - ob;
+      if (oa != null) return -1; if (ob != null) return 1;
+      return (priRankOf(a.id) - priRankOf(b.id)) || a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    });
+  }
+
+  /* small category tag shown on cards in flat view */
+  function gtagHtml(kind, group) {
+    if (!group || (group || "").trim().toLowerCase() === "special") return "";
+    var cls = kind === "app" ? (CAT_CLASS[group] || "cat-other") : "";
+    var style = kind === "app" ? "" : ' style="color:oklch(0.55 0.13 ' + hueFor(group) + ')"';
+    return '<span class="gtag ' + cls + '"' + style + '><span class="gdot"></span>' + esc(group) + '</span>';
+  }
+
   /* ---- shared item card ---- */
   function itemCard(id) {
     var open = !!detailOpen[id], prog = subProgress(id), pri = priOf(id);
@@ -611,7 +651,7 @@
     li.innerHTML =
       '<div class="item-row">' +
         '<div class="item-grip" data-act="open">' +
-          '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div></div>' +
+          '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div>' + (!VIEW_GROUPED && it ? gtagHtml(kindOf(id), it.group) : '') + '</div>' +
         '</div>' +
         '<div class="item-actions">' + ring +
           '<button class="star' + (starOn ? " on" : "") + '" data-act="star"' + (starFull ? " disabled" : "") + ' title="' + (starOn ? "In The Five" : starFull ? "The Five is full" : "Add to The Five") + '">' + IC.star + '</button>' +
@@ -1130,20 +1170,32 @@
 
   function reorderActiveItem(kind, dragId, beforeId) {
     var it0 = itemById(dragId); if (!it0) return; var grp = it0.group;
-    var inGroup = activeItems(kind).filter(function (x) { return x.group === grp; });
-    inGroup.sort(function (a, b) {
-      var oa = ordOf(a.id), ob = ordOf(b.id);
-      if (oa != null && ob != null) return oa - ob;
-      if (oa != null) return -1; if (ob != null) return 1;
-      return (priRankOf(a.id) - priRankOf(b.id)) || a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-    });
-    var ids = inGroup.map(function (x) { return x.id; });
+    var pool = VIEW_GROUPED
+      ? activeItems(kind).filter(function (x) { return x.group === grp; })
+      : activeItems(kind).filter(function (x) { return !isSpecialItem(x); });
+    pool = flatSortActive(pool);   // mirrors render order in both views
+    var ids = pool.map(function (x) { return x.id; });
     var from = ids.indexOf(dragId); if (from >= 0) ids.splice(from, 1);
     var at = ids.length;
-    if (beforeId && itemById(beforeId) && itemById(beforeId).group === grp) { var bi = ids.indexOf(beforeId); if (bi >= 0) at = bi; }
+    if (beforeId && itemById(beforeId) && (!VIEW_GROUPED || itemById(beforeId).group === grp)) { var bi = ids.indexOf(beforeId); if (bi >= 0) at = bi; }
     ids.splice(at, 0, dragId);
     ids.forEach(function (id, i) { entries[id] = Object.assign({}, entries[id], { ord: i }); cloudPushEntry(id, entries[id]); });
     save();
+  }
+
+  /* Flat / Groups view toggle */
+  function wireViewToggle() {
+    var f = $("viewFlatBtn"), g = $("viewGroupBtn");
+    if (!f || !g) return;
+    function paint() { f.classList.toggle("on", !VIEW_GROUPED); g.classList.toggle("on", VIEW_GROUPED); }
+    function set(v) {
+      VIEW_GROUPED = v;
+      try { localStorage.setItem("wf2_view_grouped", v ? "1" : "0"); } catch (e) {}
+      paint(); renderColumn("app"); renderColumn("study"); renderColumn("office");
+    }
+    f.onclick = function () { set(false); };
+    g.onclick = function () { set(true); };
+    paint();
   }
 
   /* ---- Special: pointer-based reorder (works on touch too) ---- */
@@ -2052,6 +2104,7 @@
       try { if (localStorage.getItem("wf2_special_mode") === "1") applySpecialMode(true); } catch (e) {}
     }
     wireSpecialDrag();
+    wireViewToggle();
     var shb = $("specialHideBtn");
     if (shb) {
       shb.onclick = function () {
