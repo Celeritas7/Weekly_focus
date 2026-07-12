@@ -907,6 +907,8 @@
     sb = window.supabase.createClient(cloud.url, cloud.key, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "wf2_sb_auth" }
     });
+    window.__wfSb = sb;   // shared with wf-cc-bridge-v2.js so it uses this signed-in session
+
     var sub = sb.auth.onAuthStateChange(function (event, sess) {
       session = sess || null;
       renderAuthUI(); updateCloudStatus();
