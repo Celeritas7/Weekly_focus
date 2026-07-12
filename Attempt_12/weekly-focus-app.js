@@ -455,129 +455,10 @@
     });
     return items;
   }
-  /* ---- Timeline mode (Special): day-grouped note log + dated tasks.
-     Notes ride on a reserved "__timeline" entry row — synced like everything else. ---- */
-  var TL_ITEM = "__timeline";
-  var TL_VIEW = false; try { TL_VIEW = localStorage.getItem("wf2_special_tl") === "1"; } catch (e) {}
-  var TL_SHOW_DONE = false;
-  function tlNotes() { var e = entries[TL_ITEM]; return (e && Array.isArray(e.notes)) ? e.notes : []; }
-  function tlSave(notes) { entries[TL_ITEM] = Object.assign({}, entries[TL_ITEM], { notes: notes, u: Date.now() }); save(); cloudPushEntry(TL_ITEM, entries[TL_ITEM]); }
-  function tlDayKey(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
-  function tlDayLabel(k) {
-    var t0 = new Date(), t1 = new Date(), y1 = new Date();
-    t1.setDate(t1.getDate() + 1); y1.setDate(y1.getDate() - 1);
-    if (k === tlDayKey(t0)) return "Today";
-    if (k === tlDayKey(t1)) return "Tomorrow";
-    if (k === tlDayKey(y1)) return "Yesterday";
-    var p = k.split("-"), d = new Date(+p[0], +p[1] - 1, +p[2]);
-    var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    return DOW[d.getDay()] + " " + d.getDate() + " " + MON[d.getMonth()];
-  }
-  function paintTlSeg() {
-    var c = $("spViewCards"), t = $("spViewTl");
-    if (c) c.classList.toggle("on", !TL_VIEW);
-    if (t) t.classList.toggle("on", TL_VIEW);
-  }
-  function renderTimeline(items, host) {
-    var today = tlDayKey(new Date());
-    var groups = {}, pastHidden = 0, doneHidden = 0;
-    function push(k, row) { (groups[k] = groups[k] || []).push(row); }
-    tlNotes().forEach(function (n) {
-      var k = (n.ts || "").slice(0, 10) || today;
-      if (n.done && !TL_SHOW_DONE) { doneHidden++; return; }
-      if (k < today && !TL_SHOW_DONE) { pastHidden++; return; }
-      push(k, { type: "note", n: n });
-    });
-    items.forEach(function (it) {
-      visibleSubs(subs(it.id)).forEach(function (x) {
-        if (!x.when) return;
-        var k = x.when.slice(0, 10);
-        if (x.done && !TL_SHOW_DONE) { doneHidden++; return; }
-        if (k < today && !TL_SHOW_DONE && x.done) return;
-        if (k < today && !TL_SHOW_DONE) { pastHidden++; return; }
-        push(k, { type: "task", it: it, x: x });
-      });
-    });
-    var keys = Object.keys(groups).sort();
-    var hid = pastHidden + doneHidden;
-    var html = '<div class="tl">' +
-      '<div class="tl-add"><input id="tlNew" placeholder="Log a note — lands under Today…"><button id="tlAddBtn" type="button">Add</button>' +
-      '<button class="tl-showdone' + (TL_SHOW_DONE ? " on" : "") + '" id="tlShowDone" type="button">' + (TL_SHOW_DONE ? "Hide done & past" : "Show done & past" + (hid ? " (" + hid + ")" : "")) + '</button></div>';
-    if (!keys.length) html += '<div class="tl-empty">Nothing on the timeline yet — log a note above, or put a date on a Special task and it shows up here.</div>';
-    keys.forEach(function (k) {
-      var isPast = k < today;
-      html += '<div class="tl-day' + (k === today ? " now" : isPast ? " past" : "") + '"><span class="tl-dot"></span><span class="tl-dl">' + tlDayLabel(k) + '</span></div>';
-      groups[k].sort(function (a, b) {
-        var ta = a.type === "note" ? (a.n.ts || "") : (a.x.when || "");
-        var tb = b.type === "note" ? (b.n.ts || "") : (b.x.when || "");
-        return ta < tb ? -1 : ta > tb ? 1 : 0;
-      });
-      groups[k].forEach(function (r) {
-        if (r.type === "note") {
-          var tm = (r.n.ts || "").slice(11, 16);
-          html += '<div class="tl-row note' + (r.n.done ? " done" : "") + '" data-nid="' + esc(r.n.id) + '">' +
-            '<button class="sub-check' + (r.n.done ? " on" : "") + '" data-tlact="done" aria-label="done" title="Mark done"></button>' +
-            '<span class="tl-txt">' + esc(r.n.t) + '</span>' +
-            (tm ? '<span class="tl-time">' + tm + '</span>' : '') +
-            '<button class="sub-del" data-tlact="del" title="Delete note">×</button></div>';
-        } else {
-          var v = whenView(r.x), tmv = r.x.when.length > 10 ? r.x.when.slice(11, 16) : "";
-          html += '<div class="tl-row task' + (r.x.done ? " done" : "") + '" data-key="' + esc(r.it.id) + '" data-sid="' + esc(r.x.id) + '" style="--sp-h:' + hueFor(r.it.name) + '">' +
-            '<button class="sub-check' + (r.x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
-            '<span class="tl-txt">' + esc(r.x.t || "task") + '</span>' +
-            '<span class="tl-src">' + esc(r.it.name) + '</span>' +
-            (tmv ? '<span class="tl-time">' + tmv + '</span>' : (v && !r.x.done ? '<span class="tl-chip' + (v.w.pastDue ? " od" : "") + '">' + esc(v.rel) + '</span>' : '')) +
-            '</div>';
-        }
-      });
-    });
-    html += '</div>';
-    host.innerHTML = html;
-  }
-  function wireTimeline() {
-    var host = $("specialHost"); if (!host) return;
-    function tlAddFromInput() {
-      var inp = $("tlNew"); if (!inp) return;
-      var t = (inp.value || "").trim(); if (!t) return;
-      var notes = tlNotes().slice();
-      notes.push({ id: uid(), t: t, ts: new Date().toISOString(), done: false });
-      tlSave(notes); renderSpecial();
-      var again = $("tlNew"); if (again) again.focus();
-    }
-    host.addEventListener("click", function (e) {
-      if (e.target.id === "tlAddBtn") { tlAddFromInput(); return; }
-      if (e.target.closest && e.target.closest("#tlShowDone")) { TL_SHOW_DONE = !TL_SHOW_DONE; renderSpecial(); return; }
-      var nb = e.target.closest && e.target.closest("[data-tlact]"); if (!nb) return;
-      var row = nb.closest("[data-nid]"); if (!row) return;
-      var nid = row.getAttribute("data-nid"), act = nb.getAttribute("data-tlact");
-      var notes = tlNotes().slice();
-      if (act === "done") notes = notes.map(function (n) { return n.id === nid ? Object.assign({}, n, { done: !n.done }) : n; });
-      if (act === "del") notes = notes.filter(function (n) { return n.id !== nid; });
-      tlSave(notes); renderSpecial();
-    });
-    host.addEventListener("keydown", function (e) { if (e.target.id === "tlNew" && e.key === "Enter") { e.preventDefault(); tlAddFromInput(); } });
-    function setView(v) {
-      TL_VIEW = v;
-      try { localStorage.setItem("wf2_special_tl", v ? "1" : "0"); } catch (x) {}
-      renderSpecial();
-    }
-    var c = $("spViewCards"), t = $("spViewTl");
-    if (c) c.onclick = function () { setView(false); };
-    if (t) t.onclick = function () { setView(true); };
-  }
-
   function renderSpecial() {
     var sec = $("specialSec"), host = $("specialHost"); if (!sec || !host) return;
     var items = specialSorted();
-    sec.style.display = (items.length || tlNotes().length || document.body.classList.contains("special-mode")) ? "" : "none";
-    paintTlSeg();
-    var asb2 = $("addSpecialBtn"); if (asb2) asb2.style.display = TL_VIEW ? "none" : "";
-    if (TL_VIEW) {
-      var ag0 = $("spAgenda"); if (ag0) ag0.style.display = "none";
-      renderTimeline(items, host);
-      var cnt0 = $("specialCount"); if (cnt0) cnt0.textContent = "";
-      return;
-    }
+    sec.style.display = (items.length || document.body.classList.contains("special-mode")) ? "" : "none";
     renderAgenda(items);
     host.innerHTML = "";
     var totDone = 0, tot = 0;
@@ -1026,8 +907,6 @@
     sb = window.supabase.createClient(cloud.url, cloud.key, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "wf2_sb_auth" }
     });
-    window.__wfSb = sb;   // shared with wf-cc-bridge-v2.js so it uses this signed-in session
-
     var sub = sb.auth.onAuthStateChange(function (event, sess) {
       session = sess || null;
       renderAuthUI(); updateCloudStatus();
@@ -2225,7 +2104,6 @@
       try { if (localStorage.getItem("wf2_special_mode") === "1") applySpecialMode(true); } catch (e) {}
     }
     wireSpecialDrag();
-    wireTimeline();
     wireViewToggle();
     var shb = $("specialHideBtn");
     if (shb) {

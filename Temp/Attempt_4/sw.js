@@ -3,11 +3,10 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v25";
+const CACHE = "weekly-focus-v7";
 const ASSETS = [
   "./", "./index.html",
-  "./config.js",
-  "./weekly-focus.css", "./home-screens.css", "./weekly-focus-app.js", "./info-feeds.js", "./wf-cc-bridge-v2.js",
+  "./weekly-focus.css", "./weekly-focus-app.js",
   "./manifest.webmanifest",
   "./icon-180.png", "./icon-192.png", "./icon-512.png"
 ];
@@ -41,7 +40,17 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Static same-origin assets (css/js/icons): cache-first, then network (and cache it).
+  // The app bundle: network-first too — a stale cached JS build silently breaks sync.
+  if (url.pathname.endsWith("/weekly-focus-app.js")) {
+    e.respondWith(
+      fetch(req)
+        .then((r) => { const cp = r.clone(); caches.open(CACHE).then((c) => c.put(req, cp)); return r; })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Static same-origin assets (css/icons): cache-first, then network (and cache it).
   e.respondWith(
     caches.match(req).then((c) => c || fetch(req).then((r) => {
       const cp = r.clone(); caches.open(CACHE).then((cache) => cache.put(req, cp)); return r;
