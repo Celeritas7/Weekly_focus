@@ -372,12 +372,12 @@
   }
 
   /* ---- task sheet: date + time + mode + urgent in one tap-friendly editor ---- */
-  var TSK = { key: null, sid: null, date: "", time: "", md: "b", urg: false };
+  var TSK = { key: null, sid: null, date: "", time: "", md: "b", urg: false, loc: "" };
   var TK_TIMES = ["", "09:00", "12:00", "15:00", "18:00", "21:00"];
   function openTaskSheet(key, sid) {
     var x = null; normSubs(subs(key)).forEach(function (s) { if (s.id === sid) x = s; });
     if (!x) return;
-    TSK = { key: key, sid: sid, date: (x.when || "").slice(0, 10), time: (x.when || "").length > 10 ? x.when.slice(11, 16) : "", md: x.md || "b", urg: !!x.urg, dl: !!x.dl };
+    TSK = { key: key, sid: sid, date: (x.when || "").slice(0, 10), time: (x.when || "").length > 10 ? x.when.slice(11, 16) : "", md: x.md || "b", urg: !!x.urg, dl: !!x.dl, loc: x.loc || "" };
     $("tkName").textContent = x.t || "task";
     renderTaskSheet();
     $("taskModal").classList.add("open");
@@ -404,6 +404,14 @@
     $("tkMode").innerHTML = [["p", "Personal"], ["o", "Office"], ["b", "Both"]].map(function (m) {
       return '<button type="button" class="chip' + (TSK.md === m[0] ? " on" : "") + '" data-tkmd="' + m[0] + '">' + m[1] + "</button>";
     }).join("");
+    var lel = $("tkLoc");
+    if (lel) {
+      var lsg = locSuggestions();
+      if (TSK.loc && lsg.map(function (l) { return l.toLowerCase(); }).indexOf(TSK.loc.toLowerCase()) < 0) lsg.push(TSK.loc);
+      lel.innerHTML = '<button type="button" class="chip' + (!TSK.loc ? " on" : "") + '" data-tkloc="">No place</button>' +
+        lsg.map(function (l) { return '<button type="button" class="chip' + (l.toLowerCase() === TSK.loc.toLowerCase() ? " on" : "") + '" data-tkloc="' + esc(l) + '">' + esc(l) + "</button>"; }).join("") +
+        '<button type="button" class="chip" data-tklocnew="1">+ New…</button>';
+    }
     var ub = $("tkUrg");
     ub.classList.toggle("on", TSK.urg);
     ub.innerHTML = IC.flag + "<span>" + (TSK.urg ? "Urgent \u2014 pinned on top in red" : "Mark as urgent") + "</span>";
@@ -419,7 +427,7 @@
   }
   function saveTaskSheet() {
     var when = TSK.date ? TSK.date + (TSK.time ? "T" + TSK.time : "") : "";
-    patch(TSK.key, { subtasks: normSubs(subs(TSK.key)).map(function (x) { return x.id === TSK.sid ? Object.assign({}, x, { when: when, md: TSK.md, urg: TSK.urg, dl: !!(TSK.dl && TSK.date), u: Date.now() }) : x; }) });
+    patch(TSK.key, { subtasks: normSubs(subs(TSK.key)).map(function (x) { return x.id === TSK.sid ? Object.assign({}, x, { when: when, md: TSK.md, urg: TSK.urg, dl: !!(TSK.dl && TSK.date), loc: TSK.loc || "", u: Date.now() }) : x; }) });
     $("taskModal").classList.remove("open");
     renderCols(); renderHome();
     toast("Task updated.");
@@ -428,9 +436,11 @@
     var tm = $("taskModal"); if (!tm) return;
     tm.addEventListener("click", function (e) {
       if (e.target === tm) { tm.classList.remove("open"); return; }
-      var b = e.target.closest("[data-tkdate],[data-tktime],[data-tkmd]");
+      var b = e.target.closest("[data-tkdate],[data-tktime],[data-tkmd],[data-tkloc],[data-tklocnew]");
       if (!b) return;
-      if (b.hasAttribute("data-tkdate")) { TSK.date = b.getAttribute("data-tkdate"); if (!TSK.date) TSK.time = ""; }
+      if (b.hasAttribute("data-tklocnew")) { var nl = (prompt("Place name (e.g. Home, Shin-\u014ckubo):") || "").trim(); if (nl) TSK.loc = nl; }
+      else if (b.hasAttribute("data-tkloc")) TSK.loc = b.getAttribute("data-tkloc");
+      else if (b.hasAttribute("data-tkdate")) { TSK.date = b.getAttribute("data-tkdate"); if (!TSK.date) TSK.time = ""; }
       else if (b.hasAttribute("data-tktime")) TSK.time = b.getAttribute("data-tktime");
       else TSK.md = b.getAttribute("data-tkmd");
       renderTaskSheet();
@@ -457,9 +467,32 @@
   }
   /* ---- Timeline mode (Special): day-grouped note log + dated tasks.
      Notes ride on a reserved "__timeline" entry row — synced like everything else. ---- */
-  var TL_ITEM = "__timeline";
-  var TL_VIEW = false; try { TL_VIEW = localStorage.getItem("wf2_special_tl") === "1"; } catch (e) {}
+  var TL_ITEM = "__timeline", IB_ITEM = "__inbox";
+  var SP_VIEW = "cards"; try { SP_VIEW = localStorage.getItem("wf2_special_view") || (localStorage.getItem("wf2_special_tl") === "1" ? "tl" : "cards"); } catch (e) {}
   var TL_SHOW_DONE = false;
+  var TL_LOC = ""; try { TL_LOC = localStorage.getItem("wf2_tl_loc") || ""; } catch (e) {}
+  var TL_NEW_LOC = "";
+  function ibItems() { var e = entries[IB_ITEM]; return (e && Array.isArray(e.items)) ? e.items : []; }
+  function ibSave(items) { entries[IB_ITEM] = Object.assign({}, entries[IB_ITEM], { items: items, u: Date.now() }); save(); cloudPushEntry(IB_ITEM, entries[IB_ITEM]); }
+  function nowLocalTs() { var d = new Date(); return tlDayKey(d) + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+  function locSuggestions() {
+    var seen = {}, out = [];
+    function add(n) { n = (n || "").trim(); if (!n) return; var k = n.toLowerCase(); if (!seen[k]) { seen[k] = 1; out.push(n); } }
+    add("Home"); add("Out");
+    placeList().forEach(function (p) { add(p.name); });
+    tlNotes().forEach(function (n) { add(n.loc); });
+    ibItems().forEach(function (n) { add(n.loc); });
+    specialSorted().forEach(function (it) { normSubs(subs(it.id)).forEach(function (x) { add(x.loc); }); });
+    return out;
+  }
+  function locChipHtml(loc) {
+    if (!loc) return "";
+    return '<span class="tl-locchip" style="--sp-h:' + hueFor(loc) + '">' + esc(loc) + '</span>';
+  }
+  function tlNewLocSel() {
+    return '<select id="tlNewLoc" title="Place for this note"><option value="">\ud83d\udccd No place</option>' +
+      locSuggestions().map(function (l) { return '<option value="' + esc(l) + '"' + (l === TL_NEW_LOC ? " selected" : "") + '>' + esc(l) + '</option>'; }).join("") + '</select>';
+  }
   function tlNotes() { var e = entries[TL_ITEM]; return (e && Array.isArray(e.notes)) ? e.notes : []; }
   function tlSave(notes) { entries[TL_ITEM] = Object.assign({}, entries[TL_ITEM], { notes: notes, u: Date.now() }); save(); cloudPushEntry(TL_ITEM, entries[TL_ITEM]); }
   function tlDayKey(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
@@ -474,36 +507,39 @@
     return DOW[d.getDay()] + " " + d.getDate() + " " + MON[d.getMonth()];
   }
   function paintTlSeg() {
-    var c = $("spViewCards"), t = $("spViewTl");
-    if (c) c.classList.toggle("on", !TL_VIEW);
-    if (t) t.classList.toggle("on", TL_VIEW);
+    var c = $("spViewCards"), t = $("spViewTl"), i = $("spViewInbox");
+    if (c) c.classList.toggle("on", SP_VIEW === "cards");
+    if (t) t.classList.toggle("on", SP_VIEW === "tl");
+    if (i) { i.classList.toggle("on", SP_VIEW === "inbox"); var n = ibItems().length; i.textContent = "Inbox" + (n ? " (" + n + ")" : ""); }
   }
   function renderTimeline(items, host) {
     var today = tlDayKey(new Date());
-    var groups = {}, pastHidden = 0, doneHidden = 0;
-    function push(k, row) { (groups[k] = groups[k] || []).push(row); }
-    tlNotes().forEach(function (n) {
-      var k = (n.ts || "").slice(0, 10) || today;
-      if (n.done && !TL_SHOW_DONE) { doneHidden++; return; }
-      if (k < today && !TL_SHOW_DONE) { pastHidden++; return; }
-      push(k, { type: "note", n: n });
-    });
+    var all = [], usedLocs = [], seenLoc = {};
+    function markLoc(l) { l = (l || "").trim(); if (l && !seenLoc[l.toLowerCase()]) { seenLoc[l.toLowerCase()] = 1; usedLocs.push(l); } }
+    tlNotes().forEach(function (n) { markLoc(n.loc); all.push({ type: "note", n: n, k: (n.ts || "").slice(0, 10) || today, done: !!n.done, loc: (n.loc || "").trim() }); });
     items.forEach(function (it) {
       visibleSubs(subs(it.id)).forEach(function (x) {
         if (!x.when) return;
-        var k = x.when.slice(0, 10);
-        if (x.done && !TL_SHOW_DONE) { doneHidden++; return; }
-        if (k < today && !TL_SHOW_DONE && x.done) return;
-        if (k < today && !TL_SHOW_DONE) { pastHidden++; return; }
-        push(k, { type: "task", it: it, x: x });
+        markLoc(x.loc);
+        all.push({ type: "task", it: it, x: x, k: x.when.slice(0, 10), done: !!x.done, loc: (x.loc || "").trim() });
       });
+    });
+    if (TL_LOC && !seenLoc[TL_LOC.toLowerCase()]) TL_LOC = "";
+    var groups = {}, pastHidden = 0, doneHidden = 0, locHidden = 0;
+    all.forEach(function (r) {
+      if (TL_LOC && r.loc.toLowerCase() !== TL_LOC.toLowerCase()) { locHidden++; return; }
+      if (r.done && !TL_SHOW_DONE) { doneHidden++; return; }
+      if (r.k < today && !TL_SHOW_DONE) { pastHidden++; return; }
+      (groups[r.k] = groups[r.k] || []).push(r);
     });
     var keys = Object.keys(groups).sort();
     var hid = pastHidden + doneHidden;
+    var locbar = usedLocs.length ? '<div class="tl-locbar"><button type="button" class="tl-locbtn' + (!TL_LOC ? " on" : "") + '" data-tlloc="">All places</button>' +
+      usedLocs.map(function (l) { return '<button type="button" class="tl-locbtn' + (TL_LOC.toLowerCase() === l.toLowerCase() ? " on" : "") + '" data-tlloc="' + esc(l) + '" style="--sp-h:' + hueFor(l) + '"><span class="gdot"></span>' + esc(l) + '</button>'; }).join("") + '</div>' : "";
     var html = '<div class="tl">' +
-      '<div class="tl-add"><input id="tlNew" placeholder="Log a note — lands under Today…"><button id="tlAddBtn" type="button">Add</button>' +
-      '<button class="tl-showdone' + (TL_SHOW_DONE ? " on" : "") + '" id="tlShowDone" type="button">' + (TL_SHOW_DONE ? "Hide done & past" : "Show done & past" + (hid ? " (" + hid + ")" : "")) + '</button></div>';
-    if (!keys.length) html += '<div class="tl-empty">Nothing on the timeline yet — log a note above, or put a date on a Special task and it shows up here.</div>';
+      '<div class="tl-add"><input id="tlNew" placeholder="Log a note — lands under Today…">' + tlNewLocSel() + '<button id="tlAddBtn" type="button">Add</button>' +
+      '<button class="tl-showdone' + (TL_SHOW_DONE ? " on" : "") + '" id="tlShowDone" type="button">' + (TL_SHOW_DONE ? "Hide done & past" : "Show done & past" + (hid ? " (" + hid + ")" : "")) + '</button></div>' + locbar;
+    if (!keys.length) html += '<div class="tl-empty">' + (TL_LOC ? "Nothing at “" + esc(TL_LOC) + "” — switch place, or tag more tasks with it." : "Nothing on the timeline yet — log a note above, or put a date on a Special task and it shows up here.") + '</div>';
     keys.forEach(function (k) {
       var isPast = k < today;
       html += '<div class="tl-day' + (k === today ? " now" : isPast ? " past" : "") + '"><span class="tl-dot"></span><span class="tl-dl">' + tlDayLabel(k) + '</span></div>';
@@ -514,10 +550,11 @@
       });
       groups[k].forEach(function (r) {
         if (r.type === "note") {
-          var tm = (r.n.ts || "").slice(11, 16);
+          var tm = (r.n.ts || "").length > 10 ? (r.n.ts || "").slice(11, 16) : "";
           html += '<div class="tl-row note' + (r.n.done ? " done" : "") + '" data-nid="' + esc(r.n.id) + '">' +
             '<button class="sub-check' + (r.n.done ? " on" : "") + '" data-tlact="done" aria-label="done" title="Mark done"></button>' +
             '<span class="tl-txt">' + esc(r.n.t) + '</span>' +
+            locChipHtml(r.loc) +
             (tm ? '<span class="tl-time">' + tm + '</span>' : '') +
             '<button class="sub-del" data-tlact="del" title="Delete note">×</button></div>';
         } else {
@@ -525,6 +562,7 @@
           html += '<div class="tl-row task' + (r.x.done ? " done" : "") + '" data-key="' + esc(r.it.id) + '" data-sid="' + esc(r.x.id) + '" style="--sp-h:' + hueFor(r.it.name) + '">' +
             '<button class="sub-check' + (r.x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
             '<span class="tl-txt">' + esc(r.x.t || "task") + '</span>' +
+            locChipHtml(r.loc) +
             '<span class="tl-src">' + esc(r.it.name) + '</span>' +
             (tmv ? '<span class="tl-time">' + tmv + '</span>' : (v && !r.x.done ? '<span class="tl-chip' + (v.w.pastDue ? " od" : "") + '">' + esc(v.rel) + '</span>' : '')) +
             '</div>';
@@ -534,19 +572,73 @@
     html += '</div>';
     host.innerHTML = html;
   }
+  /* ---- Inbox: a holding pool for pasted tasks awaiting place + day ---- */
+  function renderInbox(host) {
+    var items = ibItems(), sugg = locSuggestions();
+    function locSel(cur, id) {
+      return '<select class="ib-loc" data-ibid="' + esc(id) + '"><option value="">\ud83d\udccd No place</option>' +
+        sugg.map(function (l) { return '<option value="' + esc(l) + '"' + (l === cur ? " selected" : "") + '>' + esc(l) + '</option>'; }).join("") + '</select>';
+    }
+    var html = '<div class="ib">' +
+      '<div class="ib-paste"><textarea id="ibPaste" rows="4" placeholder="Paste or type tasks — one per line. They wait here until you give them a place and a day."></textarea>' +
+      '<button id="ibAddBtn" type="button">Add to inbox</button></div>';
+    if (!items.length) html += '<div class="tl-empty">Inbox is empty — paste a brain-dump above; assign each line a place and a day when you’re ready.</div>';
+    items.forEach(function (n) {
+      html += '<div class="ib-row" data-ibrow="' + esc(n.id) + '">' +
+        '<span class="ib-txt">' + esc(n.t) + '</span>' +
+        locSel((n.loc || ""), n.id) +
+        '<input type="date" class="ib-date" data-ibid="' + esc(n.id) + '" value="' + esc(n.day || "") + '" title="Day (optional — blank lands under Today)">' +
+        '<button class="ib-send" data-ibact="send" type="button" title="Move onto the timeline">→ Timeline</button>' +
+        '<button class="sub-del" data-ibact="del" type="button" title="Delete">×</button></div>';
+    });
+    html += '</div>';
+    host.innerHTML = html;
+  }
+
   function wireTimeline() {
     var host = $("specialHost"); if (!host) return;
     function tlAddFromInput() {
       var inp = $("tlNew"); if (!inp) return;
       var t = (inp.value || "").trim(); if (!t) return;
+      var sel = $("tlNewLoc"); if (sel) TL_NEW_LOC = sel.value;
       var notes = tlNotes().slice();
-      notes.push({ id: uid(), t: t, ts: new Date().toISOString(), done: false });
+      notes.push({ id: uid(), t: t, ts: nowLocalTs(), done: false, loc: TL_NEW_LOC || "" });
       tlSave(notes); renderSpecial();
       var again = $("tlNew"); if (again) again.focus();
     }
     host.addEventListener("click", function (e) {
       if (e.target.id === "tlAddBtn") { tlAddFromInput(); return; }
       if (e.target.closest && e.target.closest("#tlShowDone")) { TL_SHOW_DONE = !TL_SHOW_DONE; renderSpecial(); return; }
+      var lc = e.target.closest && e.target.closest("[data-tlloc]");
+      if (lc) { TL_LOC = lc.getAttribute("data-tlloc") || ""; try { localStorage.setItem("wf2_tl_loc", TL_LOC); } catch (x3) {} renderSpecial(); return; }
+      if (e.target.id === "ibAddBtn") {
+        var ta2 = $("ibPaste"); if (!ta2) return;
+        var lines = (ta2.value || "").split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean);
+        if (!lines.length) return;
+        var cur = ibItems().slice();
+        lines.forEach(function (t) { cur.push({ id: uid(), t: t }); });
+        ibSave(cur); renderSpecial();
+        toast(lines.length + (lines.length === 1 ? " task" : " tasks") + " in the inbox.");
+        return;
+      }
+      var ib = e.target.closest && e.target.closest("[data-ibact]");
+      if (ib) {
+        var row2 = ib.closest("[data-ibrow]"); if (!row2) return;
+        var iid = row2.getAttribute("data-ibrow"), act2 = ib.getAttribute("data-ibact");
+        if (act2 === "del") { ibSave(ibItems().filter(function (x) { return x.id !== iid; })); renderSpecial(); return; }
+        if (act2 === "send") {
+          var it2 = null; ibItems().forEach(function (x) { if (x.id === iid) it2 = x; });
+          if (!it2) return;
+          var notes2 = tlNotes().slice();
+          notes2.push({ id: uid(), t: it2.t, ts: it2.day || nowLocalTs(), done: false, loc: it2.loc || "" });
+          tlSave(notes2);
+          ibSave(ibItems().filter(function (x) { return x.id !== iid; }));
+          SP_VIEW = "tl"; try { localStorage.setItem("wf2_special_view", "tl"); } catch (x4) {}
+          renderSpecial();
+          toast("On the timeline — " + (it2.day ? tlDayLabel(it2.day) : "today") + ".");
+          return;
+        }
+      }
       var nb = e.target.closest && e.target.closest("[data-tlact]"); if (!nb) return;
       var row = nb.closest("[data-nid]"); if (!row) return;
       var nid = row.getAttribute("data-nid"), act = nb.getAttribute("data-tlact");
@@ -556,26 +648,39 @@
       tlSave(notes); renderSpecial();
     });
     host.addEventListener("keydown", function (e) { if (e.target.id === "tlNew" && e.key === "Enter") { e.preventDefault(); tlAddFromInput(); } });
+    host.addEventListener("change", function (e) {
+      var t = e.target;
+      if (t.id === "tlNewLoc") { TL_NEW_LOC = t.value; return; }
+      if (t.classList && t.classList.contains("ib-loc")) { var id1 = t.getAttribute("data-ibid"); ibSave(ibItems().map(function (x) { return x.id === id1 ? Object.assign({}, x, { loc: t.value }) : x; })); return; }
+      if (t.classList && t.classList.contains("ib-date")) { var id2 = t.getAttribute("data-ibid"); ibSave(ibItems().map(function (x) { return x.id === id2 ? Object.assign({}, x, { day: t.value }) : x; })); return; }
+    });
     function setView(v) {
-      TL_VIEW = v;
-      try { localStorage.setItem("wf2_special_tl", v ? "1" : "0"); } catch (x) {}
+      SP_VIEW = v;
+      try { localStorage.setItem("wf2_special_view", v); } catch (x) {}
       renderSpecial();
     }
-    var c = $("spViewCards"), t = $("spViewTl");
-    if (c) c.onclick = function () { setView(false); };
-    if (t) t.onclick = function () { setView(true); };
+    var c = $("spViewCards"), t = $("spViewTl"), i = $("spViewInbox");
+    if (c) c.onclick = function () { setView("cards"); };
+    if (t) t.onclick = function () { setView("tl"); };
+    if (i) i.onclick = function () { setView("inbox"); };
   }
 
   function renderSpecial() {
     var sec = $("specialSec"), host = $("specialHost"); if (!sec || !host) return;
     var items = specialSorted();
-    sec.style.display = (items.length || tlNotes().length || document.body.classList.contains("special-mode")) ? "" : "none";
+    sec.style.display = (items.length || tlNotes().length || ibItems().length || document.body.classList.contains("special-mode")) ? "" : "none";
     paintTlSeg();
-    var asb2 = $("addSpecialBtn"); if (asb2) asb2.style.display = TL_VIEW ? "none" : "";
-    if (TL_VIEW) {
+    var asb2 = $("addSpecialBtn"); if (asb2) asb2.style.display = SP_VIEW === "cards" ? "" : "none";
+    if (SP_VIEW === "tl") {
       var ag0 = $("spAgenda"); if (ag0) ag0.style.display = "none";
       renderTimeline(items, host);
       var cnt0 = $("specialCount"); if (cnt0) cnt0.textContent = "";
+      return;
+    }
+    if (SP_VIEW === "inbox") {
+      var ag1 = $("spAgenda"); if (ag1) ag1.style.display = "none";
+      renderInbox(host);
+      var cnt1 = $("specialCount"); if (cnt1) cnt1.textContent = "";
       return;
     }
     renderAgenda(items);

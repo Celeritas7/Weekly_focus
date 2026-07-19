@@ -752,6 +752,28 @@ button { font-family: inherit; }
 .tl-row .tl-chip.od { color: #fff; background: var(--pri-h); }
 .tl-row .sub-del { opacity: 0; }
 .tl-row:hover .sub-del { opacity: 1; }
+
+/* location mode */
+#tlNewLoc { flex: 0 0 auto; border: 1px solid var(--hair); border-radius: 9px; background: var(--card); font-family: inherit; font-size: 11.5px; color: var(--mid); padding: 7px 8px; max-width: 150px; }
+.tl-locbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.tl-locbtn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--hair); background: var(--card); border-radius: 20px; font-family: inherit; font-size: 11px; font-weight: 700; color: var(--mid); padding: 5px 12px; cursor: pointer; transition: border-color .12s, color .12s, background .12s; }
+.tl-locbtn .gdot { width: 7px; height: 7px; border-radius: 2px; background: oklch(0.55 0.13 var(--sp-h, 283)); }
+.tl-locbtn:hover { border-color: var(--brand-line); color: var(--ink); }
+.tl-locbtn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.tl-locchip { flex: 0 0 auto; display: inline-flex; align-items: center; font-size: 9.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: oklch(0.5 0.13 var(--sp-h, 283)); background: oklch(0.96 0.03 var(--sp-h, 283)); border-radius: 20px; padding: 2px 8px; }
+
+/* inbox — the unassigned-task pool */
+.ib-paste { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; }
+.ib-paste textarea { border: 1px solid var(--hair); border-radius: var(--r-md); background: var(--card); font-family: inherit; font-size: 12.5px; line-height: 1.5; color: var(--ink); padding: 10px 12px; resize: vertical; }
+.ib-paste textarea:focus { outline: none; border-color: var(--brand-line); box-shadow: 0 0 0 3px var(--brand-soft); }
+#ibAddBtn { align-self: flex-end; border: 1px solid var(--brand-line); background: var(--brand-soft); color: var(--brand); font-family: inherit; font-size: 11.5px; font-weight: 700; border-radius: 9px; padding: 7px 14px; cursor: pointer; }
+#ibAddBtn:hover { background: var(--brand); color: #fff; }
+.ib-row { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-md); box-shadow: var(--shadow-card); padding: 8px 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.ib-txt { flex: 1 1 200px; font-size: 13px; color: var(--ink); min-width: 0; word-break: break-word; }
+.ib-loc, .ib-date { flex: 0 0 auto; border: 1px solid var(--hair); border-radius: 8px; background: var(--card-2); font-family: inherit; font-size: 11px; color: var(--mid); padding: 5px 7px; }
+.ib-send { flex: 0 0 auto; border: 1px solid var(--brand-line); background: var(--brand-soft); color: var(--brand); font-family: inherit; font-size: 10.5px; font-weight: 700; border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+.ib-send:hover { background: var(--brand); color: #fff; }
+@media print { .ib-paste, .tl-locbar { display: none; } }
 @media print { .tl-add, .tl-showdone { display: none; } }
 
 /* focus mode — show only Special */
