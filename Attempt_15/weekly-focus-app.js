@@ -871,7 +871,6 @@
       ? '<div class="miniring" title="' + prog.done + ' of ' + prog.total + ' subtasks done">' + ringSVG(prog.pct, 26, 3.5, { t: "mt", f: "mf" }) + '<span class="mn">' + prog.done + '/' + prog.total + '</span></div>'
       : '';
     var starOn = isTarget(id), starFull = !starOn && targetOrder.length >= MAX_TARGETS;
-    var updOn = !!getEntry(id).upd;
     var it = itemById(id);
     li.innerHTML =
       '<div class="item-row">' +
@@ -879,7 +878,6 @@
           '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div>' + (!VIEW_GROUPED && it ? gtagHtml(kindOf(id), it.group) : '') + '</div>' +
         '</div>' +
         '<div class="item-actions">' + ring +
-          '<button class="updflag' + (updOn ? " on" : "") + '" data-act="flagupd" title="' + (updOn ? "Update pending — click to clear" : "Flag a pending update / prompt for Claude") + '">' + IC.flag + '</button>' +
           '<button class="star' + (starOn ? " on" : "") + '" data-act="star"' + (starFull ? " disabled" : "") + ' title="' + (starOn ? "In The Five" : starFull ? "The Five is full" : "Add to The Five") + '">' + IC.star + '</button>' +
           '<button class="caret-btn" data-act="open">' + IC.chev + '</button>' +
           '<button class="tgl on" data-act="off" title="Move to backlog"><span class="knob"></span></button>' +
@@ -1015,7 +1013,6 @@
     if (a === "open") { detailOpen[key] = !detailOpen[key]; OPENING = detailOpen[key] ? key : null; renderCols(); OPENING = null; return; }
     if (a === "off") { patch(key, { active: false }); removeTarget(key); detailOpen[key] = false; renderAll(); return; }
     if (a === "on") { patch(key, { active: true }); renderAll(); return; }
-    if (a === "flagupd") { var wasUpd = !!getEntry(key).upd; patch(key, { upd: !wasUpd }); toast(wasUpd ? "Update flag cleared." : "Flagged \u2014 pending update for Claude."); renderAll(); return; }
     if (a === "star") {
       if (isTarget(key)) { removeTarget(key); } else if (!addTarget(key)) { toast("The Five is full \u2014 remove one first."); return; }
       renderAll(); return;

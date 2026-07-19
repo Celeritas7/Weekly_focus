@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#161620">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Weekly Focus">
+<title>Weekly Focus</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="weekly-focus.css">
+<link rel="stylesheet" href="home-screens.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body data-mode="personal">
+
+<!-- ===================== TOP BAR ===================== -->
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="wordmark">
+      <span class="dot"></span>
+      <h1>Weekly Focus</h1>
+      <span class="live">Live</span>
+    </div>
+    <div class="boardpick" id="boardPick">
+      <button class="boardbtn" id="boardBtn">
+        <span class="bp-k">Board</span>
+        <span id="boardName">my-week</span>
+        <svg viewBox="0 0 16 16" width="11" height="11"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </button>
+      <div class="boardmenu" id="boardMenu" hidden></div>
+    </div>
+    <div class="modeseg" id="modeSeg" role="radiogroup" aria-label="Mode" data-active="personal">
+      <span class="thumb" aria-hidden="true"></span>
+      <button type="button" class="seg" role="radio" data-mode="personal" aria-checked="true" tabindex="0">Personal</button>
+      <button type="button" class="seg" role="radio" data-mode="office" aria-checked="false" tabindex="-1">Office</button>
+    </div>
+    <span class="spacer"></span>
+    <span class="cloud-pill off" id="cloudPill" title="Cloud sync status">&#9729; Cloud off</span>
+    <div class="toolset">
+      <button class="tbtn primary" id="btnPrint" title="Print focus sheet"></button>
+    </div>
+  </div>
+</header>
+
+<main class="app">
+
+  <!-- ===================== SIGN-IN BANNER ===================== -->
+  <div class="signin-banner" id="signinBanner" style="display:none">
+    <span>Your week lives in the cloud. <b>Sign in</b> to load it on this device &mdash; nothing is stored locally.</span>
+    <button class="tbtn primary" id="bannerSignIn">Sign in</button>
+  </div>
+
+  <!-- ===================== SCREEN: TODAY ===================== -->
+  <section class="screen" id="scrToday" data-screen-label="Today">
+    <div class="hone">
+      <div class="bigdate">
+        <span class="dow" id="todayDow"></span>
+        <h2 id="todayDate"></h2>
+      </div>
+      <div class="infogrid">
+        <div class="info-card" id="wxCard">
+          <span class="ik">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17a4.5 4.5 0 0 1 0-9 5.5 5.5 0 0 1 10.6-1.3A4 4 0 0 1 18 17z"></path><path d="M8 20l-.5 1.5M12 20l-.5 1.5M16 20l-.5 1.5"></path></svg>
+            Weather
+          </span>
+          <span class="iv" id="wxMain">&mdash;</span>
+          <span class="is" id="wxSub">loading forecast&hellip;</span>
+        </div>
+        <div class="info-card" id="trainCard">
+          <span class="ik">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="13" rx="3"></rect><path d="M5 10.5h14M9 20l-1.5 2M15 20l1.5 2M9.5 13.8h.01M14.5 13.8h.01"></path></svg>
+            Train
+          </span>
+          <span class="iv" id="trainMain">&mdash;</span>
+          <span class="is" id="trainSub">checking lines&hellip;</span>
+        </div>
+      </div>
+      <div class="sec-head hsec">
+        <span class="k">Top Tasks</span>
+        <span class="sub">weekly targets + today&rsquo;s schedule</span>
+        <span class="count" id="todayCount">0/0</span>
+        <button class="hrs-btn" id="hoursBtn" title="Set Personal / Office hours"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg></button>
+      </div>
+      <div class="hrows" id="todayRows"></div>
+    </div>
+  </section>
+
+  <!-- ===================== SCREEN: CALENDAR ===================== -->
+  <section class="screen" id="scrCal" data-screen-label="Calendar">
+    <div class="hone">
+      <div class="sec-head hsec">
+        <span class="k">Calendar</span>
+        <span class="sub">tap a day &middot; schedule tasks from your pools</span>
+      </div>
+      <div class="cal-card" id="hCalCard">
+        <div class="cal-top">
+          <span class="cal-month" id="hCalMonth"></span>
+          <div class="cal-nav">
+            <button id="hCalPrev" aria-label="Previous"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3L5 8l5 5"></path></svg></button>
+            <button id="hCalNext" aria-label="Next"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3l5 5-5 5"></path></svg></button>
+            <button class="cal-expand" id="hCalExpand">Month</button>
+          </div>
+        </div>
+        <div class="dowhead"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+        <div class="weekstrip" id="hWeekstrip"></div>
+        <div class="monthgrid" id="hMonthgrid"></div>
+        <div class="daypanel">
+          <div class="daypanel-head">
+            <span class="d" id="hDayLabel"></span>
+            <span class="n" id="hDayN"></span>
+          </div>
+          <div class="hrows" id="hDayRows"></div>
+          <button class="add-row" id="hAddSched">+ Schedule a task from your pools</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SCREEN: ROUTINES ===================== -->
+  <section class="screen" id="scrRoutines" data-screen-label="Routines">
+    <div class="hone">
+      <div class="sec-head hsec">
+        <span class="k">Daily Routines</span>
+        <span class="sub">streaks &middot; quick links</span>
+        <span class="count" id="routineCount">0/0</span>
+      </div>
+      <div class="hrows" id="routineRows"></div>
+      <button class="add-row" id="addRoutineBtn">+ Add routine</button>
+    </div>
+  </section>
+
+  <!-- ===================== SCREEN: PLACES ===================== -->
+  <section class="screen" id="scrPlaces" data-screen-label="Places">
+    <div class="hone">
+      <div class="sec-head hsec place-head">
+        <h2>Places</h2>
+        <span class="hs-note">lists that surface when you plan a visit or are nearby</span>
+        <button class="hrs-btn" id="geoBtn" title="Check where I am now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.5-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.5 12 21 12 21z"></path><circle cx="12" cy="10.5" r="2.3"></circle></svg></button>
+      </div>
+      <div class="hrows" id="placeRows"></div>
+      <button class="add-row" id="addPlaceBtn">+ Add place</button>
+    </div>
+  </section>
+
+  <!-- ===================== SCREEN: WEEK (curation board) ===================== -->
+  <section class="screen" id="scrWeek" data-screen-label="Week">
+
+    <div class="weekbar">
+      <label class="weekfield">Week of
+        <input id="weekInput" type="text" placeholder="2026-06-08" data-act="week">
+      </label>
+    </div>
+
+    <!-- ===================== WEEKLY PULSE ===================== -->
+    <section class="pulse" id="pulse"></section>
+
+    <!-- ===================== THE FIVE ===================== -->
+    <section class="five">
+      <div class="sec-head">
+        <span class="k">The Five</span>
+        <span class="sub">the targets that actually have to move this week</span>
+        <span class="count" id="fiveCount">0/5</span>
+      </div>
+      <div class="five-grid" id="fiveGrid"></div>
+    </section>
+
+    <!-- ===================== SPECIAL ===================== -->
+    <section class="special" id="specialSec" style="display:none">
+      <div class="sec-head">
+        <span class="k">Special</span>
+        <span class="sub">life admin &amp; errands &mdash; visible, but never the focus</span>
+        <span class="count" id="specialCount"></span>
+        <div class="sp-viewseg"><button type="button" id="spViewCards" class="on">Cards</button><button type="button" id="spViewTl">Timeline</button><button type="button" id="spViewInbox">Inbox</button></div>
+        <button class="sp-mode-btn" id="specialModeBtn" title="Show only Special">Focus</button>
+        <button class="caret-btn sp-hide-btn" id="specialHideBtn" title="Hide / show section"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      </div>
+      <div class="sp-agenda" id="spAgenda" style="display:none"></div>
+      <div class="sp-grid" id="specialHost"></div>
+      <button class="add-row" id="addSpecialBtn">+ Add special list</button>
+    </section>
+
+    <!-- ===================== COLUMNS ===================== -->
+    <div class="viewbar">
+      <span class="vb-k">View</span>
+      <div class="vb-seg">
+        <button type="button" id="viewFlatBtn">Flat</button>
+        <button type="button" id="viewGroupBtn">Groups</button>
+      </div>
+    </div>
+    <section class="cols cols-3">
+      <!-- APPS -->
+      <div class="col col-apps">
+        <div class="col-head">
+          <span class="cdot"></span>
+          <span class="ctitle">Apps</span>
+          <span class="cn" id="appsN">0</span>
+        </div>
+        <div id="appsActive"></div>
+        <button class="add-row" id="addAppBtn">+ Add app</button>
+        <div class="backlog" id="appsBacklogWrap">
+          <div class="backlog-head" id="appsBacklogHead">
+            <span class="bcaret">&#9662;</span> Backlog
+            <span class="bn" id="appsBacklogN">0</span>
+          </div>
+          <div class="backlog-body" id="appsBacklog"></div>
+        </div>
+      </div>
+
+      <!-- STUDY -->
+      <div class="col col-study">
+        <div class="col-head">
+          <span class="cdot"></span>
+          <span class="ctitle">Study</span>
+          <span class="cn" id="studyN">0</span>
+        </div>
+        <div id="studyActive"></div>
+        <button class="add-row" id="addStudyBtn">+ Add topic</button>
+        <div class="backlog" id="studyBacklogWrap">
+          <div class="backlog-head" id="studyBacklogHead">
+            <span class="bcaret">&#9662;</span> Backlog
+            <span class="bn" id="studyBacklogN">0</span>
+          </div>
+          <div class="backlog-body" id="studyBacklog"></div>
+        </div>
+      </div>
+
+      <!-- OFFICE -->
+      <div class="col col-office">
+        <div class="col-head">
+          <span class="cdot"></span>
+          <span class="ctitle">Office</span>
+          <span class="cn" id="officeN">0</span>
+        </div>
+        <div id="officeActive"></div>
+        <button class="add-row" id="addOfficeBtn">+ Add office task</button>
+        <div class="backlog" id="officeBacklogWrap">
+          <div class="backlog-head" id="officeBacklogHead">
+            <span class="bcaret">&#9662;</span> Backlog
+            <span class="bn" id="officeBacklogN">0</span>
+          </div>
+          <div class="backlog-body" id="officeBacklog"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== END OF WEEK ===================== -->
+    <section class="eow">
+      <div class="sec-head">
+        <span class="k">End of Week</span>
+        <span class="sub">close the loop before you re-curate</span>
+      </div>
+      <div class="eow-grid">
+        <div class="eow-field">
+          <label>What got done</label>
+          <textarea id="eowDone" data-act="eowDone" rows="3" placeholder="The wins worth logging&hellip;"></textarea>
+        </div>
+        <div class="eow-field">
+          <label>Carry over</label>
+          <textarea id="eowCarry" data-act="eowCarry" rows="3" placeholder="What rolls into next week&hellip;"></textarea>
+        </div>
+        <div class="eow-field full">
+          <label>Notes &amp; decisions</label>
+          <textarea id="eowNotes" data-act="eowNotes" rows="2" placeholder="Anything to remember&hellip;"></textarea>
+        </div>
+      </div>
+    </section>
+
+  </section><!-- /scrWeek -->
+
+</main>
+
+<!-- ===================== BOTTOM TABS ===================== -->
+<nav class="htabbar">
+  <div class="htabbar-in">
+    <button class="htab" data-screen="scrToday">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"></path></svg>
+      Today
+    </button>
+    <button class="htab" data-screen="scrCal">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"></rect><path d="M3.5 10h17M8 3v4M16 3v4"></path></svg>
+      Calendar
+    </button>
+    <button class="htab" data-screen="scrRoutines">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"></path><path d="M3 11V9a2 2 0 0 1 2-2h16"></path><path d="M7 21l-4-4 4-4"></path><path d="M21 13v2a2 2 0 0 1-2 2H3"></path></svg>
+      Routines
+    </button>
+    <button class="htab" data-screen="scrPlaces">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.5-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.5 12 21 12 21z"></path><circle cx="12" cy="10.5" r="2.3"></circle></svg>
+      Places
+    </button>
+    <button class="htab" data-screen="scrWeek">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.5" y="4" width="7" height="16" rx="1.8"></rect><rect x="13.5" y="4" width="7" height="10" rx="1.8"></rect></svg>
+      Week
+    </button>
+  </div>
+</nav>
+
+<!-- ===================== TARGET PICKER ===================== -->
+<div class="modal-bg" id="pickModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Add a target</h3>
+      <p>Pick from what you've switched on this week &mdash; max five.</p>
+    </div>
+    <div class="modal-body" id="pickBody"></div>
+    <div class="modal-foot">
+      <button class="tbtn" id="pickClose" data-act="pickclose">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SCHEDULE SHEET ===================== -->
+<div class="modal-bg" id="schedModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Schedule for <span id="schedDate"></span></h3>
+      <p>Pick an existing item from your pools &mdash; it shows up in Today on that date.</p>
+    </div>
+    <div class="sheet-tabs" id="schedTabs">
+      <button class="stab on" data-hkind="app">Apps</button>
+      <button class="stab study" data-hkind="study">Study</button>
+      <button class="stab office" data-hkind="office">Office</button>
+    </div>
+    <div class="modal-body" id="schedBody"></div>
+    <div class="modal-foot">
+      <button class="tbtn" id="schedClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ROUTINE EDITOR ===================== -->
+<div class="modal-bg" id="routineModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="rtTitle">Add routine</h3>
+      <p>Runs on the days you pick, in one mode. Links open with one tap.</p>
+    </div>
+    <div class="modal-body" style="padding:16px 20px;">
+      <div class="cfield"><label>Name</label><input id="rtName" type="text" autocomplete="off" placeholder="e.g. Gym"></div>
+      <div class="cfield"><label>Category (optional)</label><input id="rtCat" type="text" autocomplete="off" list="rtCatList" placeholder="e.g. Quick tests"><datalist id="rtCatList"></datalist></div>
+      <div class="cfield"><label>Days</label>
+        <div class="daypick" id="rtDays">
+          <button type="button" data-hday="1">M</button><button type="button" data-hday="2">T</button><button type="button" data-hday="3">W</button><button type="button" data-hday="4">T</button><button type="button" data-hday="5">F</button><button type="button" data-hday="6">S</button><button type="button" data-hday="0">S</button>
+        </div>
+      </div>
+      <div class="cfield"><label>Mode</label>
+        <div class="daypick modepick" id="rtMode">
+          <button type="button" data-hmode="personal" class="on">Personal</button><button type="button" data-hmode="office">Office</button>
+        </div>
+      </div>
+      <div class="cfield"><label>Links (one per line: Label | https://url)</label><textarea id="rtLinks" rows="3" placeholder="Anki | https://ankiweb.net"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="tbtn danger" id="rtDelete" style="display:none">Delete</button>
+      <button class="tbtn primary" id="rtSave">Save</button>
+      <button class="tbtn" id="rtClose">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ===================== TASK SHEET (date / time / mode / urgent) ===================== -->
+<div class="modal-bg" id="taskModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Task details</h3>
+      <p id="tkName"></p>
+    </div>
+    <div class="modal-body" style="padding:16px 20px;">
+      <div class="cfield"><label>Date</label><div class="chips" id="tkDates"></div></div>
+      <div class="cfield"><label>Time</label><div class="chips" id="tkTimes"></div></div>
+      <div class="cfield"><label>Place</label><div class="chips" id="tkLoc"></div></div>
+      <div class="cfield"><label>Mode</label><div class="chips" id="tkMode"></div></div>
+      <div class="cfield"><label>Deadline</label><button type="button" class="urgbtn dlbtn" id="tkDl"></button></div>
+      <div class="cfield"><label>Priority</label><button type="button" class="urgbtn" id="tkUrg"></button></div>
+    </div>
+    <div class="modal-foot">
+      <button class="tbtn primary" id="tkSave">Save</button>
+      <button class="tbtn" id="tkClose">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== PLACE EDITOR ===================== -->
+<div class="modal-bg" id="placeModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="plTitle">Add place</h3>
+      <p>A checklist tied to a spot — it surfaces on Today when you plan a visit or open the app nearby.</p>
+    </div>
+    <div class="modal-body" style="padding:16px 20px;">
+      <div class="cfield"><label>Place name</label><input type="text" id="plName" placeholder="Shin-Ōkubo"></div>
+      <div class="cfield"><label>Location (optional — enables “near me”)</label>
+        <div class="hourrow">
+          <input type="text" id="plCoords" placeholder="35.7013, 139.7005" style="flex:1 1 auto;">
+          <button type="button" class="tbtn" id="plHere">Use my location</button>
+        </div>
+        <p class="cfield-hint" id="plGeoHint">Tap “Use my location” while you're at the place once — that's the easiest way.</p>
+      </div>
+      <div class="cfield"><label>Shopping / to-do list (one per line)</label><textarea id="plItems" rows="5" placeholder="Coriander&#10;Turmeric&#10;Basmati rice"></textarea></div>
+      <div class="cfield"><label>Weekly check-in (optional)</label>
+        <div class="daypick" id="plAskDays">
+          <button type="button" data-hday="1">M</button><button type="button" data-hday="2">T</button><button type="button" data-hday="3">W</button><button type="button" data-hday="4">T</button><button type="button" data-hday="5">F</button><button type="button" data-hday="6">S</button><button type="button" data-hday="0">S</button>
+        </div>
+        <div class="hourrow" style="margin-top:7px;"><span>from</span> <input type="time" id="plAskT" value="18:00"></div>
+        <p class="cfield-hint">On that day, from that time, Today asks “Going to …?” — one tap plans the visit. Tap the day again to turn the check-in off.</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="tbtn danger" id="plDelete" style="display:none">Delete</button>
+      <button class="tbtn primary" id="plSave">Save</button>
+      <button class="tbtn" id="plClose">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODE HOURS ===================== -->
+<div class="modal-bg" id="hoursModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Personal &amp; Office hours</h3>
+      <p>Tasks tagged with a single mode surface on Today only inside these hours &mdash; outside them they wait in a tray. Urgent and overdue tasks always show.</p>
+    </div>
+    <div class="modal-body" style="padding:16px 20px;">
+      <div class="cfield"><label>Office hours</label><div class="hourrow"><input type="time" id="hrOs"> <span>to</span> <input type="time" id="hrOe"></div></div>
+      <div class="cfield"><label>Personal hours</label><div class="hourrow"><input type="time" id="hrPs"> <span>to</span> <input type="time" id="hrPe"></div></div>
+    </div>
+    <div class="modal-foot">
+      <button class="tbtn primary" id="hrSave">Save</button>
+      <button class="tbtn" id="hrClose">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<datalist id="grp-app"></datalist>
+<datalist id="grp-study"></datalist>
+<datalist id="grp-office"></datalist>
+
+<!-- ===================== ADD ITEM ===================== -->
+<div class="modal-bg" id="addModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="addTitle">Add app</h3>
+      <p>Create it here &mdash; it syncs to every device. New items start active this week.</p>
+    </div>
+    <div class="modal-body" style="padding:16px 20px;">
+      <div class="cfield"><label>Name</label><input id="addName" type="text" autocomplete="off"></div>
+      <div class="cfield"><label>Group</label><input id="addGroup" type="text" list="grp-app" autocomplete="off"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="tbtn primary" id="addSave">Add</button>
+      <button class="tbtn" id="addClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CLOUD SYNC ===================== -->
+<div class="modal-bg" id="cloudModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Cloud sync</h3>
+      <p>Your week lives in Supabase &mdash; this device just needs to be signed in. Sign in with a magic link below; your data loads automatically and stays in sync across every device.</p>
+    </div>
+    <div class="modal-body" style="padding:0;">
+      <div class="dsect">
+        <h4>Connection</h4>
+        <p class="dhelp">This build is permanently wired to your Supabase project &mdash; the connection is baked into the app, so it can never drop out the way the old setup did. Just sign in below to load your week.</p>
+      </div>
+      <div class="dsect">
+        <h4>Account</h4>
+        <div id="authSignedOut">
+          <p class="dhelp">Sign in with a magic link &mdash; your week is private to your account.</p>
+          <div class="cfield"><label>Email</label><input id="cfEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
+          <div class="dbtns" style="margin-top:12px;"><button class="tbtn" id="cloudSignIn">Send magic link</button></div>
+        </div>
+        <div id="authSignedIn" style="display:none;">
+          <p class="dhelp">Signed in as <b id="authWho">your account</b>.</p>
+          <div class="dbtns"><button class="tbtn primary" id="cloudPull">Pull from cloud</button><button class="tbtn" id="cloudSignOut">Sign out</button></div>
+        </div>
+        <p class="dstatus" id="cloudStatus">Cloud is off. Connect a project above to sync across devices.</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="buildtag">build 17 &middot; task modes + priority</span>
+      <button class="tbtn" id="cloudClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="info-feeds.js"></script>
+<script src="weekly-focus-app.js"></script>
+<script src="wf-cc-bridge-v2.js"></script>
+<script>
+  // inject toolbar icons + labels (kept out of markup for clarity)
+  (function () {
+    var b = function (id, svg, label) { var el = document.getElementById(id); if (el) el.innerHTML = svg + '<span>' + label + '</span>'; };
+    b("btnPrint", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><path d="M7 17h10v4H7z"/></svg>', 'Print');
+  })();
+
+  // PWA: register the service worker (only on http/https — no-op in sandboxed previews)
+  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+  }
+</script>
+
+</body>
+</html>
