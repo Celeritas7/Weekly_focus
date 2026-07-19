@@ -363,11 +363,11 @@ button { font-family: inherit; }
 /* pending-update flag (prompt waiting for Claude) */
 .updflag { border: none; background: none; cursor: pointer; padding: 4px; border-radius: 7px; line-height: 0; color: var(--faint); transition: color .12s, background .12s, transform .12s; position: relative; }
 .updflag svg { width: 18px; height: 18px; display: block; }
-.updflag:hover { color: var(--notes-edge); background: var(--hair-2); }
+.updflag:hover { color: var(--pri-m); background: var(--hair-2); }
 .updflag:active { transform: scale(.88); }
-.updflag.on { color: #fff; background: var(--notes-edge); box-shadow: 0 0 0 3px oklch(0.93 0.07 85); }
-.updflag.on:hover { background: var(--notes-ink); color: #fff; }
-.updflag.on svg path { fill: none; }
+.updflag.on { color: #43330a; background: var(--pri-m); }
+.updflag.on:hover { background: oklch(0.68 0.15 75); color: #43330a; }
+.updflag.on svg path { fill: none; stroke-width: 2; }
 .updflag.on::after { content: ""; position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--pri-h); border: 1.5px solid var(--card); animation: updpulse 1.6s ease-in-out infinite; }
 @keyframes updpulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: .6; } }
 @media (prefers-reduced-motion: reduce) { .updflag.on::after { animation: none; } }
