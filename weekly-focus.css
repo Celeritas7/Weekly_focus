@@ -365,9 +365,12 @@ button { font-family: inherit; }
 .updflag svg { width: 18px; height: 18px; display: block; }
 .updflag:hover { color: var(--notes-edge); background: var(--hair-2); }
 .updflag:active { transform: scale(.88); }
-.updflag.on { color: var(--notes-edge); }
-.updflag.on svg path { fill: var(--notes-bg); }
-.updflag.on::after { content: ""; position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--notes-edge); border: 1.5px solid var(--card); }
+.updflag.on { color: #fff; background: var(--notes-edge); box-shadow: 0 0 0 3px oklch(0.93 0.07 85); }
+.updflag.on:hover { background: var(--notes-ink); color: #fff; }
+.updflag.on svg path { fill: none; }
+.updflag.on::after { content: ""; position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--pri-h); border: 1.5px solid var(--card); animation: updpulse 1.6s ease-in-out infinite; }
+@keyframes updpulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .updflag.on::after { animation: none; } }
 
 /* toggle switch */
 .tgl {

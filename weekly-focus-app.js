@@ -820,6 +820,8 @@
         ? function (a, b) {
             var sa = isTarget(a.id) ? 0 : 1, sb2 = isTarget(b.id) ? 0 : 1;   // starred first
             if (sa !== sb2) return sa - sb2;
+            var fa = getEntry(a.id).upd ? 0 : 1, fb = getEntry(b.id).upd ? 0 : 1;   // flagged next
+            if (fa !== fb) return fa - fb;
             var oa = ordOf(a.id), ob = ordOf(b.id);
             if (oa != null && ob != null) return oa - ob;
             if (oa != null) return -1; if (ob != null) return 1;
@@ -838,13 +840,15 @@
   }
   function emptyZone(html) { return '<div class="empty-zone">' + html + '</div>'; }
 
-  /* flat view: starred (The Five) pulled to the top in Five order, then manual
-     order, then priority, then name */
+  /* flat view: starred (The Five) first in Five order, then flagged (pending
+     update), then manual order, then priority, then name */
   function flatSortActive(arr) {
     return arr.slice().sort(function (a, b) {
       var sa = isTarget(a.id) ? 0 : 1, sb2 = isTarget(b.id) ? 0 : 1;
       if (sa !== sb2) return sa - sb2;
       if (!sa) return targetOrder.indexOf(a.id) - targetOrder.indexOf(b.id);
+      var fa = getEntry(a.id).upd ? 0 : 1, fb = getEntry(b.id).upd ? 0 : 1;
+      if (fa !== fb) return fa - fb;
       var oa = ordOf(a.id), ob = ordOf(b.id);
       if (oa != null && ob != null) return oa - ob;
       if (oa != null) return -1; if (ob != null) return 1;
