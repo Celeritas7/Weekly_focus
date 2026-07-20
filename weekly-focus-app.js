@@ -438,7 +438,7 @@
       if (e.target === tm) { tm.classList.remove("open"); return; }
       var b = e.target.closest("[data-tkdate],[data-tktime],[data-tkmd],[data-tkloc],[data-tklocnew]");
       if (!b) return;
-      if (b.hasAttribute("data-tklocnew")) { var nl = (prompt("Place name (e.g. Home, Shin-\u014ckubo):") || "").trim(); if (nl) TSK.loc = nl; }
+      if (b.hasAttribute("data-tklocnew")) { var nl = (prompt("Place name (e.g. Home, Shin-\u014ckubo):") || "").trim(); if (nl) TSK.loc = addMetaLoc(nl); }
       else if (b.hasAttribute("data-tkloc")) TSK.loc = b.getAttribute("data-tkloc");
       else if (b.hasAttribute("data-tkdate")) { TSK.date = b.getAttribute("data-tkdate"); if (!TSK.date) TSK.time = ""; }
       else if (b.hasAttribute("data-tktime")) TSK.time = b.getAttribute("data-tktime");
@@ -479,11 +479,24 @@
     var seen = {}, out = [];
     function add(n) { n = (n || "").trim(); if (!n) return; var k = n.toLowerCase(); if (!seen[k]) { seen[k] = 1; out.push(n); } }
     add("Home"); add("Out");
+    metaLocs().forEach(function (n) { add(n); });
     placeList().forEach(function (p) { add(p.name); });
     tlNotes().forEach(function (n) { add(n.loc); });
     ibItems().forEach(function (n) { add(n.loc); });
     specialSorted().forEach(function (it) { normSubs(subs(it.id)).forEach(function (x) { add(x.loc); }); });
     return out;
+  }
+  function metaLocs() { return Array.isArray(meta.locs) ? meta.locs : []; }
+  function addMetaLoc(name) {
+    name = (name || "").trim(); if (!name) return "";
+    var known = ["home", "out"];
+    placeList().forEach(function (p) { known.push((p.name || "").toLowerCase()); });
+    metaLocs().forEach(function (n) { known.push((n || "").toLowerCase()); });
+    if (known.indexOf(name.toLowerCase()) < 0) {
+      if (!Array.isArray(meta.locs)) meta.locs = [];
+      meta.locs.push(name); save(); cloudPushBoard();
+    }
+    return name;
   }
   function locChipHtml(loc) {
     if (!loc) return "";
@@ -657,10 +670,10 @@
     host.addEventListener("change", function (e) {
       var t = e.target;
       if (t.id === "tlNewLoc") {
-        if (t.value === "__newloc__") { var nlt = (prompt("New place name (e.g. Motoyawata):") || "").trim(); TL_NEW_LOC = nlt || TL_NEW_LOC; renderSpecial(); return; }
+        if (t.value === "__newloc__") { var nlt = (prompt("New place name (e.g. Motoyawata):") || "").trim(); TL_NEW_LOC = nlt ? addMetaLoc(nlt) : TL_NEW_LOC; renderSpecial(); return; }
         TL_NEW_LOC = t.value; return;
       }
-      if (t.classList && t.classList.contains("ib-loc")) { var id1 = t.getAttribute("data-ibid"); var lv = t.value; if (lv === "__newloc__") { lv = (prompt("New place name (e.g. Motoyawata):") || "").trim(); if (!lv) { renderSpecial(); return; } } ibSave(ibItems().map(function (x) { return x.id === id1 ? Object.assign({}, x, { loc: lv }) : x; })); renderSpecial(); return; }
+      if (t.classList && t.classList.contains("ib-loc")) { var id1 = t.getAttribute("data-ibid"); var lv = t.value; if (lv === "__newloc__") { lv = (prompt("New place name (e.g. Motoyawata):") || "").trim(); if (!lv) { renderSpecial(); return; } lv = addMetaLoc(lv); } ibSave(ibItems().map(function (x) { return x.id === id1 ? Object.assign({}, x, { loc: lv }) : x; })); renderSpecial(); return; }
       if (t.classList && t.classList.contains("ib-date")) { var id2 = t.getAttribute("data-ibid"); ibSave(ibItems().map(function (x) { return x.id === id2 ? Object.assign({}, x, { day: t.value }) : x; })); return; }
     });
     function setView(v) {
