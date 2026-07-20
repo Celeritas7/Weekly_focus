@@ -540,6 +540,7 @@
         all.push({ type: "task", it: it, x: x, k: x.when.slice(0, 10), done: !!x.done, loc: (x.loc || "").trim() });
       });
     });
+    metaLocs().forEach(markLoc);   // user-created places show in the bar even before a task uses them
     if (TL_LOC && !seenLoc[TL_LOC.toLowerCase()]) TL_LOC = "";
     var groups = {}, pastHidden = 0, doneHidden = 0, locHidden = 0;
     all.forEach(function (r) {
