@@ -490,8 +490,11 @@
     return '<span class="tl-locchip" style="--sp-h:' + hueFor(loc) + '">' + esc(loc) + '</span>';
   }
   function tlNewLocSel() {
+    var opts = locSuggestions();
+    if (TL_NEW_LOC && opts.map(function (l) { return l.toLowerCase(); }).indexOf(TL_NEW_LOC.toLowerCase()) < 0) opts.push(TL_NEW_LOC);
     return '<select id="tlNewLoc" title="Place for this note"><option value="">\ud83d\udccd No place</option>' +
-      locSuggestions().map(function (l) { return '<option value="' + esc(l) + '"' + (l === TL_NEW_LOC ? " selected" : "") + '>' + esc(l) + '</option>'; }).join("") + '</select>';
+      opts.map(function (l) { return '<option value="' + esc(l) + '"' + (l === TL_NEW_LOC ? " selected" : "") + '>' + esc(l) + '</option>'; }).join("") +
+      '<option value="__newloc__">\u2795 New place\u2026</option></select>';
   }
   function tlNotes() { var e = entries[TL_ITEM]; return (e && Array.isArray(e.notes)) ? e.notes : []; }
   function tlSave(notes) { entries[TL_ITEM] = Object.assign({}, entries[TL_ITEM], { notes: notes, u: Date.now() }); save(); cloudPushEntry(TL_ITEM, entries[TL_ITEM]); }
@@ -576,8 +579,11 @@
   function renderInbox(host) {
     var items = ibItems(), sugg = locSuggestions();
     function locSel(cur, id) {
+      var opts = sugg.slice();
+      if (cur && opts.map(function (l) { return l.toLowerCase(); }).indexOf(cur.toLowerCase()) < 0) opts.push(cur);
       return '<select class="ib-loc" data-ibid="' + esc(id) + '"><option value="">\ud83d\udccd No place</option>' +
-        sugg.map(function (l) { return '<option value="' + esc(l) + '"' + (l === cur ? " selected" : "") + '>' + esc(l) + '</option>'; }).join("") + '</select>';
+        opts.map(function (l) { return '<option value="' + esc(l) + '"' + (l === cur ? " selected" : "") + '>' + esc(l) + '</option>'; }).join("") +
+        '<option value="__newloc__">\u2795 New place\u2026</option></select>';
     }
     var html = '<div class="ib">' +
       '<div class="ib-paste"><textarea id="ibPaste" rows="4" placeholder="Paste or type tasks — one per line. They wait here until you give them a place and a day."></textarea>' +
@@ -650,8 +656,11 @@
     host.addEventListener("keydown", function (e) { if (e.target.id === "tlNew" && e.key === "Enter") { e.preventDefault(); tlAddFromInput(); } });
     host.addEventListener("change", function (e) {
       var t = e.target;
-      if (t.id === "tlNewLoc") { TL_NEW_LOC = t.value; return; }
-      if (t.classList && t.classList.contains("ib-loc")) { var id1 = t.getAttribute("data-ibid"); ibSave(ibItems().map(function (x) { return x.id === id1 ? Object.assign({}, x, { loc: t.value }) : x; })); return; }
+      if (t.id === "tlNewLoc") {
+        if (t.value === "__newloc__") { var nlt = (prompt("New place name (e.g. Motoyawata):") || "").trim(); TL_NEW_LOC = nlt || TL_NEW_LOC; renderSpecial(); return; }
+        TL_NEW_LOC = t.value; return;
+      }
+      if (t.classList && t.classList.contains("ib-loc")) { var id1 = t.getAttribute("data-ibid"); var lv = t.value; if (lv === "__newloc__") { lv = (prompt("New place name (e.g. Motoyawata):") || "").trim(); if (!lv) { renderSpecial(); return; } } ibSave(ibItems().map(function (x) { return x.id === id1 ? Object.assign({}, x, { loc: lv }) : x; })); renderSpecial(); return; }
       if (t.classList && t.classList.contains("ib-date")) { var id2 = t.getAttribute("data-ibid"); ibSave(ibItems().map(function (x) { return x.id === id2 ? Object.assign({}, x, { day: t.value }) : x; })); return; }
     });
     function setView(v) {
