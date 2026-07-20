@@ -170,7 +170,7 @@
   function normSubs(arr) {
     return (Array.isArray(arr) ? arr : []).map(function (s) {
       if (!s) return null;
-      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl };
+      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl, loc: s.loc || "" };
     }).filter(Boolean);
   }
   function mergeSubs(a, b) {
@@ -179,13 +179,13 @@
       var ex = by[s.id];
       if (!ex) { by[s.id] = s; order.push(s.id); return; }
       if ((s.u || 0) > (ex.u || 0)) by[s.id] = s;
-      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when, md: ex.md !== "b" ? ex.md : s.md, urg: ex.urg || s.urg, dl: ex.dl || s.dl };
+      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when, md: ex.md !== "b" ? ex.md : s.md, urg: ex.urg || s.urg, dl: ex.dl || s.dl, loc: ex.loc || s.loc || "" };
     }
     normSubs(a).forEach(take); normSubs(b).forEach(take);
     return order.map(function (id) { return by[id]; });
   }
   function visibleSubs(arr) { return normSubs(arr).filter(function (s) { return !s.del; }); }
-  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0, s.when || "", s.md || "b", s.urg ? 1 : 0, s.dl ? 1 : 0]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
+  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0, s.when || "", s.md || "b", s.urg ? 1 : 0, s.dl ? 1 : 0, s.loc || ""]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
   function subsDiffer(a, b) { return subsKey(a) !== subsKey(b); }
 
   /* ---------------- targets (The Five) ---------------- */
