@@ -456,7 +456,7 @@
   function renderCols() { renderColumn("app"); renderColumn("study"); renderColumn("office"); renderSpecial(); }
   function spordOf(id) { var e = entries[id]; return (e && e.spord != null) ? e.spord : null; }
   function specialSorted() {
-    var items = activeItems("app").concat(activeItems("study")).filter(isSpecialItem);
+    var items = activeItems("app").concat(activeItems("study")).filter(isSpecialItem).filter(function (it) { return !getEntry(it.id).arch; });
     items.sort(function (a, b) {
       var oa = spordOf(a.id), ob = spordOf(b.id);
       if (oa != null && ob != null) return oa - ob;
@@ -465,6 +465,8 @@
     });
     return items;
   }
+  function archivedSpecial() { return activeItems("app").concat(activeItems("study")).filter(isSpecialItem).filter(function (it) { return !!getEntry(it.id).arch; }); }
+  var SP_SHOW_ARCH = false;
   /* ---- Timeline mode (Special): day-grouped note log + dated tasks.
      Notes ride on a reserved "__timeline" entry row — synced like everything else. ---- */
   var TL_ITEM = "__timeline", IB_ITEM = "__inbox";
@@ -634,6 +636,7 @@
       var again = $("tlNew"); if (again) again.focus();
     }
     host.addEventListener("click", function (e) {
+      if (e.target.id === "spArchToggle") { SP_SHOW_ARCH = !SP_SHOW_ARCH; renderSpecial(); return; }
       var fg = e.target.closest("[data-flgrp]");
       if (fg) { FLOW_GROUP = fg.getAttribute("data-flgrp"); FLOW_FOCUS = ""; try { localStorage.setItem("wf2_flow_group", FLOW_GROUP); localStorage.setItem("wf2_flow_focus", ""); } catch (x5) {} renderSpecial(); return; }
       var ff = e.target.closest("[data-flfocus]");
@@ -860,6 +863,7 @@
           '<span class="sp-grip" title="Drag to reorder">\u22ee\u22ee</span>' +
           '<span class="sp-name" data-act="open">' + esc(it.name) + '</span>' +
           (sv.length ? '<span class="sp-count' + (done === sv.length ? " all" : "") + '">' + done + "/" + sv.length + '</span>' : '') +
+          (sv.length && done === sv.length ? '<button class="sp-arch-btn" data-act="sparch" title="Archive — hides this list but keeps it in the cloud">Archive</button>' : '') +
           '<button class="caret-btn" data-act="open">' + IC.chev + '</button>' +
         '</div>' +
         (open
@@ -868,6 +872,21 @@
             '<div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a task\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>');
       host.appendChild(card);
     });
+    var arch = archivedSpecial();
+    if (arch.length) {
+      var ab = document.createElement("button");
+      ab.type = "button"; ab.id = "spArchToggle"; ab.className = "sp-archtoggle";
+      ab.textContent = SP_SHOW_ARCH ? "Hide archived" : "Archived (" + arch.length + ")";
+      host.appendChild(ab);
+      if (SP_SHOW_ARCH) arch.forEach(function (it2) {
+        var sv2 = visibleSubs(subs(it2.id)), dn2 = sv2.filter(function (x) { return x.done; }).length;
+        var c2 = document.createElement("div");
+        c2.className = "sp-card archived"; c2.setAttribute("data-key", it2.id);
+        c2.style.setProperty("--sp-h", hueFor(it2.name));
+        c2.innerHTML = '<div class="sp-head"><span class="sp-name">' + esc(it2.name) + '</span>' + (sv2.length ? '<span class="sp-count all">' + dn2 + "/" + sv2.length + '</span>' : '') + '<button class="sp-arch-btn" data-act="spunarch" title="Bring it back to the board">Unarchive</button></div>';
+        host.appendChild(c2);
+      });
+    }
     var cnt = $("specialCount"); if (cnt) cnt.textContent = tot ? totDone + "/" + tot : "";
   }
 
@@ -1164,6 +1183,8 @@
     if (a === "open") { detailOpen[key] = !detailOpen[key]; OPENING = detailOpen[key] ? key : null; renderCols(); OPENING = null; return; }
     if (a === "off") { patch(key, { active: false }); removeTarget(key); detailOpen[key] = false; renderAll(); return; }
     if (a === "on") { patch(key, { active: true }); renderAll(); return; }
+    if (a === "sparch") { patch(key, { arch: true }); toast("Archived — it stays in the cloud under \u201cArchived\u201d."); renderAll(); return; }
+    if (a === "spunarch") { patch(key, { arch: false }); renderAll(); return; }
     if (a === "flagupd") { var wasUpd = !!getEntry(key).upd; patch(key, { upd: !wasUpd }); toast(wasUpd ? "Update flag cleared." : "Flagged \u2014 pending update for Claude."); renderAll(); return; }
     if (a === "star") {
       if (isTarget(key)) { removeTarget(key); } else if (!addTarget(key)) { toast("The Five is full \u2014 remove one first."); return; }
