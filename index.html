@@ -41,6 +41,7 @@
     <span class="spacer"></span>
     <span class="cloud-pill off" id="cloudPill" title="Cloud sync status">&#9729; Cloud off</span>
     <div class="toolset">
+      <button class="tbtn" id="btnLinks" title="Dev links &amp; folders"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg></button>
       <button class="tbtn primary" id="btnPrint" title="Print focus sheet"></button>
     </div>
   </div>
@@ -146,6 +147,25 @@
     </div>
   </section>
 
+  <!-- ===================== SCREEN: LIFE (special / misc) ===================== -->
+  <section class="screen" id="scrLife" data-screen-label="Life">
+    <div class="hone">
+      <section class="special" id="specialSec">
+        <div class="sec-head">
+          <span class="k">Special</span>
+          <span class="sub">life admin &amp; errands &mdash; visa, shopping, travel; never the focus</span>
+          <span class="count" id="specialCount"></span>
+          <div class="sp-viewseg"><button type="button" id="spViewCards" class="on">Cards</button><button type="button" id="spViewTl">Timeline</button><button type="button" id="spViewInbox">Inbox</button><button type="button" id="spViewFlow">Flow</button></div>
+          <button class="sp-mode-btn" id="specialModeBtn" title="Show only Special">Focus</button>
+          <button class="caret-btn sp-hide-btn" id="specialHideBtn" title="Hide / show section"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        </div>
+        <div class="sp-agenda" id="spAgenda" style="display:none"></div>
+        <div class="sp-grid" id="specialHost"></div>
+        <button class="add-row" id="addSpecialBtn">+ Add special list</button>
+      </section>
+    </div>
+  </section>
+
   <!-- ===================== SCREEN: WEEK (curation board) ===================== -->
   <section class="screen" id="scrWeek" data-screen-label="Week">
 
@@ -166,21 +186,6 @@
         <span class="count" id="fiveCount">0/5</span>
       </div>
       <div class="five-grid" id="fiveGrid"></div>
-    </section>
-
-    <!-- ===================== SPECIAL ===================== -->
-    <section class="special" id="specialSec" style="display:none">
-      <div class="sec-head">
-        <span class="k">Special</span>
-        <span class="sub">life admin &amp; errands &mdash; visible, but never the focus</span>
-        <span class="count" id="specialCount"></span>
-        <div class="sp-viewseg"><button type="button" id="spViewCards" class="on">Cards</button><button type="button" id="spViewTl">Timeline</button><button type="button" id="spViewInbox">Inbox</button></div>
-        <button class="sp-mode-btn" id="specialModeBtn" title="Show only Special">Focus</button>
-        <button class="caret-btn sp-hide-btn" id="specialHideBtn" title="Hide / show section"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
-      </div>
-      <div class="sp-agenda" id="spAgenda" style="display:none"></div>
-      <div class="sp-grid" id="specialHost"></div>
-      <button class="add-row" id="addSpecialBtn">+ Add special list</button>
     </section>
 
     <!-- ===================== COLUMNS ===================== -->
@@ -296,6 +301,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.5" y="4" width="7" height="16" rx="1.8"></rect><rect x="13.5" y="4" width="7" height="10" rx="1.8"></rect></svg>
       Week
     </button>
+    <button class="htab" data-screen="scrLife">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l1.5 13a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20z"></path><path d="M9 10V6a3 3 0 0 1 6 0v4"></path></svg>
+      Life
+    </button>
   </div>
 </nav>
 
@@ -382,6 +391,26 @@
     <div class="modal-foot">
       <button class="tbtn primary" id="tkSave">Save</button>
       <button class="tbtn" id="tkClose">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== DEV LINKS ===================== -->
+<div class="modal-bg" id="linksModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Dev links &amp; folders</h3>
+      <p>Claude chats, repos, and local project folders &mdash; one tap while developing. Synced with the board.</p>
+    </div>
+    <div class="modal-body" style="padding:16px 20px;">
+      <div id="lkList"></div>
+      <div class="cfield" style="margin-top:14px;"><label>Name</label><input type="text" id="lkName" placeholder="Claude &mdash; Weekly Focus chat"></div>
+      <div class="cfield"><label>Link or folder path</label><input type="text" id="lkUrl" placeholder="https://claude.ai/chat/&hellip;  or  C:\Users\me\Weekly_focus"></div>
+      <p class="cfield-hint">Web links open in a new tab. Browsers can&rsquo;t open local folders directly, so folder paths get a Copy button &mdash; paste into Explorer&rsquo;s address bar.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="tbtn primary" id="lkAdd">Add</button>
+      <button class="tbtn" id="lkClose">Close</button>
     </div>
   </div>
 </div>

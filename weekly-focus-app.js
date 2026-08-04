@@ -471,6 +471,9 @@
   var SP_VIEW = "cards"; try { SP_VIEW = localStorage.getItem("wf2_special_view") || (localStorage.getItem("wf2_special_tl") === "1" ? "tl" : "cards"); } catch (e) {}
   var TL_SHOW_DONE = false;
   var TL_LOC = ""; try { TL_LOC = localStorage.getItem("wf2_tl_loc") || ""; } catch (e) {}
+  var FLOW_GROUP = "seq"; try { FLOW_GROUP = localStorage.getItem("wf2_flow_group") || "seq"; } catch (e) {}
+  var FLOW_FOCUS = ""; try { FLOW_FOCUS = localStorage.getItem("wf2_flow_focus") || ""; } catch (e) {}
+  var FLOW_IDS = [];
   var TL_NEW_LOC = "";
   function ibItems() { var e = entries[IB_ITEM]; return (e && Array.isArray(e.items)) ? e.items : []; }
   function ibSave(items) { entries[IB_ITEM] = Object.assign({}, entries[IB_ITEM], { items: items, u: Date.now() }); save(); cloudPushEntry(IB_ITEM, entries[IB_ITEM]); }
@@ -526,6 +529,7 @@
     var c = $("spViewCards"), t = $("spViewTl"), i = $("spViewInbox");
     if (c) c.classList.toggle("on", SP_VIEW === "cards");
     if (t) t.classList.toggle("on", SP_VIEW === "tl");
+    var fl0 = $("spViewFlow"); if (fl0) fl0.classList.toggle("on", SP_VIEW === "flow");
     if (i) { i.classList.toggle("on", SP_VIEW === "inbox"); var n = ibItems().length; i.textContent = "Inbox" + (n ? " (" + n + ")" : ""); }
   }
   function renderTimeline(items, host) {
@@ -542,11 +546,12 @@
     });
     metaLocs().forEach(markLoc);   // user-created places show in the bar even before a task uses them
     if (TL_LOC && !seenLoc[TL_LOC.toLowerCase()]) TL_LOC = "";
-    var groups = {}, pastHidden = 0, doneHidden = 0, locHidden = 0;
+    var groups = {}, pastHidden = 0, doneHidden = 0, locHidden = 0, dayTot = {}, dayDone = {};
     all.forEach(function (r) {
       if (TL_LOC && r.loc.toLowerCase() !== TL_LOC.toLowerCase()) { locHidden++; return; }
+      dayTot[r.k] = (dayTot[r.k] || 0) + 1; if (r.done) dayDone[r.k] = (dayDone[r.k] || 0) + 1;
       if (r.done && !TL_SHOW_DONE) { doneHidden++; return; }
-      if (r.k < today && !TL_SHOW_DONE) { pastHidden++; return; }
+      if (r.k < today && !TL_SHOW_DONE && r.type !== "task") { pastHidden++; return; }  // overdue tasks stay visible; only past notes/done hide
       (groups[r.k] = groups[r.k] || []).push(r);
     });
     var keys = Object.keys(groups).sort();
@@ -559,7 +564,9 @@
     if (!keys.length) html += '<div class="tl-empty">' + (TL_LOC ? "Nothing at “" + esc(TL_LOC) + "” — switch place, or tag more tasks with it." : "Nothing on the timeline yet — log a note above, or put a date on a Special task and it shows up here.") + '</div>';
     keys.forEach(function (k) {
       var isPast = k < today;
-      html += '<div class="tl-day' + (k === today ? " now" : isPast ? " past" : "") + '"><span class="tl-dot"></span><span class="tl-dl">' + tlDayLabel(k) + '</span></div>';
+      var od = isPast && groups[k].some(function (r) { return r.type === "task" && !r.done; });
+      var tot = dayTot[k] || 0, dn = dayDone[k] || 0;
+      html += '<div class="tl-day' + (k === today ? " now" : od ? " past od" : isPast ? " past" : "") + '"><span class="tl-dot"></span><span class="tl-dl">' + tlDayLabel(k) + (od ? " \u00b7 overdue" : "") + '</span>' + (tot > 1 ? '<span class="tl-cnt' + (dn === tot ? " all" : "") + '">' + dn + '/' + tot + '</span>' : '') + '</div>';
       groups[k].sort(function (a, b) {
         var ta = a.type === "note" ? (a.n.ts || "") : (a.x.when || "");
         var tb = b.type === "note" ? (b.n.ts || "") : (b.x.when || "");
@@ -627,6 +634,12 @@
       var again = $("tlNew"); if (again) again.focus();
     }
     host.addEventListener("click", function (e) {
+      var fg = e.target.closest("[data-flgrp]");
+      if (fg) { FLOW_GROUP = fg.getAttribute("data-flgrp"); FLOW_FOCUS = ""; try { localStorage.setItem("wf2_flow_group", FLOW_GROUP); localStorage.setItem("wf2_flow_focus", ""); } catch (x5) {} renderSpecial(); return; }
+      var ff = e.target.closest("[data-flfocus]");
+      if (ff) { FLOW_FOCUS = ff.getAttribute("data-flfocus"); try { localStorage.setItem("wf2_flow_focus", FLOW_FOCUS); } catch (x6) {} renderSpecial(); return; }
+      if (e.target.id === "flExit") { FLOW_FOCUS = ""; try { localStorage.setItem("wf2_flow_focus", ""); } catch (x7) {} renderSpecial(); return; }
+      if (e.target.id === "flCopy") { flowCopyPrompt(); return; }
       if (e.target.id === "tlAddBtn") { tlAddFromInput(); return; }
       if (e.target.closest && e.target.closest("#tlShowDone")) { TL_SHOW_DONE = !TL_SHOW_DONE; renderSpecial(); return; }
       var lc = e.target.closest && e.target.closest("[data-tlloc]");
@@ -668,6 +681,19 @@
       tlSave(notes); renderSpecial();
     });
     host.addEventListener("keydown", function (e) { if (e.target.id === "tlNew" && e.key === "Enter") { e.preventDefault(); tlAddFromInput(); } });
+    var flDrag = null;
+    host.addEventListener("dragstart", function (e) { if (SP_VIEW !== "flow") return; var s = e.target.closest(".fl-step"); if (!s) return; flDrag = s.getAttribute("data-sid"); s.classList.add("dragging"); });
+    host.addEventListener("dragend", function () { flDrag = null; host.querySelectorAll(".dragging, .dropgap").forEach(function (n) { n.classList.remove("dragging"); n.classList.remove("dropgap"); }); });
+    host.addEventListener("dragover", function (e) { if (!flDrag) return; var s = e.target.closest(".fl-step"); if (!s) return; e.preventDefault(); host.querySelectorAll(".dropgap").forEach(function (n) { n.classList.remove("dropgap"); }); s.classList.add("dropgap"); });
+    host.addEventListener("drop", function (e) {
+      if (!flDrag) return; var s = e.target.closest(".fl-step"); if (!s) return; e.preventDefault();
+      var to = s.getAttribute("data-sid");
+      if (to && to !== flDrag) {
+        var ids = FLOW_IDS.slice(), fi = ids.indexOf(flDrag);
+        if (fi > -1) { ids.splice(fi, 1); var ti = ids.indexOf(to); ids.splice(ti < 0 ? ids.length : ti, 0, flDrag); meta.seq = ids; save(); cloudPushBoard(); }
+      }
+      flDrag = null; renderSpecial();
+    });
     host.addEventListener("change", function (e) {
       var t = e.target;
       if (t.id === "tlNewLoc") {
@@ -686,12 +712,102 @@
     if (c) c.onclick = function () { setView("cards"); };
     if (t) t.onclick = function () { setView("tl"); };
     if (i) i.onclick = function () { setView("inbox"); };
+    var f2 = $("spViewFlow"); if (f2) f2.onclick = function () { setView("flow"); };
+  }
+
+  /* ---- Flow: every open Special subtask merged into one working sequence.
+     Order lives in meta.seq (board-level, synced) — Claude can rewrite it in Supabase
+     and the app just shows the new order. Group by place / list / urgency; Focus
+     locks the view to one group until exited (persisted per device). ---- */
+  function flowUrgOf(r) {
+    if (r.x.urg) return "asap";
+    var v = !r.x.done ? whenView(r.x) : null;
+    if (v && (v.w.pastDue || v.asap)) return "asap";
+    if (r.x.when) return "soon";
+    return "later";
+  }
+  function flowCopyPrompt() {
+    var lines = [];
+    specialSorted().forEach(function (it) {
+      visibleSubs(subs(it.id)).forEach(function (x) {
+        if (x.done) return;
+        lines.push('- id "' + x.id + '": ' + (x.t || "task") + " [list: " + it.name + ((x.loc || "").trim() ? ", place: " + x.loc : "") + (x.when ? ", due: " + x.when : "") + (x.urg ? ", ASAP" : "") + "]");
+      });
+    });
+    var board = (typeof cloud !== "undefined" && cloud && cloud.board) ? cloud.board : "my_week";
+    var txt = "Here are my open Special tasks in Weekly Focus. Decide the best working sequence (deadlines first, then unblockers, pair errands by place, quick wins last) and update meta.seq on the __board row of board \"" + board + "\" in Supabase — an array of these ids, first = do first. Briefly explain the order.\n\n" + lines.join("\n");
+    function fb() { var ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Prompt copied — paste it to Claude."); } catch (e2) { window.prompt("Copy this prompt:", txt); } document.body.removeChild(ta); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function () { toast("Prompt copied — paste it to Claude."); }, fb); else fb();
+  }
+  function renderFlow(items, host) {
+    var rows = [];
+    items.forEach(function (it) { visibleSubs(subs(it.id)).forEach(function (x) { rows.push({ it: it, x: x }); }); });
+    var saved = Array.isArray(meta.seq) ? meta.seq : [];
+    var by = {}; rows.forEach(function (r) { by[r.x.id] = r; });
+    var ordered = [], seen = {};
+    saved.forEach(function (id) { if (by[id] && !seen[id]) { ordered.push(by[id]); seen[id] = 1; } });
+    rows.forEach(function (r) { if (!seen[r.x.id]) { ordered.push(r); seen[r.x.id] = 1; } });
+    FLOW_IDS = ordered.map(function (r) { return r.x.id; });
+    var UL = { asap: "ASAP / overdue", soon: "Scheduled", later: "Whenever" };
+    var groups;
+    if (FLOW_GROUP === "seq") groups = [{ key: "", label: "", rows: ordered }];
+    else {
+      var map = {}, order = [];
+      ordered.forEach(function (r) {
+        var k = FLOW_GROUP === "loc" ? ((r.x.loc || "").trim() || "No place") : FLOW_GROUP === "list" ? r.it.name : flowUrgOf(r);
+        var kk = k.toLowerCase();
+        if (!map[kk]) { map[kk] = { key: k, label: FLOW_GROUP === "urg" ? UL[k] : k, rows: [] }; order.push(kk); }
+        map[kk].rows.push(r);
+      });
+      if (FLOW_GROUP === "urg") order.sort(function (a, b) { var R = { asap: 0, soon: 1, later: 2 }; return R[a] - R[b]; });
+      groups = order.map(function (kk) { return map[kk]; });
+    }
+    var focused = null;
+    if (FLOW_FOCUS && FLOW_GROUP !== "seq") {
+      groups.forEach(function (g) { if (g.key.toLowerCase() === FLOW_FOCUS.toLowerCase()) focused = g; });
+      if (!focused) { FLOW_FOCUS = ""; try { localStorage.setItem("wf2_flow_focus", ""); } catch (e1) {} }
+    }
+    var show = focused ? [focused] : groups;
+    var doneN = ordered.filter(function (r) { return r.x.done; }).length;
+    function segBtn(g, lbl) { return '<button type="button" class="fl-gbtn' + (FLOW_GROUP === g ? " on" : "") + '" data-flgrp="' + g + '">' + lbl + '</button>'; }
+    var html = '<div class="fl">';
+    if (focused) {
+      var fdn = focused.rows.filter(function (r) { return r.x.done; }).length;
+      html += '<div class="fl-focus"><div><div class="fl-ft">\u25c9 Focus \u2014 ' + esc(focused.label) + '</div><div class="fl-fp">' + fdn + '/' + focused.rows.length + (fdn === focused.rows.length ? ' \u2014 group done \ud83c\udf89' : ' done \u00b7 everything else is hidden until you exit') + '</div></div><button type="button" class="fl-exit" id="flExit">EXIT FOCUS</button></div>';
+    } else {
+      html += '<div class="fl-bar"><span class="fl-prog">' + doneN + '/' + ordered.length + ' done</span><div class="fl-seg">' + segBtn("seq", "Sequence") + segBtn("loc", "Place") + segBtn("list", "Category") + segBtn("urg", "Urgency") + '</div><button type="button" class="fl-ai" id="flCopy" title="Copy the open tasks as a prompt for Claude — Claude writes the new order to Supabase and it appears here">\u2726 Copy prompt for Claude</button></div>';
+    }
+    if (!ordered.length) html += '<div class="tl-empty">No tasks in Special lists yet \u2014 the flow sequences every subtask across them.</div>';
+    var nowSeen = false;
+    show.forEach(function (g) {
+      if (g.label && !focused) {
+        var gdn = g.rows.filter(function (r) { return r.x.done; }).length;
+        var hue = FLOW_GROUP === "urg" ? (g.key === "asap" ? 25 : g.key === "soon" ? 85 : 283) : hueFor(g.key);
+        html += '<div class="fl-ghead" style="--sp-h:' + hue + '"><span class="fl-gdot"></span><span class="fl-gt">' + esc(g.label) + '</span><span class="fl-gcnt">' + gdn + '/' + g.rows.length + '</span><button type="button" class="fl-gfoc" data-flfocus="' + esc(g.key) + '">\u25c9 Focus</button></div>';
+      }
+      g.rows.forEach(function (r, i) {
+        var x = r.x, isDone = !!x.done, isNow = !isDone && !nowSeen; if (isNow) nowSeen = true;
+        var v = !isDone ? whenView(x) : null, od = !!(v && v.w.pastDue);
+        html += '<div class="fl-step' + (isDone ? " done" : isNow ? " now" : "") + (i === g.rows.length - 1 ? " last" : "") + '" draggable="true" data-key="' + esc(r.it.id) + '" data-sid="' + esc(x.id) + '">' +
+          '<div class="fl-rail"><span class="fl-num">' + (isDone ? "\u2713" : FLOW_IDS.indexOf(x.id) + 1) + '</span><span class="fl-line"></span></div>' +
+          '<div class="fl-row"><span class="fl-grip" title="Drag to reorder">\u283f</span><button class="sub-check' + (isDone ? " on" : "") + '" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
+          '<span class="fl-txt">' + esc(x.t || "task") + '</span>' +
+          '<span class="fl-src" style="--sp-h:' + hueFor(r.it.name) + '">' + esc(r.it.name) + '</span>' +
+          (FLOW_GROUP !== "loc" ? locChipHtml((x.loc || "").trim()) : '') +
+          (od ? '<span class="fl-chip od">' + esc(v.rel) + '</span>' : (x.urg && !isDone) ? '<span class="fl-chip od">ASAP</span>' : v ? '<span class="fl-chip">' + esc(v.rel) + '</span>' : '') +
+          (isNow ? '<span class="fl-next">\u25b6 UP NEXT</span>' : '') +
+          '</div></div>';
+      });
+    });
+    html += '<div class="fl-foot">Order + tasks sync via Supabase — ask Claude to re-sequence (copy the prompt above) and the new order appears here on every device.</div></div>';
+    host.innerHTML = html;
   }
 
   function renderSpecial() {
     var sec = $("specialSec"), host = $("specialHost"); if (!sec || !host) return;
+    host.classList.toggle("fullview", SP_VIEW !== "cards");
     var items = specialSorted();
-    sec.style.display = (items.length || tlNotes().length || ibItems().length || document.body.classList.contains("special-mode")) ? "" : "none";
+    sec.style.display = "";
     paintTlSeg();
     var asb2 = $("addSpecialBtn"); if (asb2) asb2.style.display = SP_VIEW === "cards" ? "" : "none";
     if (SP_VIEW === "tl") {
@@ -704,6 +820,12 @@
       var ag1 = $("spAgenda"); if (ag1) ag1.style.display = "none";
       renderInbox(host);
       var cnt1 = $("specialCount"); if (cnt1) cnt1.textContent = "";
+      return;
+    }
+    if (SP_VIEW === "flow") {
+      var ag2 = $("spAgenda"); if (ag2) ag2.style.display = "none";
+      renderFlow(items, host);
+      var cnt2 = $("specialCount"); if (cnt2) cnt2.textContent = "";
       return;
     }
     renderAgenda(items);
@@ -1781,6 +1903,26 @@
   }
 
   /* ---- place editor ---- */
+  /* ---- dev links: quick-open Claude chats / repos / local folders. meta.links is board-synced. ---- */
+  function linkList() { return Array.isArray(meta.links) ? meta.links : []; }
+  function isWebUrl(u) { return /^https?:\/\//i.test(u); }
+  function lkCopy(t) {
+    function fb() { var ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Path copied — paste it in Explorer."); } catch (e2) { window.prompt("Copy this path:", t); } document.body.removeChild(ta); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { toast("Path copied — paste it in Explorer."); }, fb); else fb();
+  }
+  function renderLinks() {
+    var host = $("lkList"); if (!host) return;
+    var ls = linkList();
+    host.innerHTML = ls.length ? ls.map(function (l) {
+      var web = isWebUrl(l.url);
+      return '<div class="lk-row" data-lkid="' + esc(l.id) + '"><span class="lk-ic">' + (web ? "\ud83c\udf10" : "\ud83d\udcc1") + '</span>' +
+        (web ? '<a class="lk-t" href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.t || l.url) + '</a>' : '<span class="lk-t">' + esc(l.t || l.url) + '</span>') +
+        '<span class="lk-u" title="' + esc(l.url) + '">' + esc(l.url) + '</span>' +
+        (web ? '<a class="tbtn lk-open" href="' + esc(l.url) + '" target="_blank" rel="noopener">Open</a>' : '<button type="button" class="tbtn" data-lkact="copy">Copy path</button>') +
+        '<button type="button" class="sub-del" data-lkact="del" title="Remove">\u00d7</button></div>';
+    }).join("") : '<div class="lk-empty">No links yet — add your Claude chat, GitHub repo, and project folders below.</div>';
+  }
+
   var plEditing = null, plAskSel = null;
   function openPlaceEd(id) {
     plEditing = id || null;
@@ -2261,6 +2403,28 @@
     $("plDelete").onclick = deletePlaceEd;
     $("plClose").onclick = function () { $("placeModal").classList.remove("open"); };
     $("placeModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
+    var blk = $("btnLinks");
+    if (blk) blk.onclick = function () { renderLinks(); $("linksModal").classList.add("open"); };
+    $("lkClose").onclick = function () { $("linksModal").classList.remove("open"); };
+    $("lkAdd").onclick = function () {
+      var n = ($("lkName").value || "").trim(), u = ($("lkUrl").value || "").trim();
+      if (!u) { toast("Paste a link or folder path first."); return; }
+      if (!Array.isArray(meta.links)) meta.links = [];
+      meta.links.push({ id: uid(), t: n || u, url: u });
+      save(); cloudPushBoard();
+      $("lkName").value = ""; $("lkUrl").value = "";
+      renderLinks(); toast("Added — synced to the board.");
+    };
+    ["lkName", "lkUrl"].forEach(function (id) { var el = $(id); if (el) el.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); $("lkAdd").click(); } }); });
+    $("linksModal").addEventListener("click", function (e) {
+      if (e.target === this) { this.classList.remove("open"); return; }
+      var b = e.target.closest("[data-lkact]"); if (!b) return;
+      var row = b.closest("[data-lkid]"), lid = row && row.getAttribute("data-lkid");
+      var l = null; linkList().forEach(function (x) { if (x.id === lid) l = x; });
+      if (!l) return;
+      if (b.getAttribute("data-lkact") === "copy") { lkCopy(l.url); return; }
+      if (b.getAttribute("data-lkact") === "del") { meta.links = linkList().filter(function (x) { return x.id !== lid; }); save(); cloudPushBoard(); renderLinks(); }
+    });
     $("plHere").onclick = function () {
       if (!navigator.geolocation) { toast("No location support on this device."); return; }
       $("plGeoHint").textContent = "Getting your location\u2026";
@@ -2285,7 +2449,7 @@
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") {
         closeRoutineEd();
-        ["schedModal", "taskModal", "hoursModal", "placeModal"].forEach(function (id) { var m = $(id); if (m) m.classList.remove("open"); });
+        ["schedModal", "taskModal", "hoursModal", "placeModal", "linksModal"].forEach(function (id) { var m = $(id); if (m) m.classList.remove("open"); });
       }
     });
 
