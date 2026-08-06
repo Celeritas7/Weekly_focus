@@ -148,6 +148,10 @@
   function backlogItems(kind) { return arrFor(kind).filter(function (x) { return !isActive(x); }); }
 
   var APP_CATS = ["General Purpose", "Mechanical", "Language Study", "Other"];
+  /* build-tool tag on apps: which generator made it */
+  var GEN_TAGS = ["Claude AI", "Claude Design", "Cowork"];
+  var GEN_CLASS = { "Claude AI": "gen-cai", "Claude Design": "gen-cd", "Cowork": "gen-cw" };
+  function genChip(it) { return (it && it.gen) ? '<span class="genchip ' + (GEN_CLASS[it.gen] || "") + '">' + esc(it.gen) + '</span>' : ""; }
   var CAT_CLASS = { "General Purpose": "cat-gp", "Mechanical": "cat-mech", "Language Study": "cat-lang", "Other": "cat-other" };
   var PRI_RANK = { H: 0, M: 1, L: 2 };
 
@@ -246,17 +250,19 @@
       card.className = "tcard" + (done ? " done" : "");
       card.setAttribute("data-tkey", k);
       card.setAttribute("draggable", "true");
+      card.setAttribute("data-tkind", kindOf(k));
       var m = lab.crumb ? esc(lab.crumb) : (kindOf(k) === "app" ? "App" : "Study");
-      if (prog) m += " \u00b7 " + prog.done + "/" + prog.total;
-      var sv = visibleSubs(subs(k));
-      var subList = sv.length ? '<ul class="tsubs" data-key="' + esc(k) + '">' + sv.map(function (x) {
-        return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button><span class="tsub-text">' + esc(x.t || "subtask") + '</span></li>';
-      }).join("") + '</ul>' : '';
+      var sv = visibleSubs(subs(k)), svShow = sv.slice(0, 5);
+      var subList = sv.length ? '<ul class="tsubs" data-key="' + esc(k) + '">' + svShow.map(function (x) {
+        return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button><span class="tsub-text" title="' + esc(x.t || "") + '">' + esc(x.t || "subtask") + '</span></li>';
+      }).join("") + (sv.length > svShow.length ? '<li class="tmore">+' + (sv.length - svShow.length) + ' more</li>' : '') + '</ul>' : '';
       card.innerHTML =
-        '<span class="tnum">TARGET ' + (i + 1) + '</span>' +
+        '<span class="tghost">' + (i + 1) + '</span>' +
+        '<div class="thead"><span class="tnum">0' + (i + 1) + '</span><span class="trule"></span>' + (prog ? '<span class="tprog-n">' + prog.done + '/' + prog.total + '</span>' : '') + '</div>' +
         '<button class="tcheck' + (done ? " on" : "") + '" data-act="tdone" title="Mark done"></button>' +
         '<div class="ttitle">' + esc(lab.name) + '</div>' +
         '<div class="tmeta">' + m + '</div>' +
+        (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div>' : '') +
         subList +
         '<button class="tdrop" data-act="tdrop" title="Remove from focus">\u00d7</button>';
       grid.appendChild(card);
@@ -952,9 +958,11 @@
     $(ids.bn).textContent = backlog.length;
     function brow(it) {
       var li = document.createElement("li"); li.className = "brow"; li.setAttribute("data-key", it.id); li.setAttribute("draggable", "true");
+      var eB = getEntry(it.id), holdMs = eB.holdUntil ? eB.holdUntil - Date.now() : 0;
       li.innerHTML = '<button class="tgl tgl-sm" data-act="on" title="Bring into This Week"><span class="knob"></span></button>' +
         '<span class="bname">' + esc(it.name) + '</span>' +
-        (VIEW_GROUPED ? '' : gtagHtml(kind, it.group)) +
+        (holdMs > 0 ? '<span class="holdchip" title="On hold \u2014 returns to This Week automatically">\u23F8 ' + fmtHold(holdMs) + '</span>' : '') +
+        (VIEW_GROUPED ? '' : gtagHtml(kind, it.group)) + genChip(it) +
         '<button class="brow-del" data-act="del" title="Delete forever">' + IC.trash + '</button>';
       return li;
     }
@@ -1044,7 +1052,7 @@
     li.innerHTML =
       '<div class="item-row">' +
         '<div class="item-grip" data-act="open">' +
-          '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div>' + (!VIEW_GROUPED && it ? gtagHtml(kindOf(id), it.group) : '') + '</div>' +
+          '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div>' + (!VIEW_GROUPED && it ? gtagHtml(kindOf(id), it.group) : '') + genChip(it) + '</div>' +
         '</div>' +
         '<div class="item-actions">' + ring +
           '<button class="updflag' + (updOn ? " on" : "") + '" data-act="flagupd" title="' + (updOn ? "Update pending — click to clear" : "Flag a pending update / prompt for Claude") + '">' + IC.flag + '</button>' +
@@ -1061,7 +1069,7 @@
     var e = getEntry(id), it = itemById(id), pri = priOf(id);
     var rows = visibleSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
       var t = x.t || "";
-      return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
+      return '<li data-sid="' + esc(x.id) + '"><span class="sub-grip" title="Drag to reorder">\u22ee\u22ee</span><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
         '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' +
         (isSpecialItem(it) ? whenChipHtml(x) : '') +
         '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button></li>';
@@ -1071,11 +1079,24 @@
         return '<button class="pseg pseg-' + p + (p === pri ? " on" : "") + '" data-pri="' + p + '">' + priName(p) + '</button>';
       }).join("") + '</div></div>';
     var listId = "grp-" + kindOf(id);
+    var lks = (it && Array.isArray(it.links)) ? it.links : [];
+    var linkRows = lks.map(function (l, ix) {
+      var host = String(l.url || "").replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
+      return '<li class="lrow" data-lix="' + ix + '">' + HIC.link +
+        '<span class="lr-label">' + esc(l.label || host) + '</span>' +
+        '<span class="lr-host">' + esc(host) + '</span>' +
+        '<a class="lr-open" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="Open in new tab">\u2197</a>' +
+        '<button class="lr-del" data-act="linkdel" title="Remove link">\u00d7</button></li>';
+    }).join("");
     var linksRow = '<div class="links-block"><span class="notes-lbl">\u2197 Quick links</span>' +
-      '<textarea class="hlinks" data-act="links" placeholder="One per line: Label | https://url">' + esc(linksToText(it && it.links)) + '</textarea></div>';
+      (linkRows ? '<ul class="lrows">' + linkRows + '</ul>' : '<div class="lr-none">No links yet \u2014 add the app, repo or doc you jump to.</div>') +
+      '<div class="lr-add"><input class="lr-name" placeholder="Label (e.g. Live app)"><input class="lr-url" placeholder="https://\u2026" inputmode="url"><button class="lr-addbtn" data-act="linkadd">Add</button></div></div>';
+    var genSel = kindOf(id) !== "app" ? '' : '<select class="mg-gen" data-act="gen" title="Which tool generated this app">' +
+      '<option value="">Made with\u2026</option>' +
+      GEN_TAGS.map(function (g) { return '<option value="' + esc(g) + '"' + (it && it.gen === g ? " selected" : "") + '>' + esc(g) + '</option>'; }).join("") + '</select>';
     var manage = '<div class="manage-row">' +
       '<input class="mg-name" data-act="rename" value="' + esc(it ? it.name : "") + '" placeholder="Name">' +
-      '<input class="mg-group" data-act="group" list="' + listId + '" value="' + esc(it ? it.group : "") + '" placeholder="Group">' +
+      '<input class="mg-group" data-act="group" list="' + listId + '" value="' + esc(it ? it.group : "") + '" placeholder="Group">' + genSel +
       '<button class="mg-del" data-act="del" title="Delete forever">' + IC.trash + '</button>' +
       '</div>';
     return '<div class="detail' + (id === OPENING ? ' opening' : '') + '">' + priCtl +
@@ -1181,8 +1202,21 @@
 
     var key = keyOf(act);
     if (a === "open") { detailOpen[key] = !detailOpen[key]; OPENING = detailOpen[key] ? key : null; renderCols(); OPENING = null; return; }
-    if (a === "off") { patch(key, { active: false }); removeTarget(key); detailOpen[key] = false; renderAll(); return; }
-    if (a === "on") { patch(key, { active: true }); renderAll(); return; }
+    if (a === "off") {
+      /* flagged or starred blocks go on a 24h hold: parked in the backlog, auto-return tomorrow */
+      var eOff = getEntry(key), hold = !!eOff.upd || isTarget(key);
+      patch(key, hold ? { active: false, holdUntil: Date.now() + 864e5, holdStar: isTarget(key) } : { active: false });
+      removeTarget(key); detailOpen[key] = false; renderAll();
+      if (hold) toast("On hold \u2014 back in This Week in 24 hours.");
+      return;
+    }
+    if (a === "on") { var eOn = getEntry(key); patch(key, { active: true, holdUntil: null, holdStar: false }); if (eOn.holdStar) addTarget(key); renderAll(); return; }
+    if (a === "linkdel") {
+      var itL = itemById(key), row = e.target.closest(".lrow");
+      if (itL && row) { var ix = +row.getAttribute("data-lix"); itL.links = (itL.links || []).filter(function (_, i2) { return i2 !== ix; }); saveInv(); renderCols(); renderHome(); }
+      return;
+    }
+    if (a === "linkadd") { addLinkFrom(act, key); return; }
     if (a === "sparch") { patch(key, { arch: true }); toast("Archived — it stays in the cloud under \u201cArchived\u201d."); renderAll(); return; }
     if (a === "spunarch") { patch(key, { arch: false }); renderAll(); return; }
     if (a === "flagupd") { var wasUpd = !!getEntry(key).upd; patch(key, { upd: !wasUpd }); toast(wasUpd ? "Update flag cleared." : "Flagged \u2014 pending update for Claude."); renderAll(); return; }
@@ -1221,7 +1255,42 @@
     if (a === "subadd") { addSub(act, key); return; }
   });
 
+  /* ---- quick links: 24h holds + structured add ---- */
+  function fmtHold(ms) { var h = Math.ceil(ms / 36e5); return h >= 2 ? "back in " + h + "h" : "back in " + Math.max(1, Math.ceil(ms / 6e4)) + "m"; }
+  function addLinkFrom(btn, key) {
+    var blk = btn.closest(".links-block"); if (!blk) return;
+    var lab = blk.querySelector(".lr-name"), url = blk.querySelector(".lr-url");
+    var u = (url.value || "").trim(); if (!u) { url.focus(); return; }
+    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+    var it = itemById(key); if (!it) return;
+    var host = u.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
+    it.links = (Array.isArray(it.links) ? it.links : []).concat([{ label: (lab.value || "").trim() || host, url: u }]);
+    saveInv(); renderCols(); renderHome(); toast("Link added.");
+  }
+  function releaseHolds() {
+    var now = Date.now(), freed = 0;
+    Object.keys(entries).forEach(function (k) {
+      var en = entries[k];
+      if (!en || en.active || !en.holdUntil || en.holdUntil > now) return;
+      var wasStar = !!en.holdStar;
+      patch(k, { active: true, holdUntil: null, holdStar: false });
+      if (wasStar) addTarget(k);
+      freed++;
+    });
+    if (freed) { renderAll(); toast(freed === 1 ? "Hold expired \u2014 task is back in This Week." : freed + " holds expired \u2014 tasks are back in This Week."); }
+  }
+  document.addEventListener("change", function (e) {
+    if (!(e.target.getAttribute && e.target.getAttribute("data-act") === "gen")) return;
+    var it = itemById(keyOf(e.target)); if (!it) return;
+    it.gen = e.target.value || ""; saveInv(); renderCols();
+  });
   document.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target.classList && (e.target.classList.contains("lr-url") || e.target.classList.contains("lr-name"))) {
+      e.preventDefault();
+      var blk = e.target.closest(".links-block"), btn = blk && blk.querySelector(".lr-addbtn");
+      if (btn) addLinkFrom(btn, keyOf(e.target));
+      return;
+    }
     var a = e.target.getAttribute && e.target.getAttribute("data-act");
     if (a === "subnew" && e.key === "Enter") { e.preventDefault(); addSub(e.target, keyOf(e.target)); }
     if (e.target.id === "addName" && e.key === "Enter") { e.preventDefault(); commitAdd(); }
@@ -1595,6 +1664,42 @@
     f.onclick = function () { set(false); };
     g.onclick = function () { set(true); };
     paint();
+  }
+
+  /* ---- detail checklist: pointer-based subtask reorder via the row grip ---- */
+  function wireSubDrag() {
+    var dragLi = null, list = null;
+    document.addEventListener("pointerdown", function (e) {
+      var g = e.target.closest ? e.target.closest(".subs .sub-grip") : null; if (!g) return;
+      dragLi = g.closest("li[data-sid]"); list = dragLi ? dragLi.parentNode : null; if (!dragLi) return;
+      dragLi.classList.add("dragging");
+      try { g.setPointerCapture(e.pointerId); } catch (x) {}
+      e.preventDefault();
+    });
+    document.addEventListener("pointermove", function (e) {
+      if (!dragLi) return;
+      var over = document.elementFromPoint(e.clientX, e.clientY);
+      var li = over && over.closest ? over.closest("li[data-sid]") : null;
+      if (!li || li === dragLi || li.parentNode !== list) return;
+      var r = li.getBoundingClientRect();
+      list.insertBefore(dragLi, e.clientY < r.top + r.height / 2 ? li : li.nextSibling);
+    });
+    function endSubDrag() {
+      if (!dragLi) return;
+      var key = keyOf(dragLi);
+      dragLi.classList.remove("dragging"); dragLi = null;
+      var ids = Array.prototype.map.call(list.querySelectorAll("li[data-sid]"), function (n) { return n.getAttribute("data-sid"); });
+      list = null;
+      if (!key) return;
+      var all = normSubs(subs(key)), by = {};
+      all.forEach(function (s) { by[s.id] = s; });
+      var next = ids.map(function (id) { return by[id]; }).filter(Boolean);
+      all.forEach(function (s) { if (ids.indexOf(s.id) < 0) next.push(s); });   // keep tombstones + filtered rows
+      patch(key, { subtasks: next });
+      renderCols(); renderFive(); renderHome();
+    }
+    document.addEventListener("pointerup", endSubDrag);
+    document.addEventListener("pointercancel", endSubDrag);
   }
 
   /* ---- Special: pointer-based reorder (works on touch too) ---- */
@@ -2526,6 +2631,7 @@
      INIT
      ============================================================ */
   function init() {
+    setTimeout(releaseHolds, 3000); setInterval(releaseHolds, 30000);   // 24h holds
     wireDisclosure("appsBacklogHead", "appsBacklogWrap");
     wireDisclosure("studyBacklogHead", "studyBacklogWrap");
     wireDisclosure("officeBacklogHead", "officeBacklogWrap");
@@ -2545,6 +2651,7 @@
       try { if (localStorage.getItem("wf2_special_mode") === "1") applySpecialMode(true); } catch (e) {}
     }
     wireSpecialDrag();
+    wireSubDrag();
     wireTimeline();
     wireViewToggle();
     var shb = $("specialHideBtn");
