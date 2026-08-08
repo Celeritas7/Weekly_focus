@@ -57,7 +57,7 @@ body[data-mode="office"]  { --accent: var(--office); --accent-soft: var(--office
   border-top: 1px solid var(--hair);
   padding-bottom: env(safe-area-inset-bottom);
 }
-.htabbar-in { max-width: 600px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); }
+.htabbar-in { max-width: 640px; margin: 0 auto; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
 .htab {
   border: none; background: none; cursor: pointer; font-family: inherit;
   display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -534,3 +534,17 @@ label.chip.on { color: #fff; }
 .ag-item.odrow .ag-cal i, .ag-item.odrow .ag-cal b { color: var(--od); }
 .ag-item.odrow .ag-chip { color: #fff; background: var(--od); font-weight: 800; }
 .ag-item.odrow .sub-check { border-color: var(--od); }
+
+/* ---- v40: Claude Chats screen ---- */
+.chat-add { display: flex; gap: 8px; margin: 14px 0 18px; flex-wrap: wrap; }
+.chat-add input { flex: 1 1 200px; font: inherit; font-size: 13px; padding: 9px 12px; border: 1px solid var(--hair); border-radius: 10px; background: var(--card); }
+.chat-add input:focus { outline: none; border-color: var(--accent); }
+.chat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.chat-row { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--hair); border-radius: 12px; padding: 12px 14px; }
+.chat-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.chat-topic { font-weight: 700; font-size: 13.5px; cursor: text; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-date { font-size: 11px; color: var(--faint); }
+.chat-open { flex: 0 0 auto; text-decoration: none; white-space: nowrap; }
+.chat-nolink { flex: 0 0 auto; font-size: 11px; color: var(--faint); }
+.chat-empty { color: var(--faint); font-size: 13px; line-height: 1.5; padding: 18px 4px; }
+.chat-topic-edit { font: inherit; font-weight: 700; font-size: 13.5px; width: 100%; border: 1px solid var(--accent); border-radius: 6px; padding: 2px 6px; }

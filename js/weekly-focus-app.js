@@ -328,6 +328,11 @@
     if (md === "b") return "";
     return '<span class="sub-mode ' + md + '">' + (md === "o" ? "Office" : "Personal") + "</span>";
   }
+  var SUB_TAGS = { ca: "Claude AI", cd: "Claude Design", cw: "Cowork" };
+  function subTagBtn(x) {
+    var tg = x.tag && SUB_TAGS[x.tag] ? x.tag : "";
+    return '<button class="sub-tag ' + (tg || "none") + '" data-act="tagcycle" title="' + (tg ? SUB_TAGS[tg] + " \u2014 tap to change / clear" : "Tag this task: Claude AI / Claude Design / Cowork") + '">' + (tg ? SUB_TAGS[tg] : "+ tag") + "</button>";
+  }
   function subFlagBtn(x) {
     return '<button class="sub-flag' + (x.urg ? " on" : "") + '" data-act="urgtoggle" title="' + (x.urg ? "Urgent \u2014 tap to clear" : "Mark urgent \u2014 pins it on top in red") + '">' + IC.flag + "</button>";
   }
@@ -858,7 +863,7 @@
         var liCls = x.done ? "" : od ? " od" : x.urg ? " urg" : (v && v.asap ? " asap" : "");
         var metaBits = subModeTag(x) + (x.when ? whenChipHtml(x) : "");
         return '<li data-sid="' + esc(x.id) + '" class="spli' + liCls + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-          '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' +
+          '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' + subTagBtn(x) +
           (x.when ? "" : whenChipHtml(x)) + subFlagBtn(x) +
           '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button>' +
           (metaBits ? '<span class="sub-meta">' + metaBits + "</span>" : "") + "</li>";
@@ -1070,7 +1075,7 @@
     var rows = visibleSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
       var t = x.t || "";
       return '<li data-sid="' + esc(x.id) + '"><span class="sub-grip" title="Drag to reorder">\u22ee\u22ee</span><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-        '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' +
+        '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' + subTagBtn(x) +
         (isSpecialItem(it) ? whenChipHtml(x) : '') +
         '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button></li>';
     }).join("");
@@ -1251,6 +1256,15 @@
       }
       return;
     }
+    if (a === "tagcycle") {
+      var tli = act.closest("[data-sid]");
+      if (tli) {
+        var tsid = tli.getAttribute("data-sid"), tord = ["", "ca", "cd", "cw"];
+        patch(key, { subtasks: normSubs(subs(key)).map(function (x) { if (x.id !== tsid) return x; var ci = tord.indexOf(x.tag || ""); return Object.assign({}, x, { tag: tord[(ci + 1) % 4] || null, u: Date.now() }); }) });
+        renderCols(); renderHome();
+      }
+      return;
+    }
     if (a === "spreveal") { spReveal[key] = !spReveal[key]; renderCols(); return; }
     if (a === "subadd") { addSub(act, key); return; }
   });
@@ -1312,8 +1326,10 @@
     var li = span.closest("[data-sid]"); if (!li) return;
     var sid = li.getAttribute("data-sid"), cur = "";
     normSubs(subs(key)).forEach(function (x) { if (x.id === sid) cur = x.t || ""; });   // backfill ids
-    var input = document.createElement("input");
-    input.className = "sub-text-edit"; input.value = cur; input.placeholder = "subtask";
+    var input = document.createElement("textarea");
+    input.className = "sub-text-edit"; input.value = cur; input.placeholder = "subtask"; input.rows = 1;
+    function grow() { input.style.height = "auto"; input.style.height = (input.scrollHeight + 2) + "px"; }
+    input.addEventListener("input", grow); setTimeout(grow, 0);
     var settled = false;
     function finish(saveIt) {
       if (settled) return; settled = true;
@@ -1321,7 +1337,7 @@
       renderCols();
     }
     input.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter") { ev.preventDefault(); finish(true); }
+      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); finish(true); }   // Shift+Enter = new line
       else if (ev.key === "Escape") { ev.preventDefault(); finish(false); }
     });
     input.addEventListener("blur", function () { finish(true); });
@@ -2449,7 +2465,7 @@
   /* ---------------- MODE + TABS + WIRING ---------------- */
   function renderHome() {
     if (!$("scrToday")) return;
-    renderTodayScreen(); renderCalScreen(); renderRoutinesScreen(); renderPlaces();
+    renderTodayScreen(); renderCalScreen(); renderRoutinesScreen(); renderPlaces(); renderChats();
   }
 
   function applyMode(mode, focusSeg) {
@@ -2467,6 +2483,46 @@
     renderHome();
   }
 
+  /* ---- v40: Claude Chats — saved discussions with their claude.ai links ---- */
+  function chatsArr() { if (!Array.isArray(meta.cchats)) meta.cchats = []; return meta.cchats; }
+  function saveChats() { save(); cloudPushBoard(); }
+  function renderChats() {
+    var host = $("chatList"); if (!host) return;
+    var arr = chatsArr().slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
+    var n = $("chatCount"); if (n) n.textContent = arr.length || "";
+    if (!arr.length) { host.innerHTML = '<li class="chat-empty">No discussions saved yet. Add a topic and paste the claude.ai chat link above \u2014 then pick the conversation back up any time.</li>'; return; }
+    host.innerHTML = arr.map(function (c) {
+      return '<li class="chat-row" data-cid="' + esc(c.id) + '">' +
+        '<div class="chat-main"><span class="chat-topic" data-cact="edit" title="Click to edit">' + esc(c.t || "Untitled discussion") + '</span></div>' +
+        (c.url ? '<a class="tbtn chat-open" href="' + esc(c.url) + '" target="_blank" rel="noopener">Open chat \u2197</a>' : '') +
+        '<button class="sub-del" data-cact="del" title="Delete">\u00d7</button></li>';
+    }).join("");
+  }
+  function wireChats() {
+    var btn = $("chatAddBtn"); if (!btn) return;
+    btn.onclick = function () {
+      var t = ($("chatTopic").value || "").trim(), u = ($("chatUrl").value || "").trim();
+      if (!t && !u) { $("chatTopic").focus(); return; }
+      if (u && !/^https?:\/\//i.test(u)) u = "https://" + u;
+      chatsArr().push({ id: uid(), t: t || "Untitled discussion", url: u, u: Date.now() });
+      $("chatTopic").value = ""; $("chatUrl").value = ""; saveChats(); renderChats(); toast("Discussion saved.");
+    };
+    $("chatList").addEventListener("click", function (e) {
+      var el = e.target.closest("[data-cact]"); if (!el) return;
+      var row = e.target.closest("[data-cid]"); if (!row) return;
+      var cid = row.getAttribute("data-cid"), arr = chatsArr(), act2 = el.getAttribute("data-cact");
+      if (act2 === "del") { meta.cchats = arr.filter(function (c) { return c.id !== cid; }); saveChats(); renderChats(); return; }
+      if (act2 === "edit") {
+        var c = null; arr.forEach(function (x) { if (x.id === cid) c = x; }); if (!c) return;
+        var inp = document.createElement("input"); inp.className = "chat-topic-edit"; inp.value = c.t || "";
+        var done = false;
+        function fin(saveIt) { if (done) return; done = true; if (saveIt && inp.value.trim()) { c.t = inp.value.trim(); c.u = Date.now(); saveChats(); } renderChats(); }
+        inp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") fin(true); else if (ev.key === "Escape") fin(false); });
+        inp.addEventListener("blur", function () { fin(true); });
+        el.replaceWith(inp); inp.focus(); inp.select();
+      }
+    });
+  }
   function showScreen(id) {
     if (!$(id)) id = "scrToday";
     Array.prototype.forEach.call(document.querySelectorAll(".screen"), function (s) { s.classList.toggle("on", s.id === id); });
@@ -2650,6 +2706,7 @@
     wireDisclosure("appsBacklogHead", "appsBacklogWrap");
     wireDisclosure("studyBacklogHead", "studyBacklogWrap");
     wireDisclosure("officeBacklogHead", "officeBacklogWrap");
+    wireChats();
     $("btnPrint").onclick = function () { window.print(); };
     $("addAppBtn").onclick = function () { openAdd("app"); };
     $("addStudyBtn").onclick = function () { openAdd("study"); };

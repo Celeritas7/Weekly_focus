@@ -1,27 +1,26 @@
-# Deploy v39 — mobile sign-in via 6-digit code
-
-## Why
-Magic links break on phones: the link opens in the mail app's browser (or Safari),
-which is a different storage context from the installed app — the session never
-reaches Weekly Focus. A code you type INSIDE the app works everywhere.
+# Deploy v40.1 (cache v41) — task tags, Claude Chats tab, paragraph editing
 
 ## What changed
-1. **Sign-in by code** — the Cloud modal now sends the email, then shows a
-   "6-digit code" field + **Verify & sign in**. Type the code from the email and
-   you're in — on any device, any browser, installed app included.
-   The emailed link still works too (if opened in the same browser).
-2. sw.js cache bumped to v39.
+1. **Per-task tags** — every checklist point gets a small chip: tap it to cycle
+   Claude AI → Claude Design → Cowork → none. The tag sits on the point, not the block.
+   (Hover a row to see the faint "+ tag" chip; on phones it's always faintly visible.)
+2. **Claude Chats tab** — new "Chats" tab in the bottom bar. Save a topic + the
+   claude.ai chat link; "Open chat ↗" jumps straight back into the conversation.
+   Click a topic to rename. Synced across devices with the board.
+3. **Paragraph editing** — editing a point now opens a multi-line box that grows
+   with the text (no more single-line squeeze). Enter saves, Shift+Enter adds a
+   line, Escape cancels. Line breaks are kept when displayed.
+4. Note: the 24h backlog hold for flagged/starred blocks already shipped —
+   backlogging such a block parks it and auto-returns it to This Week after 24h.
+5. sw.js cache bumped to v40.
 
-## ONE-TIME Supabase setting (required for the code to appear in the email)
-Supabase Dashboard → Authentication → Email Templates → **Magic Link**:
-add this line to the template body, then Save:
+## Copy these over your Weekly_focus root
+    sw.js
+    index.html
+    js/weekly-focus-app.js
+    css/weekly-focus.css
+    css/home-screens.css
 
-    <p>Your sign-in code: {{ .Token }}</p>
-
-Without it the email only contains the link, no code.
-
-## Copy these over your Weekly_focus root (same layout as before)
-    sw.js                     (cache bumped to v39)
-    index.html                (code field in the Cloud modal)
-    js/weekly-focus-app.js    (verify-code handler)
-    everything else unchanged
+## v40.1 follow-up
+- Routines & Places merged into ONE tab (Places section now lives inside Routines) — 6 tabs, one row.
+- Chats rows simplified: just the title + "Open chat ↗" (+ delete). Click title to rename.
