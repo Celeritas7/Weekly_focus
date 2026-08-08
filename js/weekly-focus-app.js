@@ -1565,6 +1565,7 @@
   function fillCloud() {}   // connection fields are gone — the build is pre-wired via config.js
   function wireCloud() {
     var _bc = $("btnCloud"); if (_bc) _bc.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); };
+    var _cp = $("cloudPill"); if (_cp) _cp.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); };
     $("cloudClose").onclick = function () { $("cloudModal").classList.remove("open"); };
     $("cloudModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
     var bsi = $("bannerSignIn"); if (bsi) bsi.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); var ce = $("cfEmail"); if (ce) ce.focus(); };
