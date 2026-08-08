@@ -1571,9 +1571,23 @@
     $("cloudSignIn").onclick = async function () {
       ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Check your connection and try again.", true); return; }
       var email = ($("cfEmail").value || "").trim();
-      if (!email) { cloudSetStatus("Enter your email to get a magic link.", true); return; }
-      try { var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error; cloudSetStatus("Magic link sent to <b>" + esc(email) + "</b>. Open it <b>on this device, in this browser</b> to finish signing in and load your week."); }
-      catch (e) { cloudSetStatus("Couldn\u2019t send the link: " + esc(e.message || String(e)), true); }
+      if (!email) { cloudSetStatus("Enter your email to get a sign-in code.", true); return; }
+      try {
+        var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error;
+        var _or = $("otpRow"), _ob = $("otpBtns"); if (_or) _or.style.display = ""; if (_ob) _ob.style.display = "";
+        cloudSetStatus("Email sent to <b>" + esc(email) + "</b>. Type the <b>6-digit code</b> from it below \u2014 no need to open the link.");
+        var _co = $("cfOtp"); if (_co) { _co.value = ""; _co.focus(); }
+      }
+      catch (e) { cloudSetStatus("Couldn\u2019t send the code: " + esc(e.message || String(e)), true); }
+    };
+    var _cv = $("cloudVerify"); if (_cv) _cv.onclick = async function () {
+      ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Check your connection and try again.", true); return; }
+      var email = ($("cfEmail").value || "").trim(), code = ($("cfOtp") ? $("cfOtp").value || "" : "").trim();
+      if (!email) { cloudSetStatus("Enter your email above first.", true); return; }
+      if (!code) { cloudSetStatus("Type the 6-digit code from the email.", true); return; }
+      cloudSetStatus("Checking the code\u2026");
+      try { var r = await sb.auth.verifyOtp({ email: email, token: code, type: "email" }); if (r.error) throw r.error; cloudSetStatus("Signed in \u2713 \u2014 loading your week\u2026"); }
+      catch (e) { cloudSetStatus("That code didn\u2019t work: " + esc(e.message || String(e)) + " \u2014 codes expire after a few minutes; hit <b>Send code</b> again for a fresh one.", true); }
     };
     $("cloudPull").onclick = function () {
       if (!syncReady()) { cloudSetStatus("Connect and sign in first \u2014 then Pull fetches your other device\u2019s data.", true); return; }

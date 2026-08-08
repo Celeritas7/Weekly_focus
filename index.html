@@ -503,9 +503,11 @@
       <div class="dsect">
         <h4>Account</h4>
         <div id="authSignedOut">
-          <p class="dhelp">Sign in with a magic link &mdash; your week is private to your account.</p>
+          <p class="dhelp">Enter your email and hit <b>Send code</b>, then type the <b>6-digit code</b> from the email below. Works on any device &mdash; phone included. (Opening the emailed link in this same browser also still works.)</p>
           <div class="cfield"><label>Email</label><input id="cfEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
-          <div class="dbtns" style="margin-top:12px;"><button class="tbtn" id="cloudSignIn">Send magic link</button></div>
+          <div class="dbtns" style="margin-top:12px;"><button class="tbtn" id="cloudSignIn">Send code</button></div>
+          <div class="cfield" id="otpRow" style="display:none;margin-top:12px;"><label>6-digit code</label><input id="cfOtp" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="8"></div>
+          <div class="dbtns" id="otpBtns" style="display:none;margin-top:12px;"><button class="tbtn primary" id="cloudVerify">Verify &amp; sign in</button></div>
         </div>
         <div id="authSignedIn" style="display:none;">
           <p class="dhelp">Signed in as <b id="authWho">your account</b>.</p>
