@@ -174,7 +174,7 @@
   function normSubs(arr) {
     return (Array.isArray(arr) ? arr : []).map(function (s) {
       if (!s) return null;
-      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl, loc: s.loc || "" };
+      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl, loc: s.loc || "", tag: s.tag || "" };
     }).filter(Boolean);
   }
   function mergeSubs(a, b) {
@@ -183,7 +183,7 @@
       var ex = by[s.id];
       if (!ex) { by[s.id] = s; order.push(s.id); return; }
       if ((s.u || 0) > (ex.u || 0)) by[s.id] = s;
-      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when, md: ex.md !== "b" ? ex.md : s.md, urg: ex.urg || s.urg, dl: ex.dl || s.dl, loc: ex.loc || s.loc || "" };
+      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when, md: ex.md !== "b" ? ex.md : s.md, urg: ex.urg || s.urg, dl: ex.dl || s.dl, loc: ex.loc || s.loc || "", tag: ex.tag || s.tag || "" };
     }
     normSubs(a).forEach(take); normSubs(b).forEach(take);
     return order.map(function (id) { return by[id]; });
@@ -464,7 +464,32 @@
 
   /* ---- Special: life-admin errands, always visible, never in the columns ---- */
   function isSpecialItem(it) { return !!it && (it.group || "").trim().toLowerCase() === "special"; }
-  function renderCols() { renderColumn("app"); renderColumn("study"); renderColumn("office"); renderSpecial(); }
+  /* ---- v41: tag filter (All / Claude AI / Claude Design / Cowork) ---- */
+  var TAG_FILTER = "";
+  try { TAG_FILTER = localStorage.getItem("wf-tagfilter") || ""; } catch (e) {}
+  function applyTagFilter() {
+    var tfBar = $("tagFilter");
+    if (tfBar) tfBar.querySelectorAll("[data-tf]").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-tf") === TAG_FILTER); });
+    var scr = $("scrWeek"); if (!scr) return;
+    scr.classList.toggle("tag-filtered", !!TAG_FILTER);
+    if (!TAG_FILTER) {
+      scr.querySelectorAll(".tf-hide").forEach(function (el) { el.classList.remove("tf-hide"); });
+      return;
+    }
+    scr.querySelectorAll("[data-key]").forEach(function (card) {
+      if (!card.classList.contains("item") && !card.classList.contains("sp-card")) return;
+      var key = card.getAttribute("data-key"), match = {}, any = false;
+      normSubs(subs(key)).forEach(function (x) { if (!x.del && x.tag === TAG_FILTER) { match[x.id] = 1; any = true; } });
+      card.classList.toggle("tf-hide", !any);
+      if (any) card.querySelectorAll("li[data-sid]").forEach(function (li) { li.classList.toggle("tf-hide", !match[li.getAttribute("data-sid")]); });
+    });
+    scr.querySelectorAll(".cat-head").forEach(function (h) {
+      var vis = false, el = h.nextElementSibling;
+      while (el && !el.classList.contains("cat-head")) { if ((el.classList.contains("item") || el.classList.contains("sp-card")) && !el.classList.contains("tf-hide")) { vis = true; break; } el = el.nextElementSibling; }
+      h.classList.toggle("tf-hide", !vis);
+    });
+  }
+  function renderCols() { renderColumn("app"); renderColumn("study"); renderColumn("office"); renderSpecial(); applyTagFilter(); }
   function spordOf(id) { var e = entries[id]; return (e && e.spord != null) ? e.spord : null; }
   function specialSorted() {
     var items = activeItems("app").concat(activeItems("study")).filter(isSpecialItem).filter(function (it) { return !getEntry(it.id).arch; });
@@ -2494,11 +2519,24 @@
     host.innerHTML = arr.map(function (c) {
       return '<li class="chat-row" data-cid="' + esc(c.id) + '">' +
         '<div class="chat-main"><span class="chat-topic" data-cact="edit" title="Click to edit">' + esc(c.t || "Untitled discussion") + '</span></div>' +
+        '<button class="tbtn chat-editlink" data-cact="editlink" title="Edit the saved link">\u270e link</button>' +
         (c.url ? '<a class="tbtn chat-open" href="' + esc(c.url) + '" target="_blank" rel="noopener">Open chat \u2197</a>' : '') +
         '<button class="sub-del" data-cact="del" title="Delete">\u00d7</button></li>';
     }).join("");
   }
   function wireChats() {
+    /* deep-link: ?addchat=<url>&topic=<name> saves a discussion on load (for one-tap save from a Claude chat) */
+    try {
+      var qp = new URLSearchParams(window.location.search), au = qp.get("addchat");
+      if (au) {
+        var at = (qp.get("topic") || "").trim();
+        if (!/^https?:\/\//i.test(au)) au = "https://" + au;
+        var dup = chatsArr().some(function (c) { return c.url === au; });
+        if (!dup) { chatsArr().push({ id: uid(), t: at || "Untitled discussion", url: au, u: Date.now() }); saveChats(); }
+        history.replaceState(null, "", window.location.pathname);
+        renderChats(); showScreen("scrChats"); toast(dup ? "Already saved." : "Discussion saved \u2713");
+      }
+    } catch (e) {}
     var btn = $("chatAddBtn"); if (!btn) return;
     btn.onclick = function () {
       var t = ($("chatTopic").value || "").trim(), u = ($("chatUrl").value || "").trim();
@@ -2512,6 +2550,16 @@
       var row = e.target.closest("[data-cid]"); if (!row) return;
       var cid = row.getAttribute("data-cid"), arr = chatsArr(), act2 = el.getAttribute("data-cact");
       if (act2 === "del") { meta.cchats = arr.filter(function (c) { return c.id !== cid; }); saveChats(); renderChats(); return; }
+      if (act2 === "editlink") {
+        var cl = null; arr.forEach(function (x) { if (x.id === cid) cl = x; }); if (!cl) return;
+        var inp2 = document.createElement("input"); inp2.className = "chat-topic-edit"; inp2.value = cl.url || ""; inp2.placeholder = "https://claude.ai/chat/\u2026";
+        var done2 = false;
+        function fin2(saveIt) { if (done2) return; done2 = true; if (saveIt) { var u2 = inp2.value.trim(); if (u2 && !/^https?:\/\//i.test(u2)) u2 = "https://" + u2; cl.url = u2; cl.u = Date.now(); saveChats(); } renderChats(); }
+        inp2.addEventListener("keydown", function (ev) { if (ev.key === "Enter") fin2(true); else if (ev.key === "Escape") fin2(false); });
+        inp2.addEventListener("blur", function () { fin2(true); });
+        row.querySelector(".chat-main").appendChild(inp2); el.style.display = "none"; inp2.focus(); inp2.select();
+        return;
+      }
       if (act2 === "edit") {
         var c = null; arr.forEach(function (x) { if (x.id === cid) c = x; }); if (!c) return;
         var inp = document.createElement("input"); inp.className = "chat-topic-edit"; inp.value = c.t || "";
@@ -2706,6 +2754,12 @@
     wireDisclosure("appsBacklogHead", "appsBacklogWrap");
     wireDisclosure("studyBacklogHead", "studyBacklogWrap");
     wireDisclosure("officeBacklogHead", "officeBacklogWrap");
+    var _tf = $("tagFilter"); if (_tf) _tf.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-tf]"); if (!b) return;
+      TAG_FILTER = b.getAttribute("data-tf") || "";
+      try { localStorage.setItem("wf-tagfilter", TAG_FILTER); } catch (e2) {}
+      applyTagFilter();
+    });
     wireChats();
     $("btnPrint").onclick = function () { window.print(); };
     $("addAppBtn").onclick = function () { openAdd("app"); };
