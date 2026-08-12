@@ -1026,3 +1026,8 @@ textarea.sub-text-edit { resize: none; overflow: hidden; width: 100%; font: inhe
 .tagfilter button[data-tf="cw"].on { background: oklch(0.55 0.12 85); }
 .tf-hide { display: none !important; }
 .weekbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+/* ---- v46: agenda card -> jump to parent block ---- */
+.ag-item { cursor: pointer; }
+@keyframes spHilite { 0% { background: oklch(0.93 0.08 85); } 100% { background: transparent; } }
+.sp-hilite { animation: spHilite 1.6s ease-out; border-radius: 10px; }

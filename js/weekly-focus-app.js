@@ -2754,6 +2754,21 @@
     wireDisclosure("appsBacklogHead", "appsBacklogWrap");
     wireDisclosure("studyBacklogHead", "studyBacklogWrap");
     wireDisclosure("officeBacklogHead", "officeBacklogWrap");
+    var _ag = $("spAgenda"); if (_ag) _ag.addEventListener("click", function (e) {
+      if (e.target.closest("[data-act]")) return;   // done-checkbox keeps its own behavior
+      var row = e.target.closest(".ag-item"); if (!row) return;
+      var key = row.getAttribute("data-key"), sid = row.getAttribute("data-sid");
+      if (spReveal[key] !== true || !detailOpen[key]) { spReveal[key] = true; detailOpen[key] = true; renderCols(); }
+      var card = document.querySelector('.sp-card[data-key="' + key + '"], [data-key="' + key + '"].item');
+      if (!card) return;
+      var li = card.querySelector('li[data-sid="' + sid + '"]');
+      var target = li || card;
+      var sc = card.closest(".screen") || document.scrollingElement;
+      var r = target.getBoundingClientRect(), sr = sc.getBoundingClientRect ? sc.getBoundingClientRect() : { top: 0 };
+      sc.scrollTop += r.top - sr.top - 120;
+      card.classList.add("sp-hilite"); if (li) li.classList.add("sp-hilite");
+      setTimeout(function () { card.classList.remove("sp-hilite"); if (li) li.classList.remove("sp-hilite"); }, 1600);
+    });
     var _tf = $("tagFilter"); if (_tf) _tf.addEventListener("click", function (e) {
       var b = e.target.closest("[data-tf]"); if (!b) return;
       TAG_FILTER = b.getAttribute("data-tf") || "";
