@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/weekly-focus-design-system-02c47484-d8cb-45f6-b158-e81d233d8dfa/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/weekly-focus-design-system-02c47484-d8cb-45f6-b158-e81d233d8dfa/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/weekly-focus-design-system-02c47484-d8cb-45f6-b158-e81d233d8dfa/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/weekly-focus-design-system-02c47484-d8cb-45f6-b158-e81d233d8dfa/tokens/radius-shadow.css">
+  <link rel="stylesheet" href="_ds/weekly-focus-design-system-02c47484-d8cb-45f6-b158-e81d233d8dfa/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/weekly-focus-design-system-02c47484-d8cb-45f6-b158-e81d233d8dfa/styles.css">
+  <script src="_ds/weekly-focus-design-system-02c47484-d8cb-45f6-b158-e81d233d8dfa/_ds_bundle.js"></script>
+  <style>
+    body { margin: 0; background: var(--canvas, oklch(0.965 0.006 95)); color: var(--ink, #1b1b1f); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    a { color: oklch(0.52 0.17 283); } a:hover { color: oklch(0.62 0.18 283); }
+    ::selection { background: oklch(0.965 0.022 283); }
+  </style>
+</helmet>
+<div style="position:sticky;top:0;z-index:20;backdrop-filter:blur(10px) saturate(1.4);-webkit-backdrop-filter:blur(10px) saturate(1.4);background:color-mix(in oklab, oklch(0.975 0.005 95) 74%, transparent);border-bottom:1px solid var(--hair)">
+  <div style="max-width:860px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:14px">
+    <div style="font-size:17px;font-weight:800;letter-spacing:-0.01em">Trip Schedule<span style="color:var(--on)">.</span></div>
+    <div style="font-size:9px;font-weight:800;letter-spacing:0.18em;color:var(--faint);text-transform:uppercase;padding-top:2px">Weekly agenda · Aug–Sept 2026</div>
+    <span style="flex:1"></span>
+    <x-import component-from-global-scope="WeeklyFocusDesignSystem_02c474.Badge" tone="brand" hint-size="120px,22px">✈ {{ daysToFlight }} days to flight</x-import>
+    <div style="font-size:13px;color:var(--mid)"><b style="color:var(--pri-h)">{{ urgentOpen }}</b> urgent · <b style="color:var(--ink)">{{ doneCount }} of {{ total }}</b> done</div>
+  </div>
+</div>
+<div style="max-width:860px;margin:0 auto;padding:24px 24px 8px">
+  <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+    <div style="font-size:22px;font-weight:800;letter-spacing:-0.02em">Week by week</div>
+    <div style="font-size:12.5px;color:var(--mid);text-wrap:pretty">dated work first — the undated pool sits at the bottom; slot it into the two India weeks.</div>
+  </div>
+  <div style="background:var(--card);border:1px solid var(--hair);border-radius:12px;box-shadow:0 1px 2px rgba(20,20,40,0.05), 0 6px 20px rgba(20,20,40,0.05);overflow:hidden">
+    <sc-for list="{{ weeks }}" as="w" hint-placeholder-count="6">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;background:var(--card-2);border-top:1px solid var(--hair-2);cursor:pointer;user-select:none" onClick="{{ w.onHead }}">
+          <span style="{{ w.labelStyle }}">{{ w.label }}</span>
+          <span style="font-size:11px;color:var(--mid)">{{ w.range }}</span>
+          <span style="flex:1"></span>
+          <sc-if value="{{ w.countBadge }}" hint-placeholder-val="{{ false }}">
+            <x-import component-from-global-scope="WeeklyFocusDesignSystem_02c474.Badge" hint-size="34px,18px">{{ w.countBadge }}</x-import>
+          </sc-if>
+          <span style="{{ w.caretStyle }}">▾</span>
+        </div>
+        <sc-for list="{{ w.tasks }}" as="task" hint-placeholder-count="3">
+          <div style="display:flex;align-items:flex-start;gap:10px;padding:6px 16px;border-top:1px solid var(--hair-2)" style-hover="background:var(--card-2)">
+            <div style="padding-top:1px">
+              <x-import component-from-global-scope="WeeklyFocusDesignSystem_02c474.Checkbox" checked="{{ task.done }}" on-change="{{ task.toggle }}" hint-size="16px,16px"></x-import>
+            </div>
+            <span style="{{ task.dayStyle }}">{{ task.day }}</span>
+            <div style="flex:1;min-width:0">
+              <div style="{{ task.tStyle }}">{{ task.t }}</div>
+              <sc-if value="{{ task.note }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:11.5px;color:var(--mid);margin-top:1px;line-height:1.4;text-wrap:pretty">{{ task.note }}</div>
+              </sc-if>
+              <sc-if value="{{ task.blocked }}" hint-placeholder-val="{{ false }}">
+                <div style="display:inline-block;margin-top:4px;font-size:10px;font-weight:600;color:var(--notes-ink);background:var(--notes-bg);border:1px solid var(--notes-line);border-radius:5px;padding:2px 7px">{{ task.blocked }}</div>
+              </sc-if>
+            </div>
+            <span style="font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--hair-2);color:var(--mid);border-radius:5px;padding:2px 7px;white-space:nowrap;margin-top:3px">{{ task.place }}</span>
+            <sc-if value="{{ task.pri }}" hint-placeholder-val="{{ false }}">
+              <x-import component-from-global-scope="WeeklyFocusDesignSystem_02c474.PriorityBadge" level="{{ task.pri }}" hint-size="20px,16px"></x-import>
+            </sc-if>
+          </div>
+        </sc-for>
+        <sc-if value="{{ w.empty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:8px 16px;border-top:1px solid var(--hair-2);font-size:11px;color:var(--faint)">{{ w.empty }}</div>
+        </sc-if>
+        <sc-if value="{{ w.finale }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:9px 16px;border-top:1px solid var(--hair-2);display:flex;gap:9px;align-items:center">
+            <span style="width:9px;height:9px;border-radius:50%;background:var(--on);flex:none"></span>
+            <span style="font-size:12.5px;font-weight:800">{{ w.finale }}</span>
+          </div>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+</div>
+<div style="max-width:860px;margin:0 auto;padding:14px 24px 52px;text-align:center;font-size:12px;color:var(--faint)">Stay on the list — everything else is just noise.</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;hideDone&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  state = { collapsed: {}, done: (() => { try { return JSON.parse(localStorage.getItem('wf-trip-done-v1')) || {}; } catch (e) { return {}; } })() };
+  toggle(id) {
+    this.setState(s => {
+      const done = Object.assign({}, s.done);
+      done[id] = !done[id];
+      try { localStorage.setItem('wf-trip-done-v1', JSON.stringify(done)); } catch (e) {}
+      return { done };
+    });
+  }
+  toggleGroup(k) {
+    this.setState(s => {
+      const collapsed = Object.assign({}, s.collapsed);
+      collapsed[k] = !collapsed[k];
+      return { collapsed };
+    });
+  }
+  weeks() {
+    return [
+      { key: 'overdue', label: 'OVERDUE', range: 'catch up now', tone: 'red', tasks: [
+        { id: 'tashiro', day: '9 AUG', place: 'Remote', t: 'Reply to Tashiro-san (Tajiro)', pri: 'H' },
+        { id: 'dmart830', day: '9 AUG', place: 'D-Mart', t: 'D-Mart 8:30am — remaining items' },
+        { id: 'hadapsar', day: '9 AUG', place: 'Hadapsar', t: 'Hadapsar meeting — job discussion' } ] },
+      { key: 'w1', label: 'THIS WEEK', range: 'Mon 10 \u2013 Sun 16 Aug', tone: 'brand', tasks: [
+        { id: 'bavdhan', day: 'BY FRI 14', place: 'Bavdhan', t: 'Friend meetup' },
+        { id: 'moshi', day: 'SAT 15', place: 'Moshi', t: 'Moshi meeting — job discussion + catch-up' } ] },
+      { key: 'w2', label: 'FINAL WEEK IN INDIA', range: 'Mon 17 \u2013 Sun 23 Aug', tone: 'brand', tasks: [
+        { id: 'bakarwadi', day: '19\u201321', place: 'Chitale', t: 'Bakarwadi \u00d73' },
+        { id: 'kalakand', day: '19\u201321', place: 'Chitale', t: 'Kalakand' },
+        { id: 'father', day: '~22', place: 'Flight', t: 'Father joining the flight?', pri: 'H', blocked: 'unresolved — cost, documents, feasibility untouched' } ] },
+      { key: 'w3', label: 'ARRIVAL WEEK — JAPAN', range: 'Mon 24 \u2013 Sun 30 Aug', tone: 'study', tasks: [
+        { id: 'nhi', day: 'FIRST DAYS', place: 'Ichikawa', t: 'Settle outstanding NHI premiums', pri: 'H' },
+        { id: 'health', day: 'BY 24', place: 'Ichikawa', t: 'Book pre-employment health check (all 11 items)' },
+        { id: 'key', day: '~25', place: 'Minami-Urawa', t: 'Take possession — collect the key from the mailbox' },
+        { id: 'tennyu', day: '26\u201327', place: 'Ward office', t: 'File \u8ee2\u5165\u5c4a + update \u5728\u7559\u30ab\u30fc\u30c9', note: 'bring the \u8ee2\u51fa\u8a3c\u660e\u66f8 from Ichikawa' },
+        { id: 'tenkyo', day: '26\u201327', place: 'Ward office', t: 'Submit \u8ee2\u5c45\u5c4a — mail forwarding' } ] },
+      { key: 'w4', label: 'JOB WEEK', range: 'Mon 31 Aug \u2013 Sun 6 Sept', tone: 'green', finale: 'MON 1 SEPT — job starts, Shinjuku.', tasks: [
+        { id: 'contract', day: 'BY 31', place: 'Mail', t: 'Sign & return the Urban Terrace contract' } ] },
+      { key: 'undated', label: 'UNDATED POOL', range: 'slot anywhere before the flight', tone: 'muted', tasks: [
+        { id: 'okuda', day: '\u2014', place: 'Remote', t: 'Reply from Okuda-san', note: 'urgent — no date set', pri: 'H' },
+        { id: 'visim', day: '\u2014', place: 'Kothrud', t: 'Vi SIM — annual recharge + roaming', note: 'blocks every OTP you need', pri: 'H' },
+        { id: 'sbinre', day: '\u2014', place: 'Kothrud', t: 'SBI NRE — document prep', note: '12-item checklist, separate board', pri: 'H' },
+        { id: 'gift', day: '\u2014', place: 'Kothrud', t: 'Gift for Matsuyama-san & Okada-san', pri: 'H' },
+        { id: 'nro', day: '\u2014', place: 'Malvan', t: 'NRO conversion + NRE opening', pri: 'H' },
+        { id: 'nredocs', day: '\u2014', place: 'Malvan', t: 'Carry the full NRE document set', note: 'form, passport copies, visa, residence card, address self-declaration, Aadhaar/PAN, photos, FATCA, backup employment cert, funding plan' },
+        { id: 'linkedin', day: '\u2014', place: 'Kothrud', t: 'Refresh LinkedIn profile', note: 'before connecting recruiters' },
+        { id: 'jobapp', day: '\u2014', place: 'Kothrud', t: 'Draft job application', note: 'before the Hadapsar meeting' },
+        { id: 'intl', day: '\u2014', place: 'Kothrud', t: 'Enable international transactions on Indian cards' },
+        { id: 'closeacc', day: '\u2014', place: 'Kothrud', t: 'Close dormant Bank of Maharashtra + Union Bank accounts' },
+        { id: 'forex', day: '\u2014', place: 'Kothrud', t: 'Buy \u00a550,000\u201380,000 cash from a Pune forex dealer' },
+        { id: 'hk', day: '\u2014', place: 'Kothrud', t: 'Hong Kong pre-arrival transit registration' },
+        { id: 'licence', day: '\u2014', place: 'Kothrud', t: 'Two-wheeler international licence' },
+        { id: 'sbicard', day: '\u2014', place: 'Kothrud', t: 'SBI card number link' },
+        { id: 'shares', day: '\u2014', place: 'Kothrud', t: 'Access to add/manage shares' },
+        { id: 'ytp', day: '\u2014', place: 'Kothrud', t: 'YouTube Premium subscription' },
+        { id: 'cover', day: '\u2014', place: 'Kothrud', t: 'Buy mobile cover' },
+        { id: 'bat', day: '\u2014', place: 'Kothrud', t: 'Mosquito bat' },
+        { id: 'clothes', day: '\u2014', place: 'Kothrud', t: 'Clothes for new job', blocked: 'waiting on Akshay\u2019s dress code reply' },
+        { id: 'dmart', day: '\u2014', place: 'D-Mart', t: 'D-Mart remaining', note: 'teapoy, bathroom + basin brush, ghee, Parle-G, Amul/Cadbury chocolate' } ] }
+    ];
+  }
+  renderVals() {
+    const done = this.state.done;
+    const hideDone = this.props.hideDone ?? false;
+    const data = this.weeks();
+    let total = 0, doneCount = 0, urgentOpen = 0;
+    data.forEach(w => w.tasks.forEach(t => {
+      total++;
+      if (done[t.id]) doneCount++;
+      if (t.pri === 'H' && !done[t.id]) urgentOpen++;
+    }));
+    const toneColors = { red: 'var(--pri-h)', brand: 'var(--brand)', study: 'var(--study)', green: 'var(--on)', muted: 'var(--mid)' };
+    const weeks = data.map(w => {
+      const all = w.tasks.map(t => ({
+        ...t,
+        done: !!done[t.id],
+        pri: done[t.id] ? null : (t.pri || null),
+        blocked: done[t.id] ? null : (t.blocked || null),
+        toggle: () => this.toggle(t.id),
+        dayStyle: { width: 74, flex: 'none', fontSize: 9.5, fontWeight: 800, letterSpacing: '.06em', color: toneColors[w.tone], paddingTop: 3, whiteSpace: 'nowrap', textTransform: 'uppercase' },
+        tStyle: done[t.id]
+          ? { fontSize: 13, fontWeight: 400, lineHeight: 1.35, textDecoration: 'line-through', color: 'var(--faint)' }
+          : { fontSize: 13, fontWeight: 600, lineHeight: 1.35, color: 'var(--ink)' }
+      }));
+      const doneN = w.tasks.filter(t => done[t.id]).length;
+      const vis = hideDone ? all.filter(t => !t.done) : all;
+      const isOpen = !this.state.collapsed[w.key];
+      return {
+        label: w.label, range: w.range, finale: w.finale || null,
+        tasks: isOpen ? vis : [],
+        onHead: () => this.toggleGroup(w.key),
+        labelStyle: { fontSize: 10.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: toneColors[w.tone] },
+        caretStyle: { fontSize: 11, color: 'var(--faint)', transition: 'transform .15s cubic-bezier(.2,.7,.2,1)', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block' },
+        countBadge: w.tasks.length ? doneN + '/' + w.tasks.length : null,
+        empty: (isOpen && hideDone && w.tasks.length && !vis.length) ? '\u2713 all clear here' : null
+      };
+    });
+    const daysToFlight = Math.max(0, Math.ceil((new Date('2026-08-22T00:00:00') - Date.now()) / 864e5));
+    return { weeks, total, doneCount, urgentOpen, daysToFlight };
+  }
+}
+</script>
+</body>
+</html>
