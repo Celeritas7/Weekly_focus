@@ -929,7 +929,7 @@
     var cnt = $("specialCount"); if (cnt) cnt.textContent = tot ? totDone + "/" + tot : "";
   }
 
-  /* ---- Coming up: grouped by source list (topic cards) ---- */
+  /* ---- Coming up: urgent tasks first (ASAP), then dated tasks soonest first ---- */
   function renderAgenda(items) {
     var ag = $("spAgenda"); if (!ag) return;
     var mode = getMode(), rows = [];
@@ -941,40 +941,27 @@
         rows.push({ key: it.id, card: it.name, hue: hueFor(it.name), sub: x, v: v });
       });
     });
-    function rk(r) { return r.v && r.v.w.pastDue ? 0 : r.sub.urg ? 1 : 2; }
     rows.sort(function (a, b) {
+      function rk(r) { var od = r.v && r.v.w.pastDue ? 0 : r.sub.urg ? 1 : 2; return od; }
       var ra = rk(a), rb = rk(b);
       if (ra !== rb) return ra - rb;
       var aw = a.sub.when || "9999", bw = b.sub.when || "9999";
       return aw < bw ? -1 : aw > bw ? 1 : 0;
     });
     ag.style.display = rows.length ? "" : "none";
-    if (!rows.length) { ag.innerHTML = ""; return; }
-    // group by source list, keeping row order; topics ordered by their most urgent row
-    var groups = [], byName = {};
-    rows.forEach(function (r) {
-      var g = byName[r.card];
-      if (!g) { g = byName[r.card] = { name: r.card, hue: r.hue, key: r.key, rows: [] }; groups.push(g); }
-      g.rows.push(r);
-    });
-    ag.innerHTML = groups.map(function (g) {
-      var body = g.rows.map(function (r) {
-        var v = r.v, w = v && v.w, urg = !!r.sub.urg;
-        var od = !!(w && w.pastDue);
-        var cls = od ? " odrow" : urg ? " urgrow" : v.cls;
-        var cal = w ? '<span class="ag-cal' + (urg && !od ? " flagged" : "") + '"><i>' + w.dow + '</i><b>' + w.day + '</b></span>'
-                    : '<span class="ag-cal flag">' + IC.flag + '</span>';
-        return '<div class="ag-item' + cls + '" data-key="' + esc(r.key) + '" data-sid="' + esc(r.sub.id) + '" style="--sp-h:' + r.hue + '">' +
-          cal +
-          '<div class="ag-txt"><span class="ag-name">' + esc(r.sub.t || "task") + '</span>' +
-          (w && w.time ? '<span class="ag-src">' + w.time + '</span>' : '') + '</div>' +
-          '<span class="ag-chip">' + esc(od ? v.rel.toUpperCase() : urg ? "ASAP" : v.rel) + '</span>' +
-          '<button class="sub-check" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
-          '</div>';
-      }).join("");
-      return '<div class="ag-topic" style="--sp-h:' + g.hue + '">' +
-        '<div class="ag-topic-head"><span class="ag-topic-dot"></span>' + esc(g.name) + '<span class="ag-topic-n">' + g.rows.length + '</span></div>' +
-        body + '</div>';
+    ag.innerHTML = rows.map(function (r) {
+      var v = r.v, w = v && v.w, urg = !!r.sub.urg;
+      var od = !!(w && w.pastDue);
+      var cls = od ? " odrow" : urg ? " urgrow" : v.cls;
+      var cal = w ? '<span class="ag-cal' + (urg && !od ? " flagged" : "") + '"><i>' + w.dow + '</i><b>' + w.day + '</b></span>'
+                  : '<span class="ag-cal flag">' + IC.flag + '</span>';
+      return '<div class="ag-item' + cls + '" data-key="' + esc(r.key) + '" data-sid="' + esc(r.sub.id) + '" style="--sp-h:' + r.hue + '">' +
+        cal +
+        '<div class="ag-txt"><span class="ag-name">' + esc(r.sub.t || "task") + '</span>' +
+        '<span class="ag-src">' + esc(r.card) + (w && w.time ? ' \u00b7 ' + w.time : '') + '</span></div>' +
+        '<span class="ag-chip">' + esc(od ? v.rel.toUpperCase() : urg ? "ASAP" : v.rel) + '</span>' +
+        '<button class="sub-check" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
+        '</div>';
     }).join("");
   }
 
@@ -2542,15 +2529,14 @@
     var seen = {}, secs = [{ k: "app", label: "Apps", fs: [] }, { k: "study", label: "Study", fs: [] }, { k: "office", label: "Office", fs: [] }];
     secs.forEach(function (s) { (arrFor(s.k) || []).forEach(function (it) { var g = (it.group || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; s.fs.push(g); } }); });
     var extra = [];
-    chatCustomFolds().concat(chatsArr().map(function (c) { return c.fold || ""; })).forEach(function (g) { g = (g || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; extra.push(g); } });
-    if (extra.length) secs.push({ k: "other", label: "My folders", fs: extra });
+    chatsArr().forEach(function (c) { var g = (c.fold || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; extra.push(g); } });
+    if (extra.length) secs.push({ k: "other", label: "Other folders", fs: extra });
     return secs;
   }
-  function chatCustomFolds() { if (!Array.isArray(meta.cfolders)) meta.cfolders = []; return meta.cfolders; }
   function chatFolderList() {
     var seen = {}, out = [];
     [state.apps, state.study, state.office || []].forEach(function (arr) { (arr || []).forEach(function (it) { var g = (it.group || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; out.push(g); } }); });
-    chatCustomFolds().concat(chatsArr().map(function (c) { return c.fold || ""; })).forEach(function (g) { g = (g || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; out.push(g); } });
+    chatsArr().forEach(function (c) { var g = (c.fold || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; out.push(g); } });
     out.sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
     return out;
   }
@@ -2561,12 +2547,9 @@
     var n = $("chatCount"); if (n) n.textContent = arr.length || "";
     var folders = chatFolderList();
     var fpick = $("chatFoldPick");
-    var NEWF_CHIP = '<button type="button" class="fold-chip newf" data-newfold="1" title="Create a new folder">+ New folder</button>';
-    if (fpick) fpick.innerHTML = (folders.length
-      ? folders.map(function (f) { var h = foldHue(f), on = CHAT_NEWFOLD === f, e2 = foldEmo(f); return '<button type="button" class="fold-chip' + (on ? " on" : "") + '" data-nf="' + esc(f) + '" style="' + (on ? 'background:oklch(0.55 0.16 ' + h + ');border-color:transparent;color:#fff' : 'color:oklch(0.45 0.16 ' + h + ');border-color:oklch(0.85 0.06 ' + h + ')') + '">' + (e2 ? e2 + " " : "") + esc(f) + (on ? " \u2713" : "") + '</button>'; }).join("")
-      : "") + NEWF_CHIP;
-    var fhint = $("chatFoldHint");
-    if (fhint) { fhint.textContent = CHAT_NEWFOLD ? "new chat saves into " + CHAT_NEWFOLD : "no folder picked \u2014 goes to Unsorted"; fhint.classList.toggle("picked", !!CHAT_NEWFOLD); }
+    if (fpick) fpick.innerHTML = folders.length
+      ? folders.map(function (f) { var h = foldHue(f), on = CHAT_NEWFOLD === f; return '<button type="button" class="fold-chip' + (on ? " on" : "") + '" data-nf="' + esc(f) + '" style="' + (on ? 'background:oklch(0.55 0.16 ' + h + ');border-color:transparent;color:#fff' : 'color:oklch(0.45 0.16 ' + h + ');border-color:oklch(0.85 0.06 ' + h + ')') + '">' + esc(f) + '</button>'; }).join("")
+      : '<span class="fold-pick-empty">Folders come from your Week-tab groups \u2014 add groups there and they show up here.</span>';
     if (!arr.length) { host.innerHTML = ''; } /* grid still renders below so folders stay visible */
     function foldChip(c) {
       if (!c.fold) return '<button class="fold-chip none" data-cact="fold" title="File into a folder">file \u2192</button>';
@@ -2650,13 +2633,6 @@
     });
     var fpk = $("chatFoldPick");
     if (fpk) fpk.addEventListener("click", function (e) {
-      if (e.target.closest("[data-newfold]")) {
-        var nm = (prompt("New folder name:") || "").trim();
-        if (!nm) return;
-        var ex = chatFolderList().filter(function (f) { return f.toLowerCase() === nm.toLowerCase(); })[0];
-        if (!ex) chatCustomFolds().push(nm);
-        CHAT_NEWFOLD = ex || nm; saveChats(); renderChats(); return;
-      }
       var b2 = e.target.closest("[data-nf]"); if (!b2) return;
       var v2 = b2.getAttribute("data-nf");
       CHAT_NEWFOLD = CHAT_NEWFOLD === v2 ? "" : v2; renderChats();

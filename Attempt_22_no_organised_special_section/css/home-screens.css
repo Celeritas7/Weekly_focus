@@ -529,7 +529,7 @@ label.chip.on { color: #fff; }
 .sp-subs li.od { background: var(--od-soft); box-shadow: inset 3px 0 0 var(--od); border-radius: 7px; padding-left: 8px; margin-left: -8px; }
 .sp-subs li.od .sub-text-editable { color: var(--od-ink); font-weight: 700; }
 /* agenda strip */
-.ag-item.odrow { background: var(--od-soft); border: 0; border-top: 1px solid var(--hair); box-shadow: inset 3px 0 0 var(--od); border-radius: 0 8px 8px 0; padding-left: 8px; padding-right: 6px; }
+.ag-item.odrow { background: var(--card); border: 1.5px solid var(--od-line); box-shadow: inset 3px 0 0 var(--od); }
 .ag-item.odrow .ag-cal { background: var(--od-soft); border-color: var(--od-line); }
 .ag-item.odrow .ag-cal i, .ag-item.odrow .ag-cal b { color: var(--od); }
 .ag-item.odrow .ag-chip { color: #fff; background: var(--od); font-weight: 800; }

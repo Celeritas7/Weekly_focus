@@ -148,10 +148,6 @@
   function backlogItems(kind) { return arrFor(kind).filter(function (x) { return !isActive(x); }); }
 
   var APP_CATS = ["General Purpose", "Mechanical", "Language Study", "Other"];
-  /* build-tool tag on apps: which generator made it */
-  var GEN_TAGS = ["Claude AI", "Claude Design", "Cowork"];
-  var GEN_CLASS = { "Claude AI": "gen-cai", "Claude Design": "gen-cd", "Cowork": "gen-cw" };
-  function genChip(it) { return (it && it.gen) ? '<span class="genchip ' + (GEN_CLASS[it.gen] || "") + '">' + esc(it.gen) + '</span>' : ""; }
   var CAT_CLASS = { "General Purpose": "cat-gp", "Mechanical": "cat-mech", "Language Study": "cat-lang", "Other": "cat-other" };
   var PRI_RANK = { H: 0, M: 1, L: 2 };
 
@@ -174,7 +170,7 @@
   function normSubs(arr) {
     return (Array.isArray(arr) ? arr : []).map(function (s) {
       if (!s) return null;
-      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl, loc: s.loc || "", tag: s.tag || "" };
+      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl, loc: s.loc || "" };
     }).filter(Boolean);
   }
   function mergeSubs(a, b) {
@@ -183,7 +179,7 @@
       var ex = by[s.id];
       if (!ex) { by[s.id] = s; order.push(s.id); return; }
       if ((s.u || 0) > (ex.u || 0)) by[s.id] = s;
-      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when, md: ex.md !== "b" ? ex.md : s.md, urg: ex.urg || s.urg, dl: ex.dl || s.dl, loc: ex.loc || s.loc || "", tag: ex.tag || s.tag || "" };
+      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when, md: ex.md !== "b" ? ex.md : s.md, urg: ex.urg || s.urg, dl: ex.dl || s.dl, loc: ex.loc || s.loc || "" };
     }
     normSubs(a).forEach(take); normSubs(b).forEach(take);
     return order.map(function (id) { return by[id]; });
@@ -250,19 +246,17 @@
       card.className = "tcard" + (done ? " done" : "");
       card.setAttribute("data-tkey", k);
       card.setAttribute("draggable", "true");
-      card.setAttribute("data-tkind", kindOf(k));
       var m = lab.crumb ? esc(lab.crumb) : (kindOf(k) === "app" ? "App" : "Study");
-      var sv = visibleSubs(subs(k)), svShow = sv.slice(0, 5);
-      var subList = sv.length ? '<ul class="tsubs" data-key="' + esc(k) + '">' + svShow.map(function (x) {
-        return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button><span class="tsub-text" title="' + esc(x.t || "") + '">' + esc(x.t || "subtask") + '</span></li>';
-      }).join("") + (sv.length > svShow.length ? '<li class="tmore">+' + (sv.length - svShow.length) + ' more</li>' : '') + '</ul>' : '';
+      if (prog) m += " \u00b7 " + prog.done + "/" + prog.total;
+      var sv = visibleSubs(subs(k));
+      var subList = sv.length ? '<ul class="tsubs" data-key="' + esc(k) + '">' + sv.map(function (x) {
+        return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button><span class="tsub-text">' + esc(x.t || "subtask") + '</span></li>';
+      }).join("") + '</ul>' : '';
       card.innerHTML =
-        '<span class="tghost">' + (i + 1) + '</span>' +
-        '<div class="thead"><span class="tnum">0' + (i + 1) + '</span><span class="trule"></span>' + (prog ? '<span class="tprog-n">' + prog.done + '/' + prog.total + '</span>' : '') + '</div>' +
+        '<span class="tnum">TARGET ' + (i + 1) + '</span>' +
         '<button class="tcheck' + (done ? " on" : "") + '" data-act="tdone" title="Mark done"></button>' +
         '<div class="ttitle">' + esc(lab.name) + '</div>' +
         '<div class="tmeta">' + m + '</div>' +
-        (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div>' : '') +
         subList +
         '<button class="tdrop" data-act="tdrop" title="Remove from focus">\u00d7</button>';
       grid.appendChild(card);
@@ -327,14 +321,6 @@
     var md = x.md || "b";
     if (md === "b") return "";
     return '<span class="sub-mode ' + md + '">' + (md === "o" ? "Office" : "Personal") + "</span>";
-  }
-  /* SINGLE SOURCE OF TRUTH for tags: add a key+label here and it appears everywhere —
-     task chips, chat sections, chat chips, and the Week tag-filter bar (built from this list). */
-  var SUB_TAGS = { ca: "Claude AI", cd: "Claude Design", cw: "Cowork", td: "3D Model" };
-  var TAG_KEYS = Object.keys(SUB_TAGS);
-  function subTagBtn(x) {
-    var tg = x.tag && SUB_TAGS[x.tag] ? x.tag : "";
-    return '<button class="sub-tag ' + (tg || "none") + '" data-act="tagcycle" title="' + (tg ? SUB_TAGS[tg] + " \u2014 tap to change / clear" : "Tag this task: " + TAG_KEYS.map(function (k) { return SUB_TAGS[k]; }).join(" / ")) + '">' + (tg ? SUB_TAGS[tg] : "+ tag") + "</button>";
   }
   function subFlagBtn(x) {
     return '<button class="sub-flag' + (x.urg ? " on" : "") + '" data-act="urgtoggle" title="' + (x.urg ? "Urgent \u2014 tap to clear" : "Mark urgent \u2014 pins it on top in red") + '">' + IC.flag + "</button>";
@@ -467,35 +453,10 @@
 
   /* ---- Special: life-admin errands, always visible, never in the columns ---- */
   function isSpecialItem(it) { return !!it && (it.group || "").trim().toLowerCase() === "special"; }
-  /* ---- v41: tag filter (All / Claude AI / Claude Design / Cowork) ---- */
-  var TAG_FILTER = "";
-  try { TAG_FILTER = localStorage.getItem("wf-tagfilter") || ""; } catch (e) {}
-  function applyTagFilter() {
-    var tfBar = $("tagFilter");
-    if (tfBar) tfBar.querySelectorAll("[data-tf]").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-tf") === TAG_FILTER); });
-    var scr = $("scrWeek"); if (!scr) return;
-    scr.classList.toggle("tag-filtered", !!TAG_FILTER);
-    if (!TAG_FILTER) {
-      scr.querySelectorAll(".tf-hide").forEach(function (el) { el.classList.remove("tf-hide"); });
-      return;
-    }
-    scr.querySelectorAll("[data-key]").forEach(function (card) {
-      if (!card.classList.contains("item") && !card.classList.contains("sp-card")) return;
-      var key = card.getAttribute("data-key"), match = {}, any = false;
-      normSubs(subs(key)).forEach(function (x) { if (!x.del && x.tag === TAG_FILTER) { match[x.id] = 1; any = true; } });
-      card.classList.toggle("tf-hide", !any);
-      if (any) card.querySelectorAll("li[data-sid]").forEach(function (li) { li.classList.toggle("tf-hide", !match[li.getAttribute("data-sid")]); });
-    });
-    scr.querySelectorAll(".cat-head").forEach(function (h) {
-      var vis = false, el = h.nextElementSibling;
-      while (el && !el.classList.contains("cat-head")) { if ((el.classList.contains("item") || el.classList.contains("sp-card")) && !el.classList.contains("tf-hide")) { vis = true; break; } el = el.nextElementSibling; }
-      h.classList.toggle("tf-hide", !vis);
-    });
-  }
-  function renderCols() { renderColumn("app"); renderColumn("study"); renderColumn("office"); renderSpecial(); applyTagFilter(); }
+  function renderCols() { renderColumn("app"); renderColumn("study"); renderColumn("office"); renderSpecial(); }
   function spordOf(id) { var e = entries[id]; return (e && e.spord != null) ? e.spord : null; }
   function specialSorted() {
-    var items = activeItems("app").concat(activeItems("study")).filter(isSpecialItem).filter(function (it) { return !getEntry(it.id).arch; });
+    var items = activeItems("app").concat(activeItems("study")).filter(isSpecialItem);
     items.sort(function (a, b) {
       var oa = spordOf(a.id), ob = spordOf(b.id);
       if (oa != null && ob != null) return oa - ob;
@@ -504,8 +465,6 @@
     });
     return items;
   }
-  function archivedSpecial() { return activeItems("app").concat(activeItems("study")).filter(isSpecialItem).filter(function (it) { return !!getEntry(it.id).arch; }); }
-  var SP_SHOW_ARCH = false;
   /* ---- Timeline mode (Special): day-grouped note log + dated tasks.
      Notes ride on a reserved "__timeline" entry row — synced like everything else. ---- */
   var TL_ITEM = "__timeline", IB_ITEM = "__inbox";
@@ -675,7 +634,6 @@
       var again = $("tlNew"); if (again) again.focus();
     }
     host.addEventListener("click", function (e) {
-      if (e.target.id === "spArchToggle") { SP_SHOW_ARCH = !SP_SHOW_ARCH; renderSpecial(); return; }
       var fg = e.target.closest("[data-flgrp]");
       if (fg) { FLOW_GROUP = fg.getAttribute("data-flgrp"); FLOW_FOCUS = ""; try { localStorage.setItem("wf2_flow_group", FLOW_GROUP); localStorage.setItem("wf2_flow_focus", ""); } catch (x5) {} renderSpecial(); return; }
       var ff = e.target.closest("[data-flfocus]");
@@ -891,7 +849,7 @@
         var liCls = x.done ? "" : od ? " od" : x.urg ? " urg" : (v && v.asap ? " asap" : "");
         var metaBits = subModeTag(x) + (x.when ? whenChipHtml(x) : "");
         return '<li data-sid="' + esc(x.id) + '" class="spli' + liCls + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-          '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' + subTagBtn(x) +
+          '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' +
           (x.when ? "" : whenChipHtml(x)) + subFlagBtn(x) +
           '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button>' +
           (metaBits ? '<span class="sub-meta">' + metaBits + "</span>" : "") + "</li>";
@@ -902,7 +860,6 @@
           '<span class="sp-grip" title="Drag to reorder">\u22ee\u22ee</span>' +
           '<span class="sp-name" data-act="open">' + esc(it.name) + '</span>' +
           (sv.length ? '<span class="sp-count' + (done === sv.length ? " all" : "") + '">' + done + "/" + sv.length + '</span>' : '') +
-          (sv.length && done === sv.length ? '<button class="sp-arch-btn" data-act="sparch" title="Archive — hides this list but keeps it in the cloud">Archive</button>' : '') +
           '<button class="caret-btn" data-act="open">' + IC.chev + '</button>' +
         '</div>' +
         (open
@@ -911,25 +868,10 @@
             '<div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a task\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>');
       host.appendChild(card);
     });
-    var arch = archivedSpecial();
-    if (arch.length) {
-      var ab = document.createElement("button");
-      ab.type = "button"; ab.id = "spArchToggle"; ab.className = "sp-archtoggle";
-      ab.textContent = SP_SHOW_ARCH ? "Hide archived" : "Archived (" + arch.length + ")";
-      host.appendChild(ab);
-      if (SP_SHOW_ARCH) arch.forEach(function (it2) {
-        var sv2 = visibleSubs(subs(it2.id)), dn2 = sv2.filter(function (x) { return x.done; }).length;
-        var c2 = document.createElement("div");
-        c2.className = "sp-card archived"; c2.setAttribute("data-key", it2.id);
-        c2.style.setProperty("--sp-h", hueFor(it2.name));
-        c2.innerHTML = '<div class="sp-head"><span class="sp-name">' + esc(it2.name) + '</span>' + (sv2.length ? '<span class="sp-count all">' + dn2 + "/" + sv2.length + '</span>' : '') + '<button class="sp-arch-btn" data-act="spunarch" title="Bring it back to the board">Unarchive</button></div>';
-        host.appendChild(c2);
-      });
-    }
     var cnt = $("specialCount"); if (cnt) cnt.textContent = tot ? totDone + "/" + tot : "";
   }
 
-  /* ---- Coming up: grouped by source list (topic cards) ---- */
+  /* ---- Coming up: urgent tasks first (ASAP), then dated tasks soonest first ---- */
   function renderAgenda(items) {
     var ag = $("spAgenda"); if (!ag) return;
     var mode = getMode(), rows = [];
@@ -941,40 +883,27 @@
         rows.push({ key: it.id, card: it.name, hue: hueFor(it.name), sub: x, v: v });
       });
     });
-    function rk(r) { return r.v && r.v.w.pastDue ? 0 : r.sub.urg ? 1 : 2; }
     rows.sort(function (a, b) {
+      function rk(r) { var od = r.v && r.v.w.pastDue ? 0 : r.sub.urg ? 1 : 2; return od; }
       var ra = rk(a), rb = rk(b);
       if (ra !== rb) return ra - rb;
       var aw = a.sub.when || "9999", bw = b.sub.when || "9999";
       return aw < bw ? -1 : aw > bw ? 1 : 0;
     });
     ag.style.display = rows.length ? "" : "none";
-    if (!rows.length) { ag.innerHTML = ""; return; }
-    // group by source list, keeping row order; topics ordered by their most urgent row
-    var groups = [], byName = {};
-    rows.forEach(function (r) {
-      var g = byName[r.card];
-      if (!g) { g = byName[r.card] = { name: r.card, hue: r.hue, key: r.key, rows: [] }; groups.push(g); }
-      g.rows.push(r);
-    });
-    ag.innerHTML = groups.map(function (g) {
-      var body = g.rows.map(function (r) {
-        var v = r.v, w = v && v.w, urg = !!r.sub.urg;
-        var od = !!(w && w.pastDue);
-        var cls = od ? " odrow" : urg ? " urgrow" : v.cls;
-        var cal = w ? '<span class="ag-cal' + (urg && !od ? " flagged" : "") + '"><i>' + w.dow + '</i><b>' + w.day + '</b></span>'
-                    : '<span class="ag-cal flag">' + IC.flag + '</span>';
-        return '<div class="ag-item' + cls + '" data-key="' + esc(r.key) + '" data-sid="' + esc(r.sub.id) + '" style="--sp-h:' + r.hue + '">' +
-          cal +
-          '<div class="ag-txt"><span class="ag-name">' + esc(r.sub.t || "task") + '</span>' +
-          (w && w.time ? '<span class="ag-src">' + w.time + '</span>' : '') + '</div>' +
-          '<span class="ag-chip">' + esc(od ? v.rel.toUpperCase() : urg ? "ASAP" : v.rel) + '</span>' +
-          '<button class="sub-check" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
-          '</div>';
-      }).join("");
-      return '<div class="ag-topic" style="--sp-h:' + g.hue + '">' +
-        '<div class="ag-topic-head"><span class="ag-topic-dot"></span>' + esc(g.name) + '<span class="ag-topic-n">' + g.rows.length + '</span></div>' +
-        body + '</div>';
+    ag.innerHTML = rows.map(function (r) {
+      var v = r.v, w = v && v.w, urg = !!r.sub.urg;
+      var od = !!(w && w.pastDue);
+      var cls = od ? " odrow" : urg ? " urgrow" : v.cls;
+      var cal = w ? '<span class="ag-cal' + (urg && !od ? " flagged" : "") + '"><i>' + w.dow + '</i><b>' + w.day + '</b></span>'
+                  : '<span class="ag-cal flag">' + IC.flag + '</span>';
+      return '<div class="ag-item' + cls + '" data-key="' + esc(r.key) + '" data-sid="' + esc(r.sub.id) + '" style="--sp-h:' + r.hue + '">' +
+        cal +
+        '<div class="ag-txt"><span class="ag-name">' + esc(r.sub.t || "task") + '</span>' +
+        '<span class="ag-src">' + esc(r.card) + (w && w.time ? ' \u00b7 ' + w.time : '') + '</span></div>' +
+        '<span class="ag-chip">' + esc(od ? v.rel.toUpperCase() : urg ? "ASAP" : v.rel) + '</span>' +
+        '<button class="sub-check" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
+        '</div>';
     }).join("");
   }
 
@@ -1004,11 +933,9 @@
     $(ids.bn).textContent = backlog.length;
     function brow(it) {
       var li = document.createElement("li"); li.className = "brow"; li.setAttribute("data-key", it.id); li.setAttribute("draggable", "true");
-      var eB = getEntry(it.id), holdMs = eB.holdUntil ? eB.holdUntil - Date.now() : 0;
       li.innerHTML = '<button class="tgl tgl-sm" data-act="on" title="Bring into This Week"><span class="knob"></span></button>' +
         '<span class="bname">' + esc(it.name) + '</span>' +
-        (holdMs > 0 ? '<span class="holdchip" title="On hold \u2014 returns to This Week automatically">\u23F8 ' + fmtHold(holdMs) + '</span>' : '') +
-        (VIEW_GROUPED ? '' : gtagHtml(kind, it.group)) + genChip(it) +
+        (VIEW_GROUPED ? '' : gtagHtml(kind, it.group)) +
         '<button class="brow-del" data-act="del" title="Delete forever">' + IC.trash + '</button>';
       return li;
     }
@@ -1098,7 +1025,7 @@
     li.innerHTML =
       '<div class="item-row">' +
         '<div class="item-grip" data-act="open">' +
-          '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div>' + (!VIEW_GROUPED && it ? gtagHtml(kindOf(id), it.group) : '') + genChip(it) + '</div>' +
+          '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div>' + (!VIEW_GROUPED && it ? gtagHtml(kindOf(id), it.group) : '') + '</div>' +
         '</div>' +
         '<div class="item-actions">' + ring +
           '<button class="updflag' + (updOn ? " on" : "") + '" data-act="flagupd" title="' + (updOn ? "Update pending — click to clear" : "Flag a pending update / prompt for Claude") + '">' + IC.flag + '</button>' +
@@ -1115,8 +1042,8 @@
     var e = getEntry(id), it = itemById(id), pri = priOf(id);
     var rows = visibleSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
       var t = x.t || "";
-      return '<li data-sid="' + esc(x.id) + '"><span class="sub-grip" title="Drag to reorder">\u22ee\u22ee</span><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-        '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' + subTagBtn(x) +
+      return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
+        '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' +
         (isSpecialItem(it) ? whenChipHtml(x) : '') +
         '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button></li>';
     }).join("");
@@ -1125,24 +1052,11 @@
         return '<button class="pseg pseg-' + p + (p === pri ? " on" : "") + '" data-pri="' + p + '">' + priName(p) + '</button>';
       }).join("") + '</div></div>';
     var listId = "grp-" + kindOf(id);
-    var lks = (it && Array.isArray(it.links)) ? it.links : [];
-    var linkRows = lks.map(function (l, ix) {
-      var host = String(l.url || "").replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
-      return '<li class="lrow" data-lix="' + ix + '">' + HIC.link +
-        '<span class="lr-label">' + esc(l.label || host) + '</span>' +
-        '<span class="lr-host">' + esc(host) + '</span>' +
-        '<a class="lr-open" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="Open in new tab">\u2197</a>' +
-        '<button class="lr-del" data-act="linkdel" title="Remove link">\u00d7</button></li>';
-    }).join("");
     var linksRow = '<div class="links-block"><span class="notes-lbl">\u2197 Quick links</span>' +
-      (linkRows ? '<ul class="lrows">' + linkRows + '</ul>' : '<div class="lr-none">No links yet \u2014 add the app, repo or doc you jump to.</div>') +
-      '<div class="lr-add"><input class="lr-name" placeholder="Label (e.g. Live app)"><input class="lr-url" placeholder="https://\u2026" inputmode="url"><button class="lr-addbtn" data-act="linkadd">Add</button></div></div>';
-    var genSel = kindOf(id) !== "app" ? '' : '<select class="mg-gen" data-act="gen" title="Which tool generated this app">' +
-      '<option value="">Made with\u2026</option>' +
-      GEN_TAGS.map(function (g) { return '<option value="' + esc(g) + '"' + (it && it.gen === g ? " selected" : "") + '>' + esc(g) + '</option>'; }).join("") + '</select>';
+      '<textarea class="hlinks" data-act="links" placeholder="One per line: Label | https://url">' + esc(linksToText(it && it.links)) + '</textarea></div>';
     var manage = '<div class="manage-row">' +
       '<input class="mg-name" data-act="rename" value="' + esc(it ? it.name : "") + '" placeholder="Name">' +
-      '<input class="mg-group" data-act="group" list="' + listId + '" value="' + esc(it ? it.group : "") + '" placeholder="Group">' + genSel +
+      '<input class="mg-group" data-act="group" list="' + listId + '" value="' + esc(it ? it.group : "") + '" placeholder="Group">' +
       '<button class="mg-del" data-act="del" title="Delete forever">' + IC.trash + '</button>' +
       '</div>';
     return '<div class="detail' + (id === OPENING ? ' opening' : '') + '">' + priCtl +
@@ -1248,23 +1162,8 @@
 
     var key = keyOf(act);
     if (a === "open") { detailOpen[key] = !detailOpen[key]; OPENING = detailOpen[key] ? key : null; renderCols(); OPENING = null; return; }
-    if (a === "off") {
-      /* flagged or starred blocks go on a 24h hold: parked in the backlog, auto-return tomorrow */
-      var eOff = getEntry(key), hold = !!eOff.upd || isTarget(key);
-      patch(key, hold ? { active: false, holdUntil: Date.now() + 864e5, holdStar: isTarget(key) } : { active: false });
-      removeTarget(key); detailOpen[key] = false; renderAll();
-      if (hold) toast("On hold \u2014 back in This Week in 24 hours.");
-      return;
-    }
-    if (a === "on") { var eOn = getEntry(key); patch(key, { active: true, holdUntil: null, holdStar: false }); if (eOn.holdStar) addTarget(key); renderAll(); return; }
-    if (a === "linkdel") {
-      var itL = itemById(key), row = e.target.closest(".lrow");
-      if (itL && row) { var ix = +row.getAttribute("data-lix"); itL.links = (itL.links || []).filter(function (_, i2) { return i2 !== ix; }); saveInv(); renderCols(); renderHome(); }
-      return;
-    }
-    if (a === "linkadd") { addLinkFrom(act, key); return; }
-    if (a === "sparch") { patch(key, { arch: true }); toast("Archived — it stays in the cloud under \u201cArchived\u201d."); renderAll(); return; }
-    if (a === "spunarch") { patch(key, { arch: false }); renderAll(); return; }
+    if (a === "off") { patch(key, { active: false }); removeTarget(key); detailOpen[key] = false; renderAll(); return; }
+    if (a === "on") { patch(key, { active: true }); renderAll(); return; }
     if (a === "flagupd") { var wasUpd = !!getEntry(key).upd; patch(key, { upd: !wasUpd }); toast(wasUpd ? "Update flag cleared." : "Flagged \u2014 pending update for Claude."); renderAll(); return; }
     if (a === "star") {
       if (isTarget(key)) { removeTarget(key); } else if (!addTarget(key)) { toast("The Five is full \u2014 remove one first."); return; }
@@ -1297,55 +1196,11 @@
       }
       return;
     }
-    if (a === "tagcycle") {
-      var tli = act.closest("[data-sid]");
-      if (tli) {
-        var tsid = tli.getAttribute("data-sid"), tord = [""].concat(TAG_KEYS);
-        patch(key, { subtasks: normSubs(subs(key)).map(function (x) { if (x.id !== tsid) return x; var ci = tord.indexOf(x.tag || ""); return Object.assign({}, x, { tag: tord[(ci + 1) % tord.length] || null, u: Date.now() }); }) });
-        renderCols(); renderHome();
-      }
-      return;
-    }
     if (a === "spreveal") { spReveal[key] = !spReveal[key]; renderCols(); return; }
     if (a === "subadd") { addSub(act, key); return; }
   });
 
-  /* ---- quick links: 24h holds + structured add ---- */
-  function fmtHold(ms) { var h = Math.ceil(ms / 36e5); return h >= 2 ? "back in " + h + "h" : "back in " + Math.max(1, Math.ceil(ms / 6e4)) + "m"; }
-  function addLinkFrom(btn, key) {
-    var blk = btn.closest(".links-block"); if (!blk) return;
-    var lab = blk.querySelector(".lr-name"), url = blk.querySelector(".lr-url");
-    var u = (url.value || "").trim(); if (!u) { url.focus(); return; }
-    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
-    var it = itemById(key); if (!it) return;
-    var host = u.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
-    it.links = (Array.isArray(it.links) ? it.links : []).concat([{ label: (lab.value || "").trim() || host, url: u }]);
-    saveInv(); renderCols(); renderHome(); toast("Link added.");
-  }
-  function releaseHolds() {
-    var now = Date.now(), freed = 0;
-    Object.keys(entries).forEach(function (k) {
-      var en = entries[k];
-      if (!en || en.active || !en.holdUntil || en.holdUntil > now) return;
-      var wasStar = !!en.holdStar;
-      patch(k, { active: true, holdUntil: null, holdStar: false });
-      if (wasStar) addTarget(k);
-      freed++;
-    });
-    if (freed) { renderAll(); toast(freed === 1 ? "Hold expired \u2014 task is back in This Week." : freed + " holds expired \u2014 tasks are back in This Week."); }
-  }
-  document.addEventListener("change", function (e) {
-    if (!(e.target.getAttribute && e.target.getAttribute("data-act") === "gen")) return;
-    var it = itemById(keyOf(e.target)); if (!it) return;
-    it.gen = e.target.value || ""; saveInv(); renderCols();
-  });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" && e.target.classList && (e.target.classList.contains("lr-url") || e.target.classList.contains("lr-name"))) {
-      e.preventDefault();
-      var blk = e.target.closest(".links-block"), btn = blk && blk.querySelector(".lr-addbtn");
-      if (btn) addLinkFrom(btn, keyOf(e.target));
-      return;
-    }
     var a = e.target.getAttribute && e.target.getAttribute("data-act");
     if (a === "subnew" && e.key === "Enter") { e.preventDefault(); addSub(e.target, keyOf(e.target)); }
     if (e.target.id === "addName" && e.key === "Enter") { e.preventDefault(); commitAdd(); }
@@ -1367,10 +1222,8 @@
     var li = span.closest("[data-sid]"); if (!li) return;
     var sid = li.getAttribute("data-sid"), cur = "";
     normSubs(subs(key)).forEach(function (x) { if (x.id === sid) cur = x.t || ""; });   // backfill ids
-    var input = document.createElement("textarea");
-    input.className = "sub-text-edit"; input.value = cur; input.placeholder = "subtask"; input.rows = 1;
-    function grow() { input.style.height = "auto"; input.style.height = (input.scrollHeight + 2) + "px"; }
-    input.addEventListener("input", grow); setTimeout(grow, 0);
+    var input = document.createElement("input");
+    input.className = "sub-text-edit"; input.value = cur; input.placeholder = "subtask";
     var settled = false;
     function finish(saveIt) {
       if (settled) return; settled = true;
@@ -1378,7 +1231,7 @@
       renderCols();
     }
     input.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); finish(true); }   // Shift+Enter = new line
+      if (ev.key === "Enter") { ev.preventDefault(); finish(true); }
       else if (ev.key === "Escape") { ev.preventDefault(); finish(false); }
     });
     input.addEventListener("blur", function () { finish(true); });
@@ -1622,30 +1475,15 @@
   function fillCloud() {}   // connection fields are gone — the build is pre-wired via config.js
   function wireCloud() {
     var _bc = $("btnCloud"); if (_bc) _bc.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); };
-    var _cp = $("cloudPill"); if (_cp) _cp.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); };
     $("cloudClose").onclick = function () { $("cloudModal").classList.remove("open"); };
     $("cloudModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
     var bsi = $("bannerSignIn"); if (bsi) bsi.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); var ce = $("cfEmail"); if (ce) ce.focus(); };
     $("cloudSignIn").onclick = async function () {
       ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Check your connection and try again.", true); return; }
       var email = ($("cfEmail").value || "").trim();
-      if (!email) { cloudSetStatus("Enter your email to get a sign-in code.", true); return; }
-      try {
-        var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error;
-        var _or = $("otpRow"), _ob = $("otpBtns"); if (_or) _or.style.display = ""; if (_ob) _ob.style.display = "";
-        cloudSetStatus("Email sent to <b>" + esc(email) + "</b>. Type the <b>6-digit code</b> from it below \u2014 no need to open the link.");
-        var _co = $("cfOtp"); if (_co) { _co.value = ""; _co.focus(); }
-      }
-      catch (e) { cloudSetStatus("Couldn\u2019t send the code: " + esc(e.message || String(e)), true); }
-    };
-    var _cv = $("cloudVerify"); if (_cv) _cv.onclick = async function () {
-      ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Check your connection and try again.", true); return; }
-      var email = ($("cfEmail").value || "").trim(), code = ($("cfOtp") ? $("cfOtp").value || "" : "").trim();
-      if (!email) { cloudSetStatus("Enter your email above first.", true); return; }
-      if (!code) { cloudSetStatus("Type the 6-digit code from the email.", true); return; }
-      cloudSetStatus("Checking the code\u2026");
-      try { var r = await sb.auth.verifyOtp({ email: email, token: code, type: "email" }); if (r.error) throw r.error; cloudSetStatus("Signed in \u2713 \u2014 loading your week\u2026"); }
-      catch (e) { cloudSetStatus("That code didn\u2019t work: " + esc(e.message || String(e)) + " \u2014 codes expire after a few minutes; hit <b>Send code</b> again for a fresh one.", true); }
+      if (!email) { cloudSetStatus("Enter your email to get a magic link.", true); return; }
+      try { var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } }); if (r.error) throw r.error; cloudSetStatus("Magic link sent to <b>" + esc(email) + "</b>. Open it <b>on this device, in this browser</b> to finish signing in and load your week."); }
+      catch (e) { cloudSetStatus("Couldn\u2019t send the link: " + esc(e.message || String(e)), true); }
     };
     $("cloudPull").onclick = function () {
       if (!syncReady()) { cloudSetStatus("Connect and sign in first \u2014 then Pull fetches your other device\u2019s data.", true); return; }
@@ -1736,42 +1574,6 @@
     f.onclick = function () { set(false); };
     g.onclick = function () { set(true); };
     paint();
-  }
-
-  /* ---- detail checklist: pointer-based subtask reorder via the row grip ---- */
-  function wireSubDrag() {
-    var dragLi = null, list = null;
-    document.addEventListener("pointerdown", function (e) {
-      var g = e.target.closest ? e.target.closest(".subs .sub-grip") : null; if (!g) return;
-      dragLi = g.closest("li[data-sid]"); list = dragLi ? dragLi.parentNode : null; if (!dragLi) return;
-      dragLi.classList.add("dragging");
-      try { g.setPointerCapture(e.pointerId); } catch (x) {}
-      e.preventDefault();
-    });
-    document.addEventListener("pointermove", function (e) {
-      if (!dragLi) return;
-      var over = document.elementFromPoint(e.clientX, e.clientY);
-      var li = over && over.closest ? over.closest("li[data-sid]") : null;
-      if (!li || li === dragLi || li.parentNode !== list) return;
-      var r = li.getBoundingClientRect();
-      list.insertBefore(dragLi, e.clientY < r.top + r.height / 2 ? li : li.nextSibling);
-    });
-    function endSubDrag() {
-      if (!dragLi) return;
-      var key = keyOf(dragLi);
-      dragLi.classList.remove("dragging"); dragLi = null;
-      var ids = Array.prototype.map.call(list.querySelectorAll("li[data-sid]"), function (n) { return n.getAttribute("data-sid"); });
-      list = null;
-      if (!key) return;
-      var all = normSubs(subs(key)), by = {};
-      all.forEach(function (s) { by[s.id] = s; });
-      var next = ids.map(function (id) { return by[id]; }).filter(Boolean);
-      all.forEach(function (s) { if (ids.indexOf(s.id) < 0) next.push(s); });   // keep tombstones + filtered rows
-      patch(key, { subtasks: next });
-      renderCols(); renderFive(); renderHome();
-    }
-    document.addEventListener("pointerup", endSubDrag);
-    document.addEventListener("pointercancel", endSubDrag);
   }
 
   /* ---- Special: pointer-based reorder (works on touch too) ---- */
@@ -2506,7 +2308,7 @@
   /* ---------------- MODE + TABS + WIRING ---------------- */
   function renderHome() {
     if (!$("scrToday")) return;
-    renderTodayScreen(); renderCalScreen(); renderRoutinesScreen(); renderPlaces(); renderChats();
+    renderTodayScreen(); renderCalScreen(); renderRoutinesScreen(); renderPlaces();
   }
 
   function applyMode(mode, focusSeg) {
@@ -2524,197 +2326,6 @@
     renderHome();
   }
 
-  /* ---- v40: Claude Chats — saved discussions with their claude.ai links ---- */
-  function chatsArr() { if (!Array.isArray(meta.cchats)) meta.cchats = []; return meta.cchats; }
-  /* v41: chats live inside the Week tab's folders (the manually added groups on apps/study/office).
-     Folder list is derived from item groups, so new folders appear here automatically. */
-  var CHAT_VIEW = "";
-  var CHAT_NEWFOLD = ""; /* folder picked (via chips) for the next save */
-  try { CHAT_VIEW = localStorage.getItem("wf-chatview") || ""; } catch (e) {}
-  function saveChatView() { try { localStorage.setItem("wf-chatview", CHAT_VIEW); } catch (e) {} }
-  /* stable color per folder name */
-  function foldHue(n) { var h = 0; n = n || ""; for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) % 360; return h; }
-  /* keyword -> emoji per folder name; first match wins, folder svg as fallback */
-  var FOLD_EMO = [[/cod|dev|program|app|software/i, "\ud83d\udcbb"], [/academ|thesis|research|univ|college/i, "\ud83c\udf93"], [/math|ai\b|_ai|ml|data/i, "\ud83e\udde0"], [/language|vocab|german|english|study/i, "\ud83d\udcda"], [/financ|money|invest|budget/i, "\ud83d\udcb0"], [/health|fit|gym|med/i, "\ud83e\ude7a"], [/mechan|hardware|robot|cad/i, "\u2699\ufe0f"], [/roadmap|plan|goal/i, "\ud83e\udded"], [/design|art|draw|ui/i, "\ud83c\udfa8"], [/3d|model|print/i, "\ud83e\uddca"], [/office|work|team|meet/i, "\ud83d\udcbc"], [/home|house|family/i, "\ud83c\udfe1"], [/travel|trip/i, "\u2708\ufe0f"], [/music|audio/i, "\ud83c\udfb5"], [/game/i, "\ud83c\udfae"], [/general|misc|other|unsorted/i, "\ud83d\uddc2\ufe0f"]];
-  function foldEmo(n) { for (var i = 0; i < FOLD_EMO.length; i++) if (FOLD_EMO[i][0].test(n || "")) return FOLD_EMO[i][1]; return ""; }
-  /* folders sectioned by Week-tab column (Apps / Study / Office), same as the board */
-  function chatFolderSections() {
-    var seen = {}, secs = [{ k: "app", label: "Apps", fs: [] }, { k: "study", label: "Study", fs: [] }, { k: "office", label: "Office", fs: [] }];
-    secs.forEach(function (s) { (arrFor(s.k) || []).forEach(function (it) { var g = (it.group || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; s.fs.push(g); } }); });
-    var extra = [];
-    chatCustomFolds().concat(chatsArr().map(function (c) { return c.fold || ""; })).forEach(function (g) { g = (g || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; extra.push(g); } });
-    if (extra.length) secs.push({ k: "other", label: "My folders", fs: extra });
-    return secs;
-  }
-  function chatCustomFolds() { if (!Array.isArray(meta.cfolders)) meta.cfolders = []; return meta.cfolders; }
-  function chatFolderList() {
-    var seen = {}, out = [];
-    [state.apps, state.study, state.office || []].forEach(function (arr) { (arr || []).forEach(function (it) { var g = (it.group || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; out.push(g); } }); });
-    chatCustomFolds().concat(chatsArr().map(function (c) { return c.fold || ""; })).forEach(function (g) { g = (g || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; out.push(g); } });
-    out.sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
-    return out;
-  }
-  function saveChats() { save(); cloudPushBoard(); }
-  function renderChats() {
-    var host = $("chatList"); if (!host) return;
-    var arr = chatsArr().slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
-    var n = $("chatCount"); if (n) n.textContent = arr.length || "";
-    var folders = chatFolderList();
-    var fpick = $("chatFoldPick");
-    var NEWF_CHIP = '<button type="button" class="fold-chip newf" data-newfold="1" title="Create a new folder">+ New folder</button>';
-    if (fpick) fpick.innerHTML = (folders.length
-      ? folders.map(function (f) { var h = foldHue(f), on = CHAT_NEWFOLD === f, e2 = foldEmo(f); return '<button type="button" class="fold-chip' + (on ? " on" : "") + '" data-nf="' + esc(f) + '" style="' + (on ? 'background:oklch(0.55 0.16 ' + h + ');border-color:transparent;color:#fff' : 'color:oklch(0.45 0.16 ' + h + ');border-color:oklch(0.85 0.06 ' + h + ')') + '">' + (e2 ? e2 + " " : "") + esc(f) + (on ? " \u2713" : "") + '</button>'; }).join("")
-      : "") + NEWF_CHIP;
-    var fhint = $("chatFoldHint");
-    if (fhint) { fhint.textContent = CHAT_NEWFOLD ? "new chat saves into " + CHAT_NEWFOLD : "no folder picked \u2014 goes to Unsorted"; fhint.classList.toggle("picked", !!CHAT_NEWFOLD); }
-    if (!arr.length) { host.innerHTML = ''; } /* grid still renders below so folders stay visible */
-    function foldChip(c) {
-      if (!c.fold) return '<button class="fold-chip none" data-cact="fold" title="File into a folder">file \u2192</button>';
-      var h = foldHue(c.fold);
-      return '<button class="fold-chip" data-cact="fold" title="Move to another folder" style="color:oklch(0.45 0.16 ' + h + ');border-color:oklch(0.85 0.06 ' + h + ')">' + esc(c.fold) + '</button>';
-    }
-    function rowHtml(c) {
-      var tg = c.tag && SUB_TAGS[c.tag] ? c.tag : "";
-      return '<li class="chat-row" data-cid="' + esc(c.id) + '">' +
-        '<div class="chat-main"><span class="chat-topic" data-cact="edit" title="Click to edit">' + esc(c.t || "Untitled discussion") + '</span>' +
-        '<button class="sub-tag ' + (tg || "none") + '" data-cact="ctag" title="' + (tg ? SUB_TAGS[tg] + " \u2014 tap to change / clear" : "Tag this chat") + '">' + esc(tg ? SUB_TAGS[tg] : "+ tag") + '</button>' + foldChip(c) + '</div>' +
-        '<button class="tbtn chat-editlink" data-cact="editlink" title="Edit the saved link">\u270e link</button>' +
-        (c.url ? '<a class="tbtn chat-open" href="' + esc(c.url) + '" target="_blank" rel="noopener">Open chat \u2197</a>' : '') +
-        '<button class="sub-del" data-cact="del" title="Delete">\u00d7</button></li>';
-    }
-    /* folder-card grid up front (Week-tab groups); tap a card to open its chats */
-    var FOLD_IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>';
-    function chatsIn(f) { return arr.filter(function (c) { return ((c.fold || "").trim()) === f; }); }
-    if (CHAT_VIEW) {
-      var fName = CHAT_VIEW === "@un" ? "" : CHAT_VIEW;
-      var rows = chatsIn(fName);
-      var hOpen = foldHue(fName || "Unsorted");
-      var em0 = foldEmo(fName || "Unsorted");
-      var html2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="@back">\u2190 Folders</button><span class="cf-open-name" style="color:oklch(0.5 0.16 ' + hOpen + ')">' + (em0 ? '<span class="cf-emo sm">' + em0 + '</span>' : FOLD_IC) + esc(fName || "Unsorted") + '</span><span class="chat-sec-n">' + rows.length + '</span></li>';
-      html2 += rows.length ? rows.map(rowHtml).join("") : '<li class="chat-empty">Nothing in this folder yet \u2014 move a chat here with its folder dropdown, or pick this folder when saving.</li>';
-      host.innerHTML = html2; return;
-    }
-    var unsorted = chatsIn("");
-    /* card: colored by folder, active folders first (most recent chat wins), empty ones quiet + dashed */
-    function fcard(label, key, nIn) {
-      var h = foldHue(label), on = nIn > 0;
-      var cardSt = on ? ' style="background:oklch(0.975 0.02 ' + h + ');border-color:oklch(0.88 0.06 ' + h + ')"' : '';
-      var icSt = on ? ' style="color:oklch(0.55 0.16 ' + h + ')"' : '';
-      var cntSt = on ? ' style="background:oklch(0.55 0.16 ' + h + ');color:#fff"' : '';
-      var em = foldEmo(label);
-      return '<button type="button" class="chat-fcard' + (on ? "" : " empty") + '" data-cfold="' + esc(key) + '"' + cardSt + '>' + (em ? '<span class="cf-emo">' + em + '</span>' : '<span class="cf-ic"' + icSt + '>' + FOLD_IC + '</span>') + '<span class="cf-name">' + esc(label) + '</span><span class="cf-count"' + cntSt + '>' + (on ? nIn + (nIn === 1 ? " chat" : " chats") : "empty") + '</span></button>';
-    }
-    function lastU(f) { var m = 0; chatsIn(f).forEach(function (c) { if ((c.u || 0) > m) m = c.u; }); return m; }
-    var html = "";
-    chatFolderSections().forEach(function (s) {
-      if (!s.fs.length) return;
-      var fs = s.fs.slice().sort(function (a, b) {
-        var na = chatsIn(a).length, nb = chatsIn(b).length;
-        if (!!na !== !!nb) return na ? -1 : 1;
-        var d = lastU(b) - lastU(a); if (d) return d;
-        return a.toLowerCase().localeCompare(b.toLowerCase());
-      });
-      html += '<li class="chat-cat">' + esc(s.label) + '</li><li class="chat-grid">' + fs.map(function (f) { return fcard(f, f, chatsIn(f).length); }).join("") + '</li>';
-    });
-    if (unsorted.length) html += '<li class="chat-cat">Not filed yet</li><li class="chat-grid">' + fcard("Unsorted", "@un", unsorted.length) + '</li>';
-    host.innerHTML = html + (arr.length ? "" : '<li class="chat-empty">No discussions saved yet. Add a topic and paste the claude.ai chat link above \u2014 it lands in the folder you pick.</li>');
-  }
-  function wireChats() {
-    /* deep-link: ?addchat=<url>&topic=<name> saves a discussion on load (for one-tap save from a Claude chat) */
-    try {
-      var qp = new URLSearchParams(window.location.search), au = qp.get("addchat");
-      if (au) {
-        var at = (qp.get("topic") || "").trim();
-        if (!/^https?:\/\//i.test(au)) au = "https://" + au;
-        var dup = chatsArr().some(function (c) { return c.url === au; });
-        if (!dup) { chatsArr().push({ id: uid(), t: at || "Untitled discussion", url: au, u: Date.now() }); saveChats(); }
-        history.replaceState(null, "", window.location.pathname);
-        renderChats(); showScreen("scrChats"); toast(dup ? "Already saved." : "Discussion saved \u2713");
-      }
-    } catch (e) {}
-    var btn = $("chatAddBtn"); if (!btn) return;
-    btn.onclick = function () {
-      var t = ($("chatTopic").value || "").trim(), u = ($("chatUrl").value || "").trim();
-      if (!t && !u) { $("chatTopic").focus(); return; }
-      var f = CHAT_NEWFOLD || null;
-      if (u && !/^https?:\/\//i.test(u)) u = "https://" + u;
-      chatsArr().push({ id: uid(), t: t || "Untitled discussion", url: u, fold: f, u: Date.now() });
-      CHAT_VIEW = f || "@un"; saveChatView(); CHAT_NEWFOLD = "";
-      $("chatTopic").value = ""; $("chatUrl").value = ""; saveChats(); renderChats(); toast("Discussion saved.");
-    };
-    /* mobile: Enter/Go on the keyboard saves too */
-    ["chatTopic", "chatUrl"].forEach(function (idn) {
-      var el2 = $(idn); if (!el2) return;
-      el2.setAttribute("enterkeyhint", "go");
-      el2.addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); btn.click(); } });
-    });
-    var fpk = $("chatFoldPick");
-    if (fpk) fpk.addEventListener("click", function (e) {
-      if (e.target.closest("[data-newfold]")) {
-        var nm = (prompt("New folder name:") || "").trim();
-        if (!nm) return;
-        var ex = chatFolderList().filter(function (f) { return f.toLowerCase() === nm.toLowerCase(); })[0];
-        if (!ex) chatCustomFolds().push(nm);
-        CHAT_NEWFOLD = ex || nm; saveChats(); renderChats(); return;
-      }
-      var b2 = e.target.closest("[data-nf]"); if (!b2) return;
-      var v2 = b2.getAttribute("data-nf");
-      CHAT_NEWFOLD = CHAT_NEWFOLD === v2 ? "" : v2; renderChats();
-    });
-    $("chatList").addEventListener("click", function (e) {
-      var fh = e.target.closest("[data-cfold]");
-      if (fh) { var fk2 = fh.getAttribute("data-cfold"); CHAT_VIEW = fk2 === "@back" ? "" : fk2; saveChatView(); renderChats(); return; }
-      var el = e.target.closest("[data-cact]"); if (!el) return;
-      var row = e.target.closest("[data-cid]"); if (!row) return;
-      var cid = row.getAttribute("data-cid"), arr = chatsArr(), act2 = el.getAttribute("data-cact");
-      if (act2 === "del") { meta.cchats = arr.filter(function (c) { return c.id !== cid; }); saveChats(); renderChats(); return; }
-      if (act2 === "fold") {
-        var cf = null; arr.forEach(function (x) { if (x.id === cid) cf = x; }); if (!cf) return;
-        if (row.querySelector(".fold-pick")) return;
-        var pick = document.createElement("div"); pick.className = "fold-pick inrow";
-        pick.innerHTML = '<button type="button" class="fold-chip none" data-mv="">Unsorted</button>' + chatFolderList().map(function (f) { var h2 = foldHue(f); return '<button type="button" class="fold-chip' + ((cf.fold || "") === f ? " on" : "") + '" data-mv="' + esc(f) + '" style="' + ((cf.fold || "") === f ? 'background:oklch(0.55 0.16 ' + h2 + ');border-color:transparent;color:#fff' : 'color:oklch(0.45 0.16 ' + h2 + ');border-color:oklch(0.85 0.06 ' + h2 + ')') + '">' + esc(f) + '</button>'; }).join("");
-        pick.addEventListener("click", function (ev) {
-          var mb = ev.target.closest("[data-mv]"); if (!mb) return;
-          ev.stopPropagation();
-          cf.fold = mb.getAttribute("data-mv") || null; cf.u = Date.now(); saveChats(); renderChats();
-        });
-        row.querySelector(".chat-main").appendChild(pick); el.style.display = "none";
-        return;
-      }
-      if (act2 === "ctag") {
-        var ct = null; arr.forEach(function (x) { if (x.id === cid) ct = x; }); if (!ct) return;
-        var tord2 = [""].concat(TAG_KEYS), ci2 = tord2.indexOf(ct.tag && SUB_TAGS[ct.tag] ? ct.tag : "");
-        ct.tag = tord2[(ci2 + 1) % tord2.length] || null; ct.u = Date.now(); saveChats(); renderChats(); return;
-      }
-      if (act2 === "editlink") {
-        var cl = null; arr.forEach(function (x) { if (x.id === cid) cl = x; }); if (!cl) return;
-        var inp2 = document.createElement("input"); inp2.className = "chat-topic-edit"; inp2.value = cl.url || ""; inp2.placeholder = "https://claude.ai/chat/\u2026"; inp2.setAttribute("enterkeyhint", "done");
-        var done2 = false;
-        function fin2(saveIt) { if (done2) return; done2 = true; if (saveIt) { var u2 = inp2.value.trim(); if (u2 && !/^https?:\/\//i.test(u2)) u2 = "https://" + u2; cl.url = u2; cl.u = Date.now(); saveChats(); } renderChats(); }
-        inp2.addEventListener("keydown", function (ev) { if (ev.key === "Enter") fin2(true); else if (ev.key === "Escape") fin2(false); });
-        inp2.addEventListener("blur", function () { fin2(true); });
-        var wr2 = document.createElement("span"); wr2.className = "chat-editwrap";
-        var ok2 = document.createElement("button"); ok2.type = "button"; ok2.className = "chat-ok"; ok2.textContent = "\u2713 Save";
-        ok2.addEventListener("pointerdown", function (ev) { ev.preventDefault(); fin2(true); });
-        wr2.appendChild(inp2); wr2.appendChild(ok2);
-        row.querySelector(".chat-main").appendChild(wr2); el.style.display = "none"; inp2.focus(); inp2.select();
-        return;
-      }
-      if (act2 === "edit") {
-        var c = null; arr.forEach(function (x) { if (x.id === cid) c = x; }); if (!c) return;
-        var inp = document.createElement("input"); inp.className = "chat-topic-edit"; inp.value = c.t || ""; inp.setAttribute("enterkeyhint", "done");
-        var done = false;
-        function fin(saveIt) { if (done) return; done = true; if (saveIt && inp.value.trim()) { c.t = inp.value.trim(); c.u = Date.now(); saveChats(); } renderChats(); }
-        inp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") fin(true); else if (ev.key === "Escape") fin(false); });
-        inp.addEventListener("blur", function () { fin(true); });
-        var wr = document.createElement("span"); wr.className = "chat-editwrap";
-        var ok = document.createElement("button"); ok.type = "button"; ok.className = "chat-ok"; ok.textContent = "\u2713 Save";
-        ok.addEventListener("pointerdown", function (ev) { ev.preventDefault(); fin(true); });
-        wr.appendChild(inp); wr.appendChild(ok);
-        el.replaceWith(wr); inp.focus(); inp.select();
-      }
-    });
-  }
   function showScreen(id) {
     if (!$(id)) id = "scrToday";
     Array.prototype.forEach.call(document.querySelectorAll(".screen"), function (s) { s.classList.toggle("on", s.id === id); });
@@ -2894,38 +2505,9 @@
      INIT
      ============================================================ */
   function init() {
-    setTimeout(releaseHolds, 3000); setInterval(releaseHolds, 30000);   // 24h holds
     wireDisclosure("appsBacklogHead", "appsBacklogWrap");
     wireDisclosure("studyBacklogHead", "studyBacklogWrap");
     wireDisclosure("officeBacklogHead", "officeBacklogWrap");
-    var _ag = $("spAgenda"); if (_ag) _ag.addEventListener("click", function (e) {
-      if (e.target.closest("[data-act]")) return;   // done-checkbox keeps its own behavior
-      var row = e.target.closest(".ag-item"); if (!row) return;
-      var key = row.getAttribute("data-key"), sid = row.getAttribute("data-sid");
-      if (spReveal[key] !== true || !detailOpen[key]) { spReveal[key] = true; detailOpen[key] = true; renderCols(); }
-      var card = document.querySelector('.sp-card[data-key="' + key + '"], [data-key="' + key + '"].item');
-      if (!card) return;
-      var li = card.querySelector('li[data-sid="' + sid + '"]');
-      var target = li || card;
-      var sc = card.closest(".screen") || document.scrollingElement;
-      var r = target.getBoundingClientRect(), sr = sc.getBoundingClientRect ? sc.getBoundingClientRect() : { top: 0 };
-      sc.scrollTop += r.top - sr.top - 120;
-      card.classList.add("sp-hilite"); if (li) li.classList.add("sp-hilite");
-      setTimeout(function () { card.classList.remove("sp-hilite"); if (li) li.classList.remove("sp-hilite"); }, 1600);
-    });
-    var _tf = $("tagFilter");
-    if (_tf) {
-      /* filter buttons are generated from SUB_TAGS, so new tags show up here automatically */
-      _tf.innerHTML = '<button type="button" data-tf="">All</button>' + TAG_KEYS.map(function (k) { return '<button type="button" data-tf="' + k + '">' + esc(SUB_TAGS[k]) + '</button>'; }).join("");
-      applyTagFilter();
-    }
-    if (_tf) _tf.addEventListener("click", function (e) {
-      var b = e.target.closest("[data-tf]"); if (!b) return;
-      TAG_FILTER = b.getAttribute("data-tf") || "";
-      try { localStorage.setItem("wf-tagfilter", TAG_FILTER); } catch (e2) {}
-      applyTagFilter();
-    });
-    wireChats();
     $("btnPrint").onclick = function () { window.print(); };
     $("addAppBtn").onclick = function () { openAdd("app"); };
     $("addStudyBtn").onclick = function () { openAdd("study"); };
@@ -2942,7 +2524,6 @@
       try { if (localStorage.getItem("wf2_special_mode") === "1") applySpecialMode(true); } catch (e) {}
     }
     wireSpecialDrag();
-    wireSubDrag();
     wireTimeline();
     wireViewToggle();
     var shb = $("specialHideBtn");

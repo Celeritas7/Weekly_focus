@@ -970,31 +970,29 @@ body.special-mode .special { margin-top: 26px; }
 .we-ok:hover { color: var(--on); border-color: var(--on); }
 .we-x:hover { color: var(--pri-h); border-color: var(--pri-h); }
 
-/* Coming up — topic cards: tasks grouped by their source list */
-.sp-agenda { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; align-items: start; margin: 0 0 14px; }
-.ag-topic { background: var(--card); border: 1px solid var(--hair); border-top: 3px solid oklch(0.62 0.13 var(--sp-h, 300)); border-radius: var(--r-md); box-shadow: var(--shadow-card); padding: 10px 12px 6px; min-width: 0; }
-.ag-topic-head { display: flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: oklch(0.5 0.12 var(--sp-h, 300)); padding: 1px 2px 8px; }
-.ag-topic-dot { width: 8px; height: 8px; border-radius: 2px; background: oklch(0.62 0.13 var(--sp-h, 300)); flex: 0 0 auto; }
-.ag-topic-n { color: currentColor; opacity: .55; font-variant-numeric: tabular-nums; }
+/* Coming up — agenda strip of dated tasks, soonest first */
+.sp-agenda { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 14px; }
 .ag-item {
-  display: flex; align-items: center; gap: 10px;
-  border-top: 1px solid var(--hair); padding: 7px 2px; min-width: 0;
+  display: flex; align-items: center; gap: 11px;
+  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-md);
+  box-shadow: var(--shadow-card); padding: 8px 12px 8px 8px;
+  border-left: 3px solid oklch(0.62 0.13 var(--sp-h, 300));
 }
 .ag-cal {
   flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  width: 36px; height: 38px; border-radius: 9px; line-height: 1;
+  width: 41px; height: 43px; border-radius: 9px; line-height: 1;
   background: var(--card-2); border: 1px solid var(--hair);
 }
 .ag-cal i { font-style: normal; font-size: 8.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
-.ag-cal b { font-size: 15px; font-weight: 800; color: var(--ink); margin-top: 2px; }
-.ag-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
-.ag-name { font-size: 13px; font-weight: 700; color: var(--ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ag-cal b { font-size: 17px; font-weight: 800; color: var(--ink); margin-top: 2px; }
+.ag-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ag-name { font-size: 13px; font-weight: 700; color: var(--ink); }
 .ag-src { font-size: 10.5px; font-weight: 600; color: var(--faint); }
 .ag-chip {
   flex: 0 0 auto; margin-left: 4px; font-size: 10px; font-weight: 800; white-space: nowrap;
   color: var(--mid); background: var(--card-2); border-radius: 20px; padding: 2px 8px;
 }
-.ag-item .sub-check { margin-right: 2px; flex: 0 0 auto; }
+.ag-item .sub-check { margin-right: 2px; }
 /* today — brand highlight */
 .ag-item.today { border-color: var(--brand-line); }
 .ag-item.today .ag-cal { background: var(--brand); border-color: var(--brand); }
@@ -1005,9 +1003,7 @@ body.special-mode .special { margin-top: 26px; }
 .ag-item.over .ag-cal { background: oklch(0.97 0.02 27); border-color: oklch(0.88 0.06 27); }
 .ag-item.over .ag-cal i, .ag-item.over .ag-cal b { color: var(--pri-h); }
 .ag-item.over .ag-chip { color: #fff; background: var(--pri-h); }
-/* first row under a topic head needs no rule */
-.ag-topic .ag-item:first-of-type { border-top: 0; }
-@media (max-width: 640px) { .sp-agenda { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .ag-item { flex: 1 1 100%; } }
 
 /* ---- v40: per-task tags (Claude AI / Claude Design / Cowork) ---- */
 .sub-tag { white-space: nowrap; flex: 0 0 auto; border: 1px solid transparent; border-radius: 999px; font-family: inherit; font-size: 9.5px; font-weight: 800; letter-spacing: .04em; padding: 2px 8px; cursor: pointer; line-height: 1.3; background: transparent; }

@@ -131,7 +131,13 @@
       </div>
       <div class="hrows" id="routineRows"></div>
       <button class="add-row" id="addRoutineBtn">+ Add routine</button>
-      <div class="sec-head hsec place-head" style="margin-top:28px;">
+    </div>
+  </section>
+
+  <!-- ===================== SCREEN: PLACES ===================== -->
+  <section class="screen" id="scrPlaces" data-screen-label="Places">
+    <div class="hone">
+      <div class="sec-head hsec place-head">
         <h2>Places</h2>
         <span class="hs-note">lists that surface when you plan a visit or are nearby</span>
         <button class="hrs-btn" id="geoBtn" title="Check where I am now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.5-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.5 12 21 12 21z"></path><circle cx="12" cy="10.5" r="2.3"></circle></svg></button>
@@ -140,8 +146,6 @@
       <button class="add-row" id="addPlaceBtn">+ Add place</button>
     </div>
   </section>
-
-  
 
   <!-- ===================== SCREEN: LIFE (special / misc) ===================== -->
   <section class="screen" id="scrLife" data-screen-label="Life">
@@ -169,7 +173,6 @@
       <label class="weekfield">Week of
         <input id="weekInput" type="text" placeholder="2026-06-08" data-act="week">
       </label>
-      <div class="tagfilter" id="tagFilter" title="Filter tasks by tag"><button type="button" data-tf="" class="on">All</button><button type="button" data-tf="ca">Claude AI</button><button type="button" data-tf="cd">Claude Design</button><button type="button" data-tf="cw">Cowork</button><button type="button" data-tf="td">3D Model</button></div>
     </div>
 
     <!-- ===================== WEEKLY PULSE ===================== -->
@@ -275,16 +278,6 @@
 
 </main>
 
-<!-- ===================== SCREEN: CHATS (Claude discussions) ===================== -->
-<section class="screen" id="scrChats" data-screen-label="Chats">
-  <div class="hone">
-    <div class="sec-head hsec"><span class="k">Claude Chats</span><span class="sub">ongoing discussions &mdash; save the link, pick the conversation back up any time</span><span class="count" id="chatCount"></span></div>
-    <div class="chat-add"><input id="chatTopic" placeholder="What are you discussing?"><input id="chatUrl" placeholder="Paste the claude.ai chat link&hellip;"><button class="tbtn primary" id="chatAddBtn">Save</button></div>
-    <div class="fold-pick-wrap" id="chatFoldWrap"><span class="fold-pick-label">Save into:</span><div class="fold-pick" id="chatFoldPick" title="Pick a folder for the next save"></div><span class="fold-pick-hint" id="chatFoldHint">no folder picked &mdash; goes to Unsorted</span></div>
-    <ul class="chat-list" id="chatList"></ul>
-  </div>
-</section>
-
 <!-- ===================== BOTTOM TABS ===================== -->
 <nav class="htabbar">
   <div class="htabbar-in">
@@ -300,14 +293,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"></path><path d="M3 11V9a2 2 0 0 1 2-2h16"></path><path d="M7 21l-4-4 4-4"></path><path d="M21 13v2a2 2 0 0 1-2 2H3"></path></svg>
       Routines
     </button>
-    
+    <button class="htab" data-screen="scrPlaces">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.5-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.5 12 21 12 21z"></path><circle cx="12" cy="10.5" r="2.3"></circle></svg>
+      Places
+    </button>
     <button class="htab" data-screen="scrWeek">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.5" y="4" width="7" height="16" rx="1.8"></rect><rect x="13.5" y="4" width="7" height="10" rx="1.8"></rect></svg>
       Week
-    </button>
-    <button class="htab" data-screen="scrChats">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-2.9-.4-4.1-1L3 20l1.1-5A8.5 8.5 0 1 1 21 11.5z"></path></svg>
-      Chats
     </button>
     <button class="htab" data-screen="scrLife">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l1.5 13a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20z"></path><path d="M9 10V6a3 3 0 0 1 6 0v4"></path></svg>

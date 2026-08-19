@@ -328,13 +328,10 @@
     if (md === "b") return "";
     return '<span class="sub-mode ' + md + '">' + (md === "o" ? "Office" : "Personal") + "</span>";
   }
-  /* SINGLE SOURCE OF TRUTH for tags: add a key+label here and it appears everywhere —
-     task chips, chat sections, chat chips, and the Week tag-filter bar (built from this list). */
-  var SUB_TAGS = { ca: "Claude AI", cd: "Claude Design", cw: "Cowork", td: "3D Model" };
-  var TAG_KEYS = Object.keys(SUB_TAGS);
+  var SUB_TAGS = { ca: "Claude AI", cd: "Claude Design", cw: "Cowork" };
   function subTagBtn(x) {
     var tg = x.tag && SUB_TAGS[x.tag] ? x.tag : "";
-    return '<button class="sub-tag ' + (tg || "none") + '" data-act="tagcycle" title="' + (tg ? SUB_TAGS[tg] + " \u2014 tap to change / clear" : "Tag this task: " + TAG_KEYS.map(function (k) { return SUB_TAGS[k]; }).join(" / ")) + '">' + (tg ? SUB_TAGS[tg] : "+ tag") + "</button>";
+    return '<button class="sub-tag ' + (tg || "none") + '" data-act="tagcycle" title="' + (tg ? SUB_TAGS[tg] + " \u2014 tap to change / clear" : "Tag this task: Claude AI / Claude Design / Cowork") + '">' + (tg ? SUB_TAGS[tg] : "+ tag") + "</button>";
   }
   function subFlagBtn(x) {
     return '<button class="sub-flag' + (x.urg ? " on" : "") + '" data-act="urgtoggle" title="' + (x.urg ? "Urgent \u2014 tap to clear" : "Mark urgent \u2014 pins it on top in red") + '">' + IC.flag + "</button>";
@@ -929,7 +926,7 @@
     var cnt = $("specialCount"); if (cnt) cnt.textContent = tot ? totDone + "/" + tot : "";
   }
 
-  /* ---- Coming up: grouped by source list (topic cards) ---- */
+  /* ---- Coming up: urgent tasks first (ASAP), then dated tasks soonest first ---- */
   function renderAgenda(items) {
     var ag = $("spAgenda"); if (!ag) return;
     var mode = getMode(), rows = [];
@@ -941,40 +938,27 @@
         rows.push({ key: it.id, card: it.name, hue: hueFor(it.name), sub: x, v: v });
       });
     });
-    function rk(r) { return r.v && r.v.w.pastDue ? 0 : r.sub.urg ? 1 : 2; }
     rows.sort(function (a, b) {
+      function rk(r) { var od = r.v && r.v.w.pastDue ? 0 : r.sub.urg ? 1 : 2; return od; }
       var ra = rk(a), rb = rk(b);
       if (ra !== rb) return ra - rb;
       var aw = a.sub.when || "9999", bw = b.sub.when || "9999";
       return aw < bw ? -1 : aw > bw ? 1 : 0;
     });
     ag.style.display = rows.length ? "" : "none";
-    if (!rows.length) { ag.innerHTML = ""; return; }
-    // group by source list, keeping row order; topics ordered by their most urgent row
-    var groups = [], byName = {};
-    rows.forEach(function (r) {
-      var g = byName[r.card];
-      if (!g) { g = byName[r.card] = { name: r.card, hue: r.hue, key: r.key, rows: [] }; groups.push(g); }
-      g.rows.push(r);
-    });
-    ag.innerHTML = groups.map(function (g) {
-      var body = g.rows.map(function (r) {
-        var v = r.v, w = v && v.w, urg = !!r.sub.urg;
-        var od = !!(w && w.pastDue);
-        var cls = od ? " odrow" : urg ? " urgrow" : v.cls;
-        var cal = w ? '<span class="ag-cal' + (urg && !od ? " flagged" : "") + '"><i>' + w.dow + '</i><b>' + w.day + '</b></span>'
-                    : '<span class="ag-cal flag">' + IC.flag + '</span>';
-        return '<div class="ag-item' + cls + '" data-key="' + esc(r.key) + '" data-sid="' + esc(r.sub.id) + '" style="--sp-h:' + r.hue + '">' +
-          cal +
-          '<div class="ag-txt"><span class="ag-name">' + esc(r.sub.t || "task") + '</span>' +
-          (w && w.time ? '<span class="ag-src">' + w.time + '</span>' : '') + '</div>' +
-          '<span class="ag-chip">' + esc(od ? v.rel.toUpperCase() : urg ? "ASAP" : v.rel) + '</span>' +
-          '<button class="sub-check" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
-          '</div>';
-      }).join("");
-      return '<div class="ag-topic" style="--sp-h:' + g.hue + '">' +
-        '<div class="ag-topic-head"><span class="ag-topic-dot"></span>' + esc(g.name) + '<span class="ag-topic-n">' + g.rows.length + '</span></div>' +
-        body + '</div>';
+    ag.innerHTML = rows.map(function (r) {
+      var v = r.v, w = v && v.w, urg = !!r.sub.urg;
+      var od = !!(w && w.pastDue);
+      var cls = od ? " odrow" : urg ? " urgrow" : v.cls;
+      var cal = w ? '<span class="ag-cal' + (urg && !od ? " flagged" : "") + '"><i>' + w.dow + '</i><b>' + w.day + '</b></span>'
+                  : '<span class="ag-cal flag">' + IC.flag + '</span>';
+      return '<div class="ag-item' + cls + '" data-key="' + esc(r.key) + '" data-sid="' + esc(r.sub.id) + '" style="--sp-h:' + r.hue + '">' +
+        cal +
+        '<div class="ag-txt"><span class="ag-name">' + esc(r.sub.t || "task") + '</span>' +
+        '<span class="ag-src">' + esc(r.card) + (w && w.time ? ' \u00b7 ' + w.time : '') + '</span></div>' +
+        '<span class="ag-chip">' + esc(od ? v.rel.toUpperCase() : urg ? "ASAP" : v.rel) + '</span>' +
+        '<button class="sub-check" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
+        '</div>';
     }).join("");
   }
 
@@ -1300,8 +1284,8 @@
     if (a === "tagcycle") {
       var tli = act.closest("[data-sid]");
       if (tli) {
-        var tsid = tli.getAttribute("data-sid"), tord = [""].concat(TAG_KEYS);
-        patch(key, { subtasks: normSubs(subs(key)).map(function (x) { if (x.id !== tsid) return x; var ci = tord.indexOf(x.tag || ""); return Object.assign({}, x, { tag: tord[(ci + 1) % tord.length] || null, u: Date.now() }); }) });
+        var tsid = tli.getAttribute("data-sid"), tord = ["", "ca", "cd", "cw"];
+        patch(key, { subtasks: normSubs(subs(key)).map(function (x) { if (x.id !== tsid) return x; var ci = tord.indexOf(x.tag || ""); return Object.assign({}, x, { tag: tord[(ci + 1) % 4] || null, u: Date.now() }); }) });
         renderCols(); renderHome();
       }
       return;
@@ -2526,98 +2510,19 @@
 
   /* ---- v40: Claude Chats — saved discussions with their claude.ai links ---- */
   function chatsArr() { if (!Array.isArray(meta.cchats)) meta.cchats = []; return meta.cchats; }
-  /* v41: chats live inside the Week tab's folders (the manually added groups on apps/study/office).
-     Folder list is derived from item groups, so new folders appear here automatically. */
-  var CHAT_VIEW = "";
-  var CHAT_NEWFOLD = ""; /* folder picked (via chips) for the next save */
-  try { CHAT_VIEW = localStorage.getItem("wf-chatview") || ""; } catch (e) {}
-  function saveChatView() { try { localStorage.setItem("wf-chatview", CHAT_VIEW); } catch (e) {} }
-  /* stable color per folder name */
-  function foldHue(n) { var h = 0; n = n || ""; for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) % 360; return h; }
-  /* keyword -> emoji per folder name; first match wins, folder svg as fallback */
-  var FOLD_EMO = [[/cod|dev|program|app|software/i, "\ud83d\udcbb"], [/academ|thesis|research|univ|college/i, "\ud83c\udf93"], [/math|ai\b|_ai|ml|data/i, "\ud83e\udde0"], [/language|vocab|german|english|study/i, "\ud83d\udcda"], [/financ|money|invest|budget/i, "\ud83d\udcb0"], [/health|fit|gym|med/i, "\ud83e\ude7a"], [/mechan|hardware|robot|cad/i, "\u2699\ufe0f"], [/roadmap|plan|goal/i, "\ud83e\udded"], [/design|art|draw|ui/i, "\ud83c\udfa8"], [/3d|model|print/i, "\ud83e\uddca"], [/office|work|team|meet/i, "\ud83d\udcbc"], [/home|house|family/i, "\ud83c\udfe1"], [/travel|trip/i, "\u2708\ufe0f"], [/music|audio/i, "\ud83c\udfb5"], [/game/i, "\ud83c\udfae"], [/general|misc|other|unsorted/i, "\ud83d\uddc2\ufe0f"]];
-  function foldEmo(n) { for (var i = 0; i < FOLD_EMO.length; i++) if (FOLD_EMO[i][0].test(n || "")) return FOLD_EMO[i][1]; return ""; }
-  /* folders sectioned by Week-tab column (Apps / Study / Office), same as the board */
-  function chatFolderSections() {
-    var seen = {}, secs = [{ k: "app", label: "Apps", fs: [] }, { k: "study", label: "Study", fs: [] }, { k: "office", label: "Office", fs: [] }];
-    secs.forEach(function (s) { (arrFor(s.k) || []).forEach(function (it) { var g = (it.group || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; s.fs.push(g); } }); });
-    var extra = [];
-    chatCustomFolds().concat(chatsArr().map(function (c) { return c.fold || ""; })).forEach(function (g) { g = (g || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; extra.push(g); } });
-    if (extra.length) secs.push({ k: "other", label: "My folders", fs: extra });
-    return secs;
-  }
-  function chatCustomFolds() { if (!Array.isArray(meta.cfolders)) meta.cfolders = []; return meta.cfolders; }
-  function chatFolderList() {
-    var seen = {}, out = [];
-    [state.apps, state.study, state.office || []].forEach(function (arr) { (arr || []).forEach(function (it) { var g = (it.group || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; out.push(g); } }); });
-    chatCustomFolds().concat(chatsArr().map(function (c) { return c.fold || ""; })).forEach(function (g) { g = (g || "").trim(); if (g && !seen[g.toLowerCase()]) { seen[g.toLowerCase()] = 1; out.push(g); } });
-    out.sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
-    return out;
-  }
   function saveChats() { save(); cloudPushBoard(); }
   function renderChats() {
     var host = $("chatList"); if (!host) return;
     var arr = chatsArr().slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
     var n = $("chatCount"); if (n) n.textContent = arr.length || "";
-    var folders = chatFolderList();
-    var fpick = $("chatFoldPick");
-    var NEWF_CHIP = '<button type="button" class="fold-chip newf" data-newfold="1" title="Create a new folder">+ New folder</button>';
-    if (fpick) fpick.innerHTML = (folders.length
-      ? folders.map(function (f) { var h = foldHue(f), on = CHAT_NEWFOLD === f, e2 = foldEmo(f); return '<button type="button" class="fold-chip' + (on ? " on" : "") + '" data-nf="' + esc(f) + '" style="' + (on ? 'background:oklch(0.55 0.16 ' + h + ');border-color:transparent;color:#fff' : 'color:oklch(0.45 0.16 ' + h + ');border-color:oklch(0.85 0.06 ' + h + ')') + '">' + (e2 ? e2 + " " : "") + esc(f) + (on ? " \u2713" : "") + '</button>'; }).join("")
-      : "") + NEWF_CHIP;
-    var fhint = $("chatFoldHint");
-    if (fhint) { fhint.textContent = CHAT_NEWFOLD ? "new chat saves into " + CHAT_NEWFOLD : "no folder picked \u2014 goes to Unsorted"; fhint.classList.toggle("picked", !!CHAT_NEWFOLD); }
-    if (!arr.length) { host.innerHTML = ''; } /* grid still renders below so folders stay visible */
-    function foldChip(c) {
-      if (!c.fold) return '<button class="fold-chip none" data-cact="fold" title="File into a folder">file \u2192</button>';
-      var h = foldHue(c.fold);
-      return '<button class="fold-chip" data-cact="fold" title="Move to another folder" style="color:oklch(0.45 0.16 ' + h + ');border-color:oklch(0.85 0.06 ' + h + ')">' + esc(c.fold) + '</button>';
-    }
-    function rowHtml(c) {
-      var tg = c.tag && SUB_TAGS[c.tag] ? c.tag : "";
+    if (!arr.length) { host.innerHTML = '<li class="chat-empty">No discussions saved yet. Add a topic and paste the claude.ai chat link above \u2014 then pick the conversation back up any time.</li>'; return; }
+    host.innerHTML = arr.map(function (c) {
       return '<li class="chat-row" data-cid="' + esc(c.id) + '">' +
-        '<div class="chat-main"><span class="chat-topic" data-cact="edit" title="Click to edit">' + esc(c.t || "Untitled discussion") + '</span>' +
-        '<button class="sub-tag ' + (tg || "none") + '" data-cact="ctag" title="' + (tg ? SUB_TAGS[tg] + " \u2014 tap to change / clear" : "Tag this chat") + '">' + esc(tg ? SUB_TAGS[tg] : "+ tag") + '</button>' + foldChip(c) + '</div>' +
+        '<div class="chat-main"><span class="chat-topic" data-cact="edit" title="Click to edit">' + esc(c.t || "Untitled discussion") + '</span></div>' +
         '<button class="tbtn chat-editlink" data-cact="editlink" title="Edit the saved link">\u270e link</button>' +
         (c.url ? '<a class="tbtn chat-open" href="' + esc(c.url) + '" target="_blank" rel="noopener">Open chat \u2197</a>' : '') +
         '<button class="sub-del" data-cact="del" title="Delete">\u00d7</button></li>';
-    }
-    /* folder-card grid up front (Week-tab groups); tap a card to open its chats */
-    var FOLD_IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>';
-    function chatsIn(f) { return arr.filter(function (c) { return ((c.fold || "").trim()) === f; }); }
-    if (CHAT_VIEW) {
-      var fName = CHAT_VIEW === "@un" ? "" : CHAT_VIEW;
-      var rows = chatsIn(fName);
-      var hOpen = foldHue(fName || "Unsorted");
-      var em0 = foldEmo(fName || "Unsorted");
-      var html2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="@back">\u2190 Folders</button><span class="cf-open-name" style="color:oklch(0.5 0.16 ' + hOpen + ')">' + (em0 ? '<span class="cf-emo sm">' + em0 + '</span>' : FOLD_IC) + esc(fName || "Unsorted") + '</span><span class="chat-sec-n">' + rows.length + '</span></li>';
-      html2 += rows.length ? rows.map(rowHtml).join("") : '<li class="chat-empty">Nothing in this folder yet \u2014 move a chat here with its folder dropdown, or pick this folder when saving.</li>';
-      host.innerHTML = html2; return;
-    }
-    var unsorted = chatsIn("");
-    /* card: colored by folder, active folders first (most recent chat wins), empty ones quiet + dashed */
-    function fcard(label, key, nIn) {
-      var h = foldHue(label), on = nIn > 0;
-      var cardSt = on ? ' style="background:oklch(0.975 0.02 ' + h + ');border-color:oklch(0.88 0.06 ' + h + ')"' : '';
-      var icSt = on ? ' style="color:oklch(0.55 0.16 ' + h + ')"' : '';
-      var cntSt = on ? ' style="background:oklch(0.55 0.16 ' + h + ');color:#fff"' : '';
-      var em = foldEmo(label);
-      return '<button type="button" class="chat-fcard' + (on ? "" : " empty") + '" data-cfold="' + esc(key) + '"' + cardSt + '>' + (em ? '<span class="cf-emo">' + em + '</span>' : '<span class="cf-ic"' + icSt + '>' + FOLD_IC + '</span>') + '<span class="cf-name">' + esc(label) + '</span><span class="cf-count"' + cntSt + '>' + (on ? nIn + (nIn === 1 ? " chat" : " chats") : "empty") + '</span></button>';
-    }
-    function lastU(f) { var m = 0; chatsIn(f).forEach(function (c) { if ((c.u || 0) > m) m = c.u; }); return m; }
-    var html = "";
-    chatFolderSections().forEach(function (s) {
-      if (!s.fs.length) return;
-      var fs = s.fs.slice().sort(function (a, b) {
-        var na = chatsIn(a).length, nb = chatsIn(b).length;
-        if (!!na !== !!nb) return na ? -1 : 1;
-        var d = lastU(b) - lastU(a); if (d) return d;
-        return a.toLowerCase().localeCompare(b.toLowerCase());
-      });
-      html += '<li class="chat-cat">' + esc(s.label) + '</li><li class="chat-grid">' + fs.map(function (f) { return fcard(f, f, chatsIn(f).length); }).join("") + '</li>';
-    });
-    if (unsorted.length) html += '<li class="chat-cat">Not filed yet</li><li class="chat-grid">' + fcard("Unsorted", "@un", unsorted.length) + '</li>';
-    host.innerHTML = html + (arr.length ? "" : '<li class="chat-empty">No discussions saved yet. Add a topic and paste the claude.ai chat link above \u2014 it lands in the folder you pick.</li>');
+    }).join("");
   }
   function wireChats() {
     /* deep-link: ?addchat=<url>&topic=<name> saves a discussion on load (for one-tap save from a Claude chat) */
@@ -2636,82 +2541,33 @@
     btn.onclick = function () {
       var t = ($("chatTopic").value || "").trim(), u = ($("chatUrl").value || "").trim();
       if (!t && !u) { $("chatTopic").focus(); return; }
-      var f = CHAT_NEWFOLD || null;
       if (u && !/^https?:\/\//i.test(u)) u = "https://" + u;
-      chatsArr().push({ id: uid(), t: t || "Untitled discussion", url: u, fold: f, u: Date.now() });
-      CHAT_VIEW = f || "@un"; saveChatView(); CHAT_NEWFOLD = "";
+      chatsArr().push({ id: uid(), t: t || "Untitled discussion", url: u, u: Date.now() });
       $("chatTopic").value = ""; $("chatUrl").value = ""; saveChats(); renderChats(); toast("Discussion saved.");
     };
-    /* mobile: Enter/Go on the keyboard saves too */
-    ["chatTopic", "chatUrl"].forEach(function (idn) {
-      var el2 = $(idn); if (!el2) return;
-      el2.setAttribute("enterkeyhint", "go");
-      el2.addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); btn.click(); } });
-    });
-    var fpk = $("chatFoldPick");
-    if (fpk) fpk.addEventListener("click", function (e) {
-      if (e.target.closest("[data-newfold]")) {
-        var nm = (prompt("New folder name:") || "").trim();
-        if (!nm) return;
-        var ex = chatFolderList().filter(function (f) { return f.toLowerCase() === nm.toLowerCase(); })[0];
-        if (!ex) chatCustomFolds().push(nm);
-        CHAT_NEWFOLD = ex || nm; saveChats(); renderChats(); return;
-      }
-      var b2 = e.target.closest("[data-nf]"); if (!b2) return;
-      var v2 = b2.getAttribute("data-nf");
-      CHAT_NEWFOLD = CHAT_NEWFOLD === v2 ? "" : v2; renderChats();
-    });
     $("chatList").addEventListener("click", function (e) {
-      var fh = e.target.closest("[data-cfold]");
-      if (fh) { var fk2 = fh.getAttribute("data-cfold"); CHAT_VIEW = fk2 === "@back" ? "" : fk2; saveChatView(); renderChats(); return; }
       var el = e.target.closest("[data-cact]"); if (!el) return;
       var row = e.target.closest("[data-cid]"); if (!row) return;
       var cid = row.getAttribute("data-cid"), arr = chatsArr(), act2 = el.getAttribute("data-cact");
       if (act2 === "del") { meta.cchats = arr.filter(function (c) { return c.id !== cid; }); saveChats(); renderChats(); return; }
-      if (act2 === "fold") {
-        var cf = null; arr.forEach(function (x) { if (x.id === cid) cf = x; }); if (!cf) return;
-        if (row.querySelector(".fold-pick")) return;
-        var pick = document.createElement("div"); pick.className = "fold-pick inrow";
-        pick.innerHTML = '<button type="button" class="fold-chip none" data-mv="">Unsorted</button>' + chatFolderList().map(function (f) { var h2 = foldHue(f); return '<button type="button" class="fold-chip' + ((cf.fold || "") === f ? " on" : "") + '" data-mv="' + esc(f) + '" style="' + ((cf.fold || "") === f ? 'background:oklch(0.55 0.16 ' + h2 + ');border-color:transparent;color:#fff' : 'color:oklch(0.45 0.16 ' + h2 + ');border-color:oklch(0.85 0.06 ' + h2 + ')') + '">' + esc(f) + '</button>'; }).join("");
-        pick.addEventListener("click", function (ev) {
-          var mb = ev.target.closest("[data-mv]"); if (!mb) return;
-          ev.stopPropagation();
-          cf.fold = mb.getAttribute("data-mv") || null; cf.u = Date.now(); saveChats(); renderChats();
-        });
-        row.querySelector(".chat-main").appendChild(pick); el.style.display = "none";
-        return;
-      }
-      if (act2 === "ctag") {
-        var ct = null; arr.forEach(function (x) { if (x.id === cid) ct = x; }); if (!ct) return;
-        var tord2 = [""].concat(TAG_KEYS), ci2 = tord2.indexOf(ct.tag && SUB_TAGS[ct.tag] ? ct.tag : "");
-        ct.tag = tord2[(ci2 + 1) % tord2.length] || null; ct.u = Date.now(); saveChats(); renderChats(); return;
-      }
       if (act2 === "editlink") {
         var cl = null; arr.forEach(function (x) { if (x.id === cid) cl = x; }); if (!cl) return;
-        var inp2 = document.createElement("input"); inp2.className = "chat-topic-edit"; inp2.value = cl.url || ""; inp2.placeholder = "https://claude.ai/chat/\u2026"; inp2.setAttribute("enterkeyhint", "done");
+        var inp2 = document.createElement("input"); inp2.className = "chat-topic-edit"; inp2.value = cl.url || ""; inp2.placeholder = "https://claude.ai/chat/\u2026";
         var done2 = false;
         function fin2(saveIt) { if (done2) return; done2 = true; if (saveIt) { var u2 = inp2.value.trim(); if (u2 && !/^https?:\/\//i.test(u2)) u2 = "https://" + u2; cl.url = u2; cl.u = Date.now(); saveChats(); } renderChats(); }
         inp2.addEventListener("keydown", function (ev) { if (ev.key === "Enter") fin2(true); else if (ev.key === "Escape") fin2(false); });
         inp2.addEventListener("blur", function () { fin2(true); });
-        var wr2 = document.createElement("span"); wr2.className = "chat-editwrap";
-        var ok2 = document.createElement("button"); ok2.type = "button"; ok2.className = "chat-ok"; ok2.textContent = "\u2713 Save";
-        ok2.addEventListener("pointerdown", function (ev) { ev.preventDefault(); fin2(true); });
-        wr2.appendChild(inp2); wr2.appendChild(ok2);
-        row.querySelector(".chat-main").appendChild(wr2); el.style.display = "none"; inp2.focus(); inp2.select();
+        row.querySelector(".chat-main").appendChild(inp2); el.style.display = "none"; inp2.focus(); inp2.select();
         return;
       }
       if (act2 === "edit") {
         var c = null; arr.forEach(function (x) { if (x.id === cid) c = x; }); if (!c) return;
-        var inp = document.createElement("input"); inp.className = "chat-topic-edit"; inp.value = c.t || ""; inp.setAttribute("enterkeyhint", "done");
+        var inp = document.createElement("input"); inp.className = "chat-topic-edit"; inp.value = c.t || "";
         var done = false;
         function fin(saveIt) { if (done) return; done = true; if (saveIt && inp.value.trim()) { c.t = inp.value.trim(); c.u = Date.now(); saveChats(); } renderChats(); }
         inp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") fin(true); else if (ev.key === "Escape") fin(false); });
         inp.addEventListener("blur", function () { fin(true); });
-        var wr = document.createElement("span"); wr.className = "chat-editwrap";
-        var ok = document.createElement("button"); ok.type = "button"; ok.className = "chat-ok"; ok.textContent = "\u2713 Save";
-        ok.addEventListener("pointerdown", function (ev) { ev.preventDefault(); fin(true); });
-        wr.appendChild(inp); wr.appendChild(ok);
-        el.replaceWith(wr); inp.focus(); inp.select();
+        el.replaceWith(inp); inp.focus(); inp.select();
       }
     });
   }
@@ -2913,13 +2769,7 @@
       card.classList.add("sp-hilite"); if (li) li.classList.add("sp-hilite");
       setTimeout(function () { card.classList.remove("sp-hilite"); if (li) li.classList.remove("sp-hilite"); }, 1600);
     });
-    var _tf = $("tagFilter");
-    if (_tf) {
-      /* filter buttons are generated from SUB_TAGS, so new tags show up here automatically */
-      _tf.innerHTML = '<button type="button" data-tf="">All</button>' + TAG_KEYS.map(function (k) { return '<button type="button" data-tf="' + k + '">' + esc(SUB_TAGS[k]) + '</button>'; }).join("");
-      applyTagFilter();
-    }
-    if (_tf) _tf.addEventListener("click", function (e) {
+    var _tf = $("tagFilter"); if (_tf) _tf.addEventListener("click", function (e) {
       var b = e.target.closest("[data-tf]"); if (!b) return;
       TAG_FILTER = b.getAttribute("data-tf") || "";
       try { localStorage.setItem("wf-tagfilter", TAG_FILTER); } catch (e2) {}

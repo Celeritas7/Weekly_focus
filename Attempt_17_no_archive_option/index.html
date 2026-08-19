@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-title" content="Weekly Focus">
 <title>Weekly Focus</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icons/icon-180.png">
-<link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/weekly-focus.css">
-<link rel="stylesheet" href="css/home-screens.css">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="weekly-focus.css">
+<link rel="stylesheet" href="home-screens.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body data-mode="personal">
@@ -39,7 +39,7 @@
       <button type="button" class="seg" role="radio" data-mode="office" aria-checked="false" tabindex="-1">Office</button>
     </div>
     <span class="spacer"></span>
-    <button class="cloud-pill off" id="cloudPill" title="Cloud sync &mdash; tap to sign in / manage" style="cursor:pointer;border:none;font:inherit;">&#9729; Cloud off</button>
+    <span class="cloud-pill off" id="cloudPill" title="Cloud sync status">&#9729; Cloud off</span>
     <div class="toolset">
       <button class="tbtn" id="btnLinks" title="Dev links &amp; folders"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg></button>
       <button class="tbtn primary" id="btnPrint" title="Print focus sheet"></button>
@@ -131,7 +131,13 @@
       </div>
       <div class="hrows" id="routineRows"></div>
       <button class="add-row" id="addRoutineBtn">+ Add routine</button>
-      <div class="sec-head hsec place-head" style="margin-top:28px;">
+    </div>
+  </section>
+
+  <!-- ===================== SCREEN: PLACES ===================== -->
+  <section class="screen" id="scrPlaces" data-screen-label="Places">
+    <div class="hone">
+      <div class="sec-head hsec place-head">
         <h2>Places</h2>
         <span class="hs-note">lists that surface when you plan a visit or are nearby</span>
         <button class="hrs-btn" id="geoBtn" title="Check where I am now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.5-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.5 12 21 12 21z"></path><circle cx="12" cy="10.5" r="2.3"></circle></svg></button>
@@ -140,8 +146,6 @@
       <button class="add-row" id="addPlaceBtn">+ Add place</button>
     </div>
   </section>
-
-  
 
   <!-- ===================== SCREEN: LIFE (special / misc) ===================== -->
   <section class="screen" id="scrLife" data-screen-label="Life">
@@ -169,7 +173,6 @@
       <label class="weekfield">Week of
         <input id="weekInput" type="text" placeholder="2026-06-08" data-act="week">
       </label>
-      <div class="tagfilter" id="tagFilter" title="Filter tasks by tag"><button type="button" data-tf="" class="on">All</button><button type="button" data-tf="ca">Claude AI</button><button type="button" data-tf="cd">Claude Design</button><button type="button" data-tf="cw">Cowork</button><button type="button" data-tf="td">3D Model</button></div>
     </div>
 
     <!-- ===================== WEEKLY PULSE ===================== -->
@@ -275,16 +278,6 @@
 
 </main>
 
-<!-- ===================== SCREEN: CHATS (Claude discussions) ===================== -->
-<section class="screen" id="scrChats" data-screen-label="Chats">
-  <div class="hone">
-    <div class="sec-head hsec"><span class="k">Claude Chats</span><span class="sub">ongoing discussions &mdash; save the link, pick the conversation back up any time</span><span class="count" id="chatCount"></span></div>
-    <div class="chat-add"><input id="chatTopic" placeholder="What are you discussing?"><input id="chatUrl" placeholder="Paste the claude.ai chat link&hellip;"><button class="tbtn primary" id="chatAddBtn">Save</button></div>
-    <div class="fold-pick-wrap" id="chatFoldWrap"><span class="fold-pick-label">Save into:</span><div class="fold-pick" id="chatFoldPick" title="Pick a folder for the next save"></div><span class="fold-pick-hint" id="chatFoldHint">no folder picked &mdash; goes to Unsorted</span></div>
-    <ul class="chat-list" id="chatList"></ul>
-  </div>
-</section>
-
 <!-- ===================== BOTTOM TABS ===================== -->
 <nav class="htabbar">
   <div class="htabbar-in">
@@ -300,14 +293,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"></path><path d="M3 11V9a2 2 0 0 1 2-2h16"></path><path d="M7 21l-4-4 4-4"></path><path d="M21 13v2a2 2 0 0 1-2 2H3"></path></svg>
       Routines
     </button>
-    
+    <button class="htab" data-screen="scrPlaces">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.5-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.5 12 21 12 21z"></path><circle cx="12" cy="10.5" r="2.3"></circle></svg>
+      Places
+    </button>
     <button class="htab" data-screen="scrWeek">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.5" y="4" width="7" height="16" rx="1.8"></rect><rect x="13.5" y="4" width="7" height="10" rx="1.8"></rect></svg>
       Week
-    </button>
-    <button class="htab" data-screen="scrChats">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-2.9-.4-4.1-1L3 20l1.1-5A8.5 8.5 0 1 1 21 11.5z"></path></svg>
-      Chats
     </button>
     <button class="htab" data-screen="scrLife">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l1.5 13a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20z"></path><path d="M9 10V6a3 3 0 0 1 6 0v4"></path></svg>
@@ -511,11 +503,9 @@
       <div class="dsect">
         <h4>Account</h4>
         <div id="authSignedOut">
-          <p class="dhelp">Enter your email and hit <b>Send code</b>, then type the <b>6-digit code</b> from the email below. Works on any device &mdash; phone included. (Opening the emailed link in this same browser also still works.)</p>
+          <p class="dhelp">Sign in with a magic link &mdash; your week is private to your account.</p>
           <div class="cfield"><label>Email</label><input id="cfEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
-          <div class="dbtns" style="margin-top:12px;"><button class="tbtn" id="cloudSignIn">Send code</button></div>
-          <div class="cfield" id="otpRow" style="display:none;margin-top:12px;"><label>6-digit code</label><input id="cfOtp" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="8"></div>
-          <div class="dbtns" id="otpBtns" style="display:none;margin-top:12px;"><button class="tbtn primary" id="cloudVerify">Verify &amp; sign in</button></div>
+          <div class="dbtns" style="margin-top:12px;"><button class="tbtn" id="cloudSignIn">Send magic link</button></div>
         </div>
         <div id="authSignedIn" style="display:none;">
           <p class="dhelp">Signed in as <b id="authWho">your account</b>.</p>
@@ -531,10 +521,10 @@
   </div>
 </div>
 
-<script src="js/config.js"></script>
-<script src="js/info-feeds.js"></script>
-<script src="js/weekly-focus-app.js"></script>
-<script src="js/wf-cc-bridge-v2.js"></script>
+<script src="config.js"></script>
+<script src="info-feeds.js"></script>
+<script src="weekly-focus-app.js"></script>
+<script src="wf-cc-bridge-v2.js"></script>
 <script>
   // inject toolbar icons + labels (kept out of markup for clarity)
   (function () {
