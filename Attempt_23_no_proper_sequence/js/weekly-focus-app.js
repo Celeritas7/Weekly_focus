@@ -1059,7 +1059,7 @@
   function emptyZone(html) { return '<div class="empty-zone">' + html + '</div>'; }
 
   /* flat view: starred (The Five) first in Five order, then flagged (pending
-     update), then priority, then name, then manual order */
+     update), then manual order, then priority, then name */
   function flatSortActive(arr) {
     return arr.slice().sort(function (a, b) {
       var sa = isTarget(a.id) ? 0 : 1, sb2 = isTarget(b.id) ? 0 : 1;
@@ -1067,14 +1067,10 @@
       if (!sa) return targetOrder.indexOf(a.id) - targetOrder.indexOf(b.id);
       var fa = getEntry(a.id).upd ? 0 : 1, fb = getEntry(b.id).upd ? 0 : 1;
       if (fa !== fb) return fa - fb;
-      var pd = priRankOf(a.id) - priRankOf(b.id);
-      if (pd) return pd;
-      var nd = a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-      if (nd) return nd;
       var oa = ordOf(a.id), ob = ordOf(b.id);
       if (oa != null && ob != null) return oa - ob;
       if (oa != null) return -1; if (ob != null) return 1;
-      return 0;
+      return (priRankOf(a.id) - priRankOf(b.id)) || a.name.toLowerCase().localeCompare(b.name.toLowerCase());
     });
   }
 

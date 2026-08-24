@@ -44,12 +44,12 @@ if not defined PY (
 echo.
 echo   Weekly Focus - local server
 echo   Python:  %PY%
-echo   Serving: %ROOT%    Open: http://localhost:5170/
+echo   Serving: %ROOT%    Open: http://localhost:5173/
 echo   (Close this window to stop.)
 echo.
 
-start "" "http://localhost:5170/"
-"%PY%" -m http.server 5170 --directory "%ROOT%"
+start "" "http://localhost:5173/"
+"%PY%" -m http.server 5173 --directory "%ROOT%"
 
 echo.
 echo Server stopped.

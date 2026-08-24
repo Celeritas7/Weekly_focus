@@ -1,17 +1,10 @@
-# Deploy v41 (cache v58) — "Coming up" grouped by topic
+# Deploy v42 (cache v59) — flat-view sort: priority above drag order
 
 ## What changed
-**Coming up strip → topic cards.** Tasks are no longer one flat wall of
-random-width chips. Each source list (India tasks, Job change, Events…)
-becomes a compact card with its coloured head + count; inside, rows sit in a
-uniform list — overdue first, then ASAP, then dated (soonest first). Topics
-holding the most urgent task sort first. Cards flow in a responsive grid
-(1 column on phone). Row click still jumps to the parent block; the checkbox
-still marks done.
+**Flat view sort order is now: starred → flagged → priority → name → manual drag order.**
+Previously a drag-reorder (`ord`) outranked priority, so low-priority items stayed pinned wherever they'd once been dragged. Priority now always wins; dragging only breaks ties in flat view. Grouped view is unchanged.
 
 ## Copy these over your Weekly_focus root
-    sw.js                     (cache bumped to v58)
-    css/weekly-focus.css
-    css/home-screens.css
+    sw.js                     (cache bumped to v59)
     js/weekly-focus-app.js
     everything else unchanged, included for completeness
