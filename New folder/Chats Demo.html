@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chats UI — demo</title>
+<link rel="stylesheet" href="css/weekly-focus.css">
+<style>
+body{max-width:560px;margin:0 auto;padding:18px 14px 60px;background:var(--bg,#faf9f7)}
+.demo-note{font-size:11px;font-weight:700;color:var(--faint,#8a857c);background:var(--card,#fff);border:1px dashed var(--hair,#d6d2ca);border-radius:10px;padding:8px 12px;margin:0 0 14px}
+h1{font-size:17px;margin:0 0 4px}
+.chat-add{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0}
+.chat-add input{flex:1 1 160px;border:1px solid var(--hair,#e3e0da);border-radius:10px;padding:9px 11px;font:inherit;font-size:13px;background:var(--card,#fff)}
+.chat-add .tbtn.primary{background:var(--accent,#5b5bd6);color:#fff;border:none;border-radius:10px;font:inherit;font-size:13px;font-weight:800;padding:9px 16px}
+.chat-list{list-style:none;padding:0;margin:14px 0 0;display:flex;flex-direction:column;gap:8px}
+.chat-row{display:flex;align-items:center;gap:8px;background:var(--card,#fff);border:1px solid var(--hair,#e3e0da);border-radius:12px;padding:11px 12px}
+.chat-topic{font-weight:700;font-size:13px}
+.tbtn{border:1px solid var(--hair,#e3e0da);background:var(--card,#fff);border-radius:9px;font:inherit;font-size:11.5px;font-weight:700;padding:6px 10px;cursor:pointer;text-decoration:none;color:inherit;white-space:nowrap}
+.sub-del{border:none;background:none;color:var(--faint,#8a857c);font-size:15px;cursor:pointer}
+a{color:var(--accent,#5b5bd6)}a:hover{color:oklch(0.45 0.18 280)}
+</style>
+</head>
+<body>
+<h1>Chats — new UI (demo data)</h1>
+<p class="demo-note">Standalone preview, fake chats — your real app is untouched. Tap around: pick a folder chip, save, open folders, re-file a chat.</p>
+<div class="chat-add"><input id="dTopic" placeholder="What are you discussing?"><input id="dUrl" placeholder="Paste the claude.ai chat link&hellip;"><button class="tbtn primary" id="dAdd">Save</button></div>
+<div class="fold-pick" id="dFoldPick"></div>
+<ul class="chat-list" id="dList"></ul>
+<script>
+var SUB_TAGS={ca:"Claude AI",cd:"Claude Design",cw:"Cowork",td:"3D Model"};
+var SECS=[{label:"Apps",fs:["Coding","ACADEMICS","AI_AND_MATHS","General Purpose","Mechanical"]},{label:"Study",fs:["Language Study","Finance"]},{label:"Office",fs:["Health team"]}];
+var FOLDERS=SECS.reduce(function(a,s){return a.concat(s.fs)},[]);
+var chats=[
+{id:"1",t:"Weekly focus app rebuild",tag:"ca",fold:"Coding",u:9},
+{id:"2",t:"Squad rings 3D board",tag:"td",fold:"Coding",u:8},
+{id:"3",t:"Service worker cache bug",tag:null,fold:"Coding",u:7},
+{id:"4",t:"Thesis chapter outline",tag:"ca",fold:"ACADEMICS",u:6},
+{id:"5",t:"German cases drill plan",tag:"cw",fold:"Language Study",u:5},
+{id:"6",t:"Vocab spaced repetition",tag:"ca",fold:"Language Study",u:4},
+{id:"7",t:"Index fund comparison",tag:"cd",fold:"Finance",u:3},
+{id:"8",t:"Random midnight idea",tag:null,fold:null,u:2},
+{id:"9",t:"Poster layout feedback",tag:"cd",fold:null,u:1}];
+var view="",newFold="",uidN=10;
+var IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:26px;height:26px"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>';
+function hue(n){var h=0;n=n||"";for(var i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))%360;return h}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function inF(f){return chats.filter(function(c){return (c.fold||"")===f})}
+function render(){
+  var fp=document.getElementById("dFoldPick");
+  fp.innerHTML=FOLDERS.map(function(f){var h=hue(f),on=newFold===f;return '<button type="button" class="fold-chip'+(on?" on":"")+'" data-nf="'+esc(f)+'" style="'+(on?'background:oklch(0.55 0.16 '+h+');border-color:transparent;color:#fff':'color:oklch(0.45 0.16 '+h+');border-color:oklch(0.85 0.06 '+h+')')+'">'+esc(f)+'</button>'}).join("");
+  var host=document.getElementById("dList");
+  function foldChip(c){if(!c.fold)return '<button class="fold-chip none" data-act="fold">file \u2192</button>';var h=hue(c.fold);return '<button class="fold-chip" data-act="fold" style="color:oklch(0.45 0.16 '+h+');border-color:oklch(0.85 0.06 '+h+')">'+esc(c.fold)+'</button>'}
+  function row(c){var tg=c.tag&&SUB_TAGS[c.tag]?c.tag:"";return '<li class="chat-row" data-cid="'+c.id+'"><div class="chat-main" style="display:flex;flex-direction:row;align-items:center;gap:10px;min-width:0;flex:1;flex-wrap:wrap"><span class="chat-topic">'+esc(c.t)+'</span><button class="sub-tag '+(tg||"none")+'" data-act="ctag">'+esc(tg?SUB_TAGS[tg]:"+ tag")+'</button>'+foldChip(c)+'</div><a class="tbtn" href="#" onclick="return false">Open chat \u2197</a><button class="sub-del" data-act="del">\u00d7</button></li>'}
+  if(view){
+    var fName=view==="@un"?"":view,rows=inF(fName),h2=hue(fName||"Unsorted");
+    host.innerHTML='<li class="chat-back" style="display:flex;align-items:center;gap:10px;list-style:none"><button type="button" class="tbtn" data-back="1">\u2190 Folders</button><span class="cf-open-name" style="display:inline-flex;align-items:center;gap:7px;font-weight:800;font-size:14px;color:oklch(0.5 0.16 '+h2+')">'+IC+esc(fName||"Unsorted")+'</span><span class="chat-sec-n">'+rows.length+'</span></li>'+(rows.length?rows.map(row).join(""):'<li class="chat-empty">Nothing here yet.</li>');
+    return;
+  }
+  function card(label,key){var n=inF(key==="@un"?"":label).length,h=hue(label),on=n>0;return '<button type="button" class="chat-fcard'+(on?"":" empty")+'" data-open="'+esc(key)+'"'+(on?' style="background:oklch(0.975 0.02 '+h+');border-color:oklch(0.88 0.06 '+h+')"':'')+'><span class="cf-ic"'+(on?' style="color:oklch(0.55 0.16 '+h+')"':'')+'>'+IC+'</span><span class="cf-name">'+esc(label)+'</span><span class="cf-count"'+(on?' style="background:oklch(0.55 0.16 '+h+');color:#fff"':'')+'>'+(on?n+(n===1?" chat":" chats"):"empty")+'</span></button>'}
+  var html="";
+  SECS.forEach(function(s){
+    var fs=s.fs.slice().sort(function(a,b){var na=inF(a).length,nb=inF(b).length;if(!!na!==!!nb)return na?-1:1;return 0});
+    html+='<li class="chat-cat">'+esc(s.label)+'</li><li class="chat-grid">'+fs.map(function(f){return card(f,f)}).join("")+'</li>';
+  });
+  if(inF("").length)html+='<li class="chat-cat">Not filed yet</li><li class="chat-grid">'+card("Unsorted","@un")+'</li>';
+  host.innerHTML=html;
+}
+document.getElementById("dFoldPick").addEventListener("click",function(e){var b=e.target.closest("[data-nf]");if(!b)return;var v=b.getAttribute("data-nf");newFold=newFold===v?"":v;render()});
+document.getElementById("dAdd").addEventListener("click",function(){var t=document.getElementById("dTopic").value.trim();if(!t)return;chats.unshift({id:String(uidN++),t:t,tag:null,fold:newFold||null,u:uidN});view=newFold||"@un";newFold="";document.getElementById("dTopic").value="";document.getElementById("dUrl").value="";render()});
+document.getElementById("dList").addEventListener("click",function(e){
+  var op=e.target.closest("[data-open]");if(op){view=op.getAttribute("data-open");render();return}
+  if(e.target.closest("[data-back]")){view="";render();return}
+  var el=e.target.closest("[data-act]");if(!el)return;
+  var rowEl=e.target.closest("[data-cid]"),c=chats.filter(function(x){return x.id===rowEl.getAttribute("data-cid")})[0];
+  var a=el.getAttribute("data-act");
+  if(a==="del"){chats=chats.filter(function(x){return x!==c});render();return}
+  if(a==="ctag"){var ord=["","ca","cd","cw","td"],i=ord.indexOf(c.tag||"");c.tag=ord[(i+1)%ord.length]||null;render();return}
+  if(a==="fold"){
+    if(rowEl.querySelector(".fold-pick"))return;
+    var pick=document.createElement("div");pick.className="fold-pick inrow";
+    pick.innerHTML='<button type="button" class="fold-chip none" data-mv="">Unsorted</button>'+FOLDERS.map(function(f){var h=hue(f);return '<button type="button" class="fold-chip" data-mv="'+esc(f)+'" style="color:oklch(0.45 0.16 '+h+');border-color:oklch(0.85 0.06 '+h+')">'+esc(f)+'</button>'}).join("");
+    pick.addEventListener("click",function(ev){var mb=ev.target.closest("[data-mv]");if(!mb)return;ev.stopPropagation();c.fold=mb.getAttribute("data-mv")||null;render()});
+    rowEl.querySelector(".chat-main").appendChild(pick);el.style.display="none";
+  }
+});
+render();
+</script>
+</body>
+</html>

@@ -1133,9 +1133,8 @@
     var linkRows = lks.map(function (l, ix) {
       var host = String(l.url || "").replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
       return '<li class="lrow" data-lix="' + ix + '">' + HIC.link +
-        '<span class="lr-label" data-act="linkedit" title="Click to edit">' + esc(l.label || host) + '</span>' +
-        '<span class="lr-host" data-act="linkedit" title="Click to edit">' + esc(host) + '</span>' +
-        '<button class="lr-edit" data-act="linkedit" title="Edit label &amp; URL">' + '\u270e' + '</button>' +
+        '<span class="lr-label">' + esc(l.label || host) + '</span>' +
+        '<span class="lr-host">' + esc(host) + '</span>' +
         '<a class="lr-open" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="Open in new tab">\u2197</a>' +
         '<button class="lr-del" data-act="linkdel" title="Remove link">\u00d7</button></li>';
     }).join("");
@@ -1267,7 +1266,6 @@
       if (itL && row) { var ix = +row.getAttribute("data-lix"); itL.links = (itL.links || []).filter(function (_, i2) { return i2 !== ix; }); saveInv(); renderCols(); renderHome(); }
       return;
     }
-    if (a === "linkedit") { startLinkEdit(act.closest(".lrow"), key); return; }
     if (a === "linkadd") { addLinkFrom(act, key); return; }
     if (a === "sparch") { patch(key, { arch: true }); toast("Archived — it stays in the cloud under \u201cArchived\u201d."); renderAll(); return; }
     if (a === "spunarch") { patch(key, { arch: false }); renderAll(); return; }
@@ -1328,43 +1326,6 @@
     it.links = (Array.isArray(it.links) ? it.links : []).concat([{ label: (lab.value || "").trim() || host, url: u }]);
     saveInv(); renderCols(); renderHome(); toast("Link added.");
   }
-  /* click a link's label / host / pencil to edit it in place.
-     Enter or Save commits; Escape or x cancels without saving. */
-  function startLinkEdit(row, key) {
-    if (!row || row.classList.contains("editing")) return;
-    var it = itemById(key); if (!it) return;
-    var ix = +row.getAttribute("data-lix");
-    var l = (Array.isArray(it.links) ? it.links : [])[ix]; if (!l) return;
-    row.classList.add("editing");
-    row.innerHTML =
-      '<input class="lr-ename" placeholder="Label" value="' + esc(l.label || "") + '">' +
-      '<input class="lr-eurl" placeholder="https://\u2026" inputmode="url" value="' + esc(l.url || "") + '">' +
-      '<button class="lr-esave" type="button">Save</button>' +
-      '<button class="lr-ecancel" type="button" title="Cancel">\u00d7</button>';
-    var nameEl = row.querySelector(".lr-ename"), urlEl = row.querySelector(".lr-eurl");
-    var settled = false;
-    function cancel() { if (settled) return; settled = true; renderCols(); }
-    function save() {
-      if (settled) return;
-      var u = (urlEl.value || "").trim();
-      if (!u) { urlEl.focus(); return; }
-      if (!/^https?:\/\//i.test(u)) u = "https://" + u;
-      var host = u.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
-      var cur = itemById(key);
-      if (!cur || !Array.isArray(cur.links) || !cur.links[ix]) { cancel(); return; }
-      settled = true;
-      cur.links[ix] = { label: (nameEl.value || "").trim() || host, url: u };
-      saveInv(); renderCols(); renderHome(); toast("Link updated.");
-    }
-    row.querySelector(".lr-esave").addEventListener("click", save);
-    row.querySelector(".lr-ecancel").addEventListener("click", cancel);
-    row.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); save(); }
-      else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); cancel(); }
-    });
-    nameEl.focus(); nameEl.select();
-  }
-
   function releaseHolds() {
     var now = Date.now(), freed = 0;
     Object.keys(entries).forEach(function (k) {
