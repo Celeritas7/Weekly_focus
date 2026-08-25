@@ -80,14 +80,18 @@
      (app:Name / study:DOM/.../Leaf) so existing curation reattaches untouched. */
   function normalizeInventory(rawApps, rawStudy) {
     var seedActive = {};
+    /* IMPORTANT: keep every field the item carries (links, gen, flag, ord, …).
+       This runs on every cloud pull, so rebuilding a bare {id,name,group}
+       here silently erased per-item quick links and generation tags. */
     var apps = (rawApps || []).map(function (a) {
-      if (a && a.id) return { id: a.id, name: a.name, group: a.group || "Other" };
+      if (a && a.id) return Object.assign({}, a, { name: a.name, group: a.group || "Other" });
       if (a && a.group === "Active") seedActive["app:" + a.name] = true;       // old status column
-      return { id: "app:" + a.name, name: a.name, group: a.category || "Other" };
+      var mA = Object.assign({}, a, { id: "app:" + (a && a.name), name: a && a.name, group: (a && a.category) || "Other" });
+      delete mA.category; delete mA.status; return mA;
     });
     var study = [];
     if (Array.isArray(rawStudy) && rawStudy.length && rawStudy[0] && !rawStudy[0].children) {
-      study = rawStudy.map(function (s) { return s.id ? { id: s.id, name: s.name, group: s.group || "Other" } : { id: "study:" + s.name, name: s.name, group: s.group || "Other" }; });
+      study = rawStudy.map(function (s) { return Object.assign({}, s, { id: s.id || ("study:" + s.name), name: s.name, group: s.group || "Other" }); });
     } else if (Array.isArray(rawStudy)) {
       rawStudy.forEach(function (dom) {                                         // old folder tree → flat leaves
         (function rec(node, anc) {
