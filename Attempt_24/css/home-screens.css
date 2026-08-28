@@ -60,14 +60,12 @@ body[data-mode="office"]  { --accent: var(--office); --accent-soft: var(--office
 .htabbar-in { max-width: 640px; margin: 0 auto; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
 .htab {
   border: none; background: none; cursor: pointer; font-family: inherit;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 9px 2px 8px; color: var(--faint); min-width: 0;
-  font-size: 9px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
-  white-space: nowrap; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 9px 0 8px; color: var(--faint);
+  font-size: 9.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
   transition: color .15s ease;
 }
-.htab svg { width: 20px; height: 20px; flex: 0 0 auto; stroke-width: 1.9; }
-@media (max-width: 420px) { .htab { font-size: 8px; letter-spacing: .02em; } }
+.htab svg { width: 19px; height: 19px; }
 .htab:hover { color: var(--mid); }
 .htab.on { color: var(--accent); }
 .htab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }

@@ -1140,7 +1140,7 @@
         '<span class="lr-label" data-act="linkedit" title="Click to edit">' + esc(l.label || host) + '</span>' +
         '<span class="lr-host" data-act="linkedit" title="Click to edit">' + esc(host) + '</span>' +
         '<button class="lr-edit" data-act="linkedit" title="Edit label &amp; URL">' + '\u270e' + '</button>' +
-        '<a class="lr-open" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="Open in new tab">Open \u2197</a>' +
+        '<a class="lr-open" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="Open in new tab">\u2197</a>' +
         '<button class="lr-del" data-act="linkdel" title="Remove link">\u00d7</button></li>';
     }).join("");
     var linksRow = '<div class="links-block"><span class="notes-lbl">\u2197 Quick links</span>' +
@@ -2602,34 +2602,18 @@
     return out;
   }
   function saveChats() { save(); cloudPushBoard(); }
-  var FOLD_MODAL_CB = null;
-  function openFoldModal(title, cur, cb) {
-    var m = $("chatFoldModal"); if (!m) return;
-    FOLD_MODAL_CB = cb;
-    $("cfmTitle").textContent = title;
-    var html = '<div class="cfm-grid top"><button type="button" class="cfm-opt none' + (!cur ? " on" : "") + '" data-cfm="">\ud83d\uddc2\ufe0f Unsorted</button><button type="button" class="cfm-opt newf" data-cfm="@new">+ New folder</button></div>';
-    chatFolderSections().forEach(function (s) {
-      if (!s.fs.length) return;
-      html += '<div class="cfm-cat">' + esc(s.label) + '</div><div class="cfm-grid">' + s.fs.map(function (f) {
-        var h = foldHue(f), on = cur === f, e2 = foldEmo(f);
-        return '<button type="button" class="cfm-opt' + (on ? " on" : "") + '" data-cfm="' + esc(f) + '" style="' + (on ? 'background:oklch(0.55 0.16 ' + h + ');border-color:transparent;color:#fff' : 'color:oklch(0.45 0.16 ' + h + ');border-color:oklch(0.87 0.05 ' + h + ')') + '">' + (e2 ? e2 + " " : "") + esc(f) + (on ? " \u2713" : "") + '</button>';
-      }).join("") + '</div>';
-    });
-    $("cfmBody").innerHTML = html;
-    m.classList.add("open");
-  }
-  function closeFoldModal() { var m = $("chatFoldModal"); if (m) m.classList.remove("open"); FOLD_MODAL_CB = null; }
   function renderChats() {
     var host = $("chatList"); if (!host) return;
     var arr = chatsArr().slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
     var n = $("chatCount"); if (n) n.textContent = arr.length || "";
     var folders = chatFolderList();
-    var fbtn = $("chatFoldBtn");
-    if (fbtn) {
-      var feB = CHAT_NEWFOLD ? foldEmo(CHAT_NEWFOLD) : "";
-      var hB = CHAT_NEWFOLD ? foldHue(CHAT_NEWFOLD) : 0;
-      fbtn.innerHTML = '<span class="cfb-k">Save into</span><span class="cfb-v' + (CHAT_NEWFOLD ? "" : " none") + '"' + (CHAT_NEWFOLD ? ' style="color:oklch(0.45 0.16 ' + hB + ');background:oklch(0.96 0.03 ' + hB + ')"' : '') + '>' + (feB ? feB + " " : "") + esc(CHAT_NEWFOLD || "Unsorted") + '</span><span class="cfb-car">\u25be</span>';
-    }
+    var fpick = $("chatFoldPick");
+    var NEWF_CHIP = '<button type="button" class="fold-chip newf" data-newfold="1" title="Create a new folder">+ New folder</button>';
+    if (fpick) fpick.innerHTML = (folders.length
+      ? folders.map(function (f) { var h = foldHue(f), on = CHAT_NEWFOLD === f, e2 = foldEmo(f); return '<button type="button" class="fold-chip' + (on ? " on" : "") + '" data-nf="' + esc(f) + '" style="' + (on ? 'background:oklch(0.55 0.16 ' + h + ');border-color:transparent;color:#fff' : 'color:oklch(0.45 0.16 ' + h + ');border-color:oklch(0.85 0.06 ' + h + ')') + '">' + (e2 ? e2 + " " : "") + esc(f) + (on ? " \u2713" : "") + '</button>'; }).join("")
+      : "") + NEWF_CHIP;
+    var fhint = $("chatFoldHint");
+    if (fhint) { fhint.textContent = CHAT_NEWFOLD ? "new chat saves into " + CHAT_NEWFOLD : "no folder picked \u2014 goes to Unsorted"; fhint.classList.toggle("picked", !!CHAT_NEWFOLD); }
     if (!arr.length) { host.innerHTML = ''; } /* grid still renders below so folders stay visible */
     function foldChip(c) {
       if (!c.fold) return '<button class="fold-chip none" data-cact="fold" title="File into a folder">file \u2192</button>';
@@ -2638,8 +2622,7 @@
     }
     function rowHtml(c) {
       var tg = c.tag && SUB_TAGS[c.tag] ? c.tag : "";
-      return '<li class="chat-row' + (c.star ? " starred" : "") + '" data-cid="' + esc(c.id) + '">' +
-        '<button class="chat-starbtn' + (c.star ? " on" : "") + '" data-cact="star" title="' + (c.star ? "Unstar" : "Star \u2014 pin to the Starred section") + '">' + (c.star ? "\u2605" : "\u2606") + '</button>' +
+      return '<li class="chat-row" data-cid="' + esc(c.id) + '">' +
         '<div class="chat-main"><span class="chat-topic" data-cact="edit" title="Click to edit">' + esc(c.t || "Untitled discussion") + '</span>' +
         '<button class="sub-tag ' + (tg || "none") + '" data-cact="ctag" title="' + (tg ? SUB_TAGS[tg] + " \u2014 tap to change / clear" : "Tag this chat") + '">' + esc(tg ? SUB_TAGS[tg] : "+ tag") + '</button>' + foldChip(c) + '</div>' +
         '<button class="tbtn chat-editlink" data-cact="editlink" title="Edit the saved link">\u270e link</button>' +
@@ -2649,15 +2632,13 @@
     /* folder-card grid up front (Week-tab groups); tap a card to open its chats */
     var FOLD_IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>';
     function chatsIn(f) { return arr.filter(function (c) { return ((c.fold || "").trim()) === f; }); }
-    var starred = arr.filter(function (c) { return c.star; });
     if (CHAT_VIEW) {
-      var isStar = CHAT_VIEW === "@star";
-      var fName = (CHAT_VIEW === "@un" || isStar) ? "" : CHAT_VIEW;
-      var rows = isStar ? starred : chatsIn(fName);
-      var hOpen = isStar ? 85 : foldHue(fName || "Unsorted");
-      var em0 = isStar ? "\u2b50" : foldEmo(fName || "Unsorted");
-      var html2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="@back">\u2190 Folders</button><span class="cf-open-name" style="color:oklch(0.5 0.16 ' + hOpen + ')">' + (em0 ? '<span class="cf-emo sm">' + em0 + '</span>' : FOLD_IC) + esc(isStar ? "Starred" : (fName || "Unsorted")) + '</span><span class="chat-sec-n">' + rows.length + '</span></li>';
-      html2 += rows.length ? rows.map(rowHtml).join("") : '<li class="chat-empty">' + (isStar ? "No starred chats yet \u2014 tap the \u2606 on any chat to pin it here." : "Nothing in this folder yet \u2014 move a chat here, or pick this folder when saving.") + '</li>';
+      var fName = CHAT_VIEW === "@un" ? "" : CHAT_VIEW;
+      var rows = chatsIn(fName);
+      var hOpen = foldHue(fName || "Unsorted");
+      var em0 = foldEmo(fName || "Unsorted");
+      var html2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="@back">\u2190 Folders</button><span class="cf-open-name" style="color:oklch(0.5 0.16 ' + hOpen + ')">' + (em0 ? '<span class="cf-emo sm">' + em0 + '</span>' : FOLD_IC) + esc(fName || "Unsorted") + '</span><span class="chat-sec-n">' + rows.length + '</span></li>';
+      html2 += rows.length ? rows.map(rowHtml).join("") : '<li class="chat-empty">Nothing in this folder yet \u2014 move a chat here with its folder dropdown, or pick this folder when saving.</li>';
       host.innerHTML = html2; return;
     }
     var unsorted = chatsIn("");
@@ -2672,7 +2653,6 @@
     }
     function lastU(f) { var m = 0; chatsIn(f).forEach(function (c) { if ((c.u || 0) > m) m = c.u; }); return m; }
     var html = "";
-    if (starred.length) html += '<li class="chat-grid"><button type="button" class="chat-fcard starcard" data-cfold="@star"><span class="cf-emo">\u2b50</span><span class="cf-name">Starred</span><span class="cf-count">' + starred.length + (starred.length === 1 ? " chat" : " chats") + '</span></button></li>';
     chatFolderSections().forEach(function (s) {
       if (!s.fs.length) return;
       var fs = s.fs.slice().sort(function (a, b) {
@@ -2715,25 +2695,19 @@
       el2.setAttribute("enterkeyhint", "go");
       el2.addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); btn.click(); } });
     });
-    var fpk = $("chatFoldBtn");
-    if (fpk) fpk.onclick = function () {
-      openFoldModal("Save the next chat into\u2026", CHAT_NEWFOLD, function (v) { CHAT_NEWFOLD = v; renderChats(); });
-    };
-    var cfm = $("chatFoldModal");
-    if (cfm) {
-      cfm.addEventListener("click", function (e) {
-        if (e.target === cfm || e.target.closest("#cfmClose")) { closeFoldModal(); return; }
-        var ob = e.target.closest("[data-cfm]"); if (!ob) return;
-        var v = ob.getAttribute("data-cfm");
-        if (v === "@new") {
-          var nm = (prompt("New folder name:") || "").trim(); if (!nm) return;
-          var ex = chatFolderList().filter(function (f) { return f.toLowerCase() === nm.toLowerCase(); })[0];
-          if (!ex) chatCustomFolds().push(nm);
-          v = ex || nm; saveChats();
-        }
-        var cb = FOLD_MODAL_CB; closeFoldModal(); if (cb) cb(v);
-      });
-    }
+    var fpk = $("chatFoldPick");
+    if (fpk) fpk.addEventListener("click", function (e) {
+      if (e.target.closest("[data-newfold]")) {
+        var nm = (prompt("New folder name:") || "").trim();
+        if (!nm) return;
+        var ex = chatFolderList().filter(function (f) { return f.toLowerCase() === nm.toLowerCase(); })[0];
+        if (!ex) chatCustomFolds().push(nm);
+        CHAT_NEWFOLD = ex || nm; saveChats(); renderChats(); return;
+      }
+      var b2 = e.target.closest("[data-nf]"); if (!b2) return;
+      var v2 = b2.getAttribute("data-nf");
+      CHAT_NEWFOLD = CHAT_NEWFOLD === v2 ? "" : v2; renderChats();
+    });
     $("chatList").addEventListener("click", function (e) {
       var fh = e.target.closest("[data-cfold]");
       if (fh) { var fk2 = fh.getAttribute("data-cfold"); CHAT_VIEW = fk2 === "@back" ? "" : fk2; saveChatView(); renderChats(); return; }
@@ -2741,10 +2715,17 @@
       var row = e.target.closest("[data-cid]"); if (!row) return;
       var cid = row.getAttribute("data-cid"), arr = chatsArr(), act2 = el.getAttribute("data-cact");
       if (act2 === "del") { meta.cchats = arr.filter(function (c) { return c.id !== cid; }); saveChats(); renderChats(); return; }
-      if (act2 === "star") { arr.forEach(function (x) { if (x.id === cid) { x.star = !x.star; x.u = Date.now(); } }); saveChats(); renderChats(); return; }
       if (act2 === "fold") {
         var cf = null; arr.forEach(function (x) { if (x.id === cid) cf = x; }); if (!cf) return;
-        openFoldModal("Move \u201c" + (cf.t || "this chat") + "\u201d to\u2026", cf.fold || "", function (v) { cf.fold = v || null; cf.u = Date.now(); saveChats(); renderChats(); });
+        if (row.querySelector(".fold-pick")) return;
+        var pick = document.createElement("div"); pick.className = "fold-pick inrow";
+        pick.innerHTML = '<button type="button" class="fold-chip none" data-mv="">Unsorted</button>' + chatFolderList().map(function (f) { var h2 = foldHue(f); return '<button type="button" class="fold-chip' + ((cf.fold || "") === f ? " on" : "") + '" data-mv="' + esc(f) + '" style="' + ((cf.fold || "") === f ? 'background:oklch(0.55 0.16 ' + h2 + ');border-color:transparent;color:#fff' : 'color:oklch(0.45 0.16 ' + h2 + ');border-color:oklch(0.85 0.06 ' + h2 + ')') + '">' + esc(f) + '</button>'; }).join("");
+        pick.addEventListener("click", function (ev) {
+          var mb = ev.target.closest("[data-mv]"); if (!mb) return;
+          ev.stopPropagation();
+          cf.fold = mb.getAttribute("data-mv") || null; cf.u = Date.now(); saveChats(); renderChats();
+        });
+        row.querySelector(".chat-main").appendChild(pick); el.style.display = "none";
         return;
       }
       if (act2 === "ctag") {

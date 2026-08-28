@@ -273,18 +273,17 @@
 
   </section><!-- /scrWeek -->
 
-
+</main>
 
 <!-- ===================== SCREEN: CHATS (Claude discussions) ===================== -->
 <section class="screen" id="scrChats" data-screen-label="Chats">
   <div class="hone">
     <div class="sec-head hsec"><span class="k">Claude Chats</span><span class="sub">ongoing discussions &mdash; save the link, pick the conversation back up any time</span><span class="count" id="chatCount"></span></div>
     <div class="chat-add"><input id="chatTopic" placeholder="What are you discussing?"><input id="chatUrl" placeholder="Paste the claude.ai chat link&hellip;"><button class="tbtn primary" id="chatAddBtn">Save</button></div>
-    <button type="button" class="chat-foldbtn" id="chatFoldBtn" title="Choose the folder the next chat saves into"></button>
+    <div class="fold-pick-wrap" id="chatFoldWrap"><span class="fold-pick-label">Save into:</span><div class="fold-pick" id="chatFoldPick" title="Pick a folder for the next save"></div><span class="fold-pick-hint" id="chatFoldHint">no folder picked &mdash; goes to Unsorted</span></div>
     <ul class="chat-list" id="chatList"></ul>
   </div>
 </section>
-</main>
 
 <!-- ===================== BOTTOM TABS ===================== -->
 <nav class="htabbar">
@@ -316,20 +315,6 @@
     </button>
   </div>
 </nav>
-
-<!-- ===================== CHAT FOLDER PICKER ===================== -->
-<div class="modal-bg" id="chatFoldModal">
-  <div class="modal cfm">
-    <div class="modal-head">
-      <h3 id="cfmTitle">Pick a folder</h3>
-      <p>Grouped the same way as your Week board.</p>
-    </div>
-    <div class="modal-body" id="cfmBody"></div>
-    <div class="modal-foot">
-      <button class="tbtn" id="cfmClose">Cancel</button>
-    </div>
-  </div>
-</div>
 
 <!-- ===================== TARGET PICKER ===================== -->
 <div class="modal-bg" id="pickModal">

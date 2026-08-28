@@ -1,11 +1,11 @@
-# Deploy v44 — recover quick links (deploy of the v43 fixes)
+# Deploy v45 — Chats folder picker, starred chats, link UI, mobile fixes
 
-Your live app and local folder were running pre-v43 code with two problems:
-1. **Link display/loss bug:** `normalizeInventory()` rebuilt each app/study item as only `{id, name, group}` on every Supabase pull, stripping `links` (quick links) and `gen` ("Made with…"). Links looked lost after every reload even though `weekly_focus_inventory` still had them — and any inventory edit then pushed the stripped copy, wiping them for real. Fixed: normalization preserves all item fields.
-2. **No link editing:** pencil ✎ + click label/host to edit links inline (added in v43).
+1. **Chats: compact folder picker.** The wall of folder chips is now one "Save into" button; tapping it opens a full-screen picker modal with folders grouped by category (Apps / Study / Office / My folders), plus Unsorted and + New folder. The same modal is used when filing/moving a chat.
+2. **Starred chats.** Every chat row has a ☆ toggle. Starred chats appear in a pinned ⭐ Starred card at the top of the Chats tab, across all folders — the chat stays in its own folder (starring pins, it doesn't move).
+3. **Quick links UI.** Rows are now cards: icon badge, label, host pill, pill-shaped "Open ↗" button, hover lift; add-form wraps on mobile.
+4. **Mobile fixes.** Timeline rows and section headers wrap instead of squeezing text to one letter per line; chat rows stack their action buttons on narrow screens; the Chats screen now lives inside the app container (consistent padding above the tab bar).
+5. **Bottom tab bar.** Labels no longer collide (tighter tracking, clipping, smaller on very narrow screens); icons normalized to 20px.
 
-**Files changed vs your live build:** `js/weekly-focus-app.js`, `css/weekly-focus.css`, `sw.js` (cache → `weekly-focus-v61`).
+**Files changed:** index.html, js/weekly-focus-app.js, css/weekly-focus.css, css/home-screens.css, sw.js (cache → weekly-focus-v62).
 
-**Deploy:** replace your repo's files with this folder's, push, then reload the app twice (first load installs the new service worker, second serves the new JS). The links still in the DB will reappear on their own — no data restore needed.
-
-**Until deployed:** don't rename/add/delete/toggle items in the live app — an inventory push from the old code wipes the links in the DB.
+**Deploy:** copy this folder's files over your repo (and your local Weekly_focus folder), push, reload the app twice.
