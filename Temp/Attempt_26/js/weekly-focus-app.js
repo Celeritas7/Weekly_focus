@@ -1135,17 +1135,17 @@
     var listId = "grp-" + kindOf(id);
     var lks = (it && Array.isArray(it.links)) ? it.links : [];
     var linkRows = lks.map(function (l, ix) {
-      var u = String(l.url || ""), loc = isLocalPath(u), host = loc ? "Local folder" : u.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0], b = hostBadge(u);
-      return '<li class="lrow' + (loc ? " folder" : "") + '" data-lix="' + ix + '" style="--lk:oklch(0.55 ' + b.c + ' ' + b.h + ');--lk-soft:oklch(0.975 0.02 ' + b.h + ')">' +
-        '<span class="lr-badge">' + b.t + '</span>' +
-        '<span class="lr-txt" data-act="linkedit" title="Click to edit"><span class="lr-label">' + esc(l.label || (loc ? u : host)) + '</span><span class="lr-host">' + esc(host) + '</span></span>' +
-        '<button class="lr-edit" data-act="linkedit" title="Edit">\u270e</button>' +
-        (loc ? '<button class="lr-open" data-act="linkopen" title="Open folder (needs launcher) or copy path">Open</button>' : '<a class="lr-open" href="' + esc(u) + '" target="_blank" rel="noopener" title="Open in new tab">\u2197</a>') +
+      var host = String(l.url || "").replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
+      return '<li class="lrow" data-lix="' + ix + '">' + HIC.link +
+        '<span class="lr-label" data-act="linkedit" title="Click to edit">' + esc(l.label || host) + '</span>' +
+        '<span class="lr-host" data-act="linkedit" title="Click to edit">' + esc(host) + '</span>' +
+        '<button class="lr-edit" data-act="linkedit" title="Edit label &amp; URL">' + '\u270e' + '</button>' +
+        '<a class="lr-open" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="Open in new tab">Open \u2197</a>' +
         '<button class="lr-del" data-act="linkdel" title="Remove link">\u00d7</button></li>';
     }).join("");
     var linksRow = '<div class="links-block"><span class="notes-lbl">\u2197 Quick links</span>' +
-      (linkRows ? '<ul class="lrows">' + linkRows + '</ul>' : '<div class="lr-none">No links yet \u2014 add the app, repo, doc or a PC folder you jump to.</div>') +
-      '<div class="lr-add"><input class="lr-name" placeholder="Label (e.g. Live app)"><input class="lr-url" placeholder="https://\u2026  or  C:\\path\\to\\folder"><button class="lr-addbtn" data-act="linkadd">Add</button></div></div>';
+      (linkRows ? '<ul class="lrows">' + linkRows + '</ul>' : '<div class="lr-none">No links yet \u2014 add the app, repo or doc you jump to.</div>') +
+      '<div class="lr-add"><input class="lr-name" placeholder="Label (e.g. Live app)"><input class="lr-url" placeholder="https://\u2026" inputmode="url"><button class="lr-addbtn" data-act="linkadd">Add</button></div></div>';
     var genSel = kindOf(id) !== "app" ? '' : '<select class="mg-gen" data-act="gen" title="Which tool generated this app">' +
       '<option value="">Made with\u2026</option>' +
       GEN_TAGS.map(function (g) { return '<option value="' + esc(g) + '"' + (it && it.gen === g ? " selected" : "") + '>' + esc(g) + '</option>'; }).join("") + '</select>';
@@ -1266,11 +1266,6 @@
       return;
     }
     if (a === "on") { var eOn = getEntry(key); patch(key, { active: true, holdUntil: null, holdStar: false }); if (eOn.holdStar) addTarget(key); renderAll(); return; }
-    if (a === "linkopen") {
-      var itO = itemById(key), rowO = e.target.closest(".lrow"), lO = itO && rowO && (itO.links || [])[+rowO.getAttribute("data-lix")];
-      if (lO) openLocalPath(lO.url);
-      return;
-    }
     if (a === "linkdel") {
       var itL = itemById(key), row = e.target.closest(".lrow");
       if (itL && row) { var ix = +row.getAttribute("data-lix"); itL.links = (itL.links || []).filter(function (_, i2) { return i2 !== ix; }); saveInv(); renderCols(); renderHome(); }
@@ -1331,10 +1326,10 @@
     var blk = btn.closest(".links-block"); if (!blk) return;
     var lab = blk.querySelector(".lr-name"), url = blk.querySelector(".lr-url");
     var u = (url.value || "").trim(); if (!u) { url.focus(); return; }
-    if (!isLocalPath(u) && !/^https?:\/\//i.test(u)) u = "https://" + u;
+    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
     var it = itemById(key); if (!it) return;
-    var host = isLocalPath(u) ? "Local folder" : u.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
-    it.links = (Array.isArray(it.links) ? it.links : []).concat([{ label: (lab.value || "").trim() || (isLocalPath(u) ? u : host), url: u }]);
+    var host = u.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
+    it.links = (Array.isArray(it.links) ? it.links : []).concat([{ label: (lab.value || "").trim() || host, url: u }]);
     saveInv(); renderCols(); renderHome(); toast("Link added.");
   }
   /* click a link's label / host / pencil to edit it in place.
@@ -1357,12 +1352,12 @@
       if (settled) return;
       var u = (urlEl.value || "").trim();
       if (!u) { urlEl.focus(); return; }
-      if (!isLocalPath(u) && !/^https?:\/\//i.test(u)) u = "https://" + u;
-      var host = isLocalPath(u) ? "Local folder" : u.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
+      if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+      var host = u.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
       var cur = itemById(key);
       if (!cur || !Array.isArray(cur.links) || !cur.links[ix]) { cancel(); return; }
       settled = true;
-      cur.links[ix] = { label: (nameEl.value || "").trim() || (isLocalPath(u) ? u : host), url: u };
+      cur.links[ix] = { label: (nameEl.value || "").trim() || host, url: u };
       saveInv(); renderCols(); renderHome(); toast("Link updated.");
     }
     row.querySelector(".lr-esave").addEventListener("click", save);
@@ -2031,9 +2026,7 @@
   function linksToText(links) {
     return (Array.isArray(links) ? links : []).map(function (l) { return (l.label || "") + " | " + (l.url || ""); }).join("\n");
   }
-  /* v47: quick links live in the card detail only — Today rows stay clean. Routines still show theirs via routineLinkChips. */
-  function linkChips(links) { return ""; }
-  function routineLinkChips(links) {
+  function linkChips(links) {
     return (Array.isArray(links) ? links : []).map(function (l) {
       return '<a class="linkchip" href="' + esc(l.url) + '" target="_blank" rel="noopener">' + HIC.link + esc(l.label || "link") + "</a>";
     }).join("");
@@ -2158,27 +2151,6 @@
   /* ---- dev links: quick-open Claude chats / repos / local folders. meta.links is board-synced. ---- */
   function linkList() { return Array.isArray(meta.links) ? meta.links : []; }
   function isWebUrl(u) { return /^https?:\/\//i.test(u); }
-  /* v47: local paths open through the same launcher Cerebrum uses (squad_launcher.ps1 on localhost:9876). Falls back to copying the path. */
-  var LAUNCHER = "http://localhost:9876", LAUNCHER_OK = null;
-  function isLocalPath(u) { u = String(u || ""); return /^[A-Za-z]:\\/.test(u) || /^\\\\/.test(u); }
-  function pingLauncher() {
-    if (!/^https?:$/.test(location.protocol) && location.protocol !== "file:") return;
-    fetch(LAUNCHER + "/ping").then(function (r) { LAUNCHER_OK = r.ok; }, function () { LAUNCHER_OK = false; }).then(function () { document.documentElement.classList.toggle("wf-launcher", !!LAUNCHER_OK); });
-  }
-  function openLocalPath(p) {
-    fetch(LAUNCHER + "/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths: [p], path: p }) })
-      .then(function (r) { if (r.ok) { LAUNCHER_OK = true; toast("Opening on your PC\u2026"); } else throw 0; })
-      .catch(function () { LAUNCHER_OK = false; document.documentElement.classList.remove("wf-launcher"); lkCopy(p); });
-  }
-  var HOST_BADGES = [[/claude\.ai/i, "Ai", 0.15, 40], [/github/i, "Gh", 0.03, 265], [/supabase/i, "Sb", 0.14, 160], [/vercel/i, "\u25b2", 0.02, 265], [/youtu/i, "Yt", 0.2, 25], [/google|gmail|docs\./i, "G", 0.15, 250], [/notion/i, "N", 0.02, 265], [/chatgpt|openai/i, "Gp", 0.1, 170], [/udemy/i, "Ud", 0.18, 300]];
-  function hostBadge(u) {
-    if (isLocalPath(u)) return { t: "\ud83d\udcc1", c: 0.13, h: 75 };
-    var host = String(u || "").replace(/^https?:\/\/(www\.)?/i, "").split("/")[0];
-    for (var i = 0; i < HOST_BADGES.length; i++) if (HOST_BADGES[i][0].test(host)) return { t: HOST_BADGES[i][1], c: HOST_BADGES[i][2], h: HOST_BADGES[i][3] };
-    var hs = 0; for (var j = 0; j < host.length; j++) hs = (hs * 31 + host.charCodeAt(j)) % 360;
-    var core = host.replace(/\.(com|io|org|net|app|dev|ai|co|in)$/i, "").split(".").pop() || "?";
-    return { t: esc(core.slice(0, 1).toUpperCase() + core.slice(1, 2)), c: 0.12, h: hs };
-  }
   function lkCopy(t) {
     function fb() { var ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Path copied — paste it in Explorer."); } catch (e2) { window.prompt("Copy this path:", t); } document.body.removeChild(ta); }
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { toast("Path copied — paste it in Explorer."); }, fb); else fb();
@@ -2254,7 +2226,7 @@
     return '<div class="trow rtn' + (isDone ? " done" : "") + '">' +
       '<button class="hcheck' + (isDone ? " on" : "") + '" data-hact="rtoggle2" data-hkey="' + esc(r.id) + '" aria-label="Toggle done">' + HIC.check + "</button>" +
       '<div class="tmain"><div class="hname">' + esc(r.name) + "</div>" +
-      '<div class="hsub"><span class="hchip rtn">' + esc((r.cat || "").trim() || "Routine") + "</span>" + streakChip(eff) + routineLinkChips(r.links) + "</div></div></div>";
+      '<div class="hsub"><span class="hchip rtn">' + esc((r.cat || "").trim() || "Routine") + "</span>" + streakChip(eff) + linkChips(r.links) + "</div></div></div>";
   }
   /* Special tasks that belong on today's plate: urgent (even undated),
      due today, or overdue \u2014 filtered by the current mode. */
@@ -2475,7 +2447,7 @@
       html += '<div class="rrow' + (isToday ? "" : " offday") + (isDone && isToday ? " done" : "") + '">' +
         '<button class="hcheck' + (isDone ? " on" : "") + '" data-hact="rtoggle" data-hkey="' + esc(r.id) + '" aria-label="Toggle done">' + HIC.check + "</button>" +
         '<div class="rmain"><span class="rname">' + esc(r.name) + "</span>" +
-        '<div class="rmeta">' + streakChip(eff) + routineLinkChips(r.links) + "</div>" +
+        '<div class="rmeta">' + streakChip(eff) + linkChips(r.links) + "</div>" +
         histStrip(r, st, t) +
         '<span class="daydots">' + dots + "</span></div>" +
         '<button class="redit" data-hact="redit" data-hkey="' + esc(r.id) + '" title="Edit routine">' + HIC.pen + "</button>" +
@@ -2647,72 +2619,6 @@
     m.classList.add("open");
   }
   function closeFoldModal() { var m = $("chatFoldModal"); if (m) m.classList.remove("open"); FOLD_MODAL_CB = null; }
-  /* ---- v46: Vault — personal records inside Chats, one template per category ---- */
-  var VCATS = [
-    { k: "vchat", l: "Chats", one: "chat", emo: "\ud83d\udcac", hue: 255, fs: [{ k: "t", l: "Topic" }, { k: "url", l: "Chat link", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "addr", l: "Addresses", one: "address", emo: "\ud83c\udfe0", hue: 145, fs: [{ k: "t", l: "Label (Home, Office\u2026)" }, { k: "name", l: "Name" }, { k: "a1", l: "Street / building", tp: "ta" }, { k: "city", l: "City & PIN" }, { k: "ph", l: "Phone" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "link", l: "Links", one: "link", emo: "\ud83d\udd17", hue: 210, fs: [{ k: "t", l: "Label" }, { k: "url", l: "URL", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "login", l: "Logins & passwords", one: "login", emo: "\ud83d\udd11", hue: 45, fs: [{ k: "t", l: "Site / app" }, { k: "user", l: "Username / email" }, { k: "pw", l: "Password", tp: "pass" }, { k: "url", l: "Login page", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "bank", l: "Bank details", one: "account", emo: "\ud83c\udfe6", hue: 160, fs: [{ k: "t", l: "Label (bank & account)" }, { k: "holder", l: "Account holder" }, { k: "acc", l: "Account number", tp: "pass" }, { k: "ifsc", l: "IFSC / SWIFT" }, { k: "branch", l: "Branch" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "implink", l: "Important links", one: "link", emo: "\ud83d\udccc", hue: 20, fs: [{ k: "t", l: "Label (Netbanking, Tax portal\u2026)" }, { k: "url", l: "URL", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "card", l: "Cards", one: "card", emo: "\ud83d\udcb3", hue: 305, fs: [{ k: "t", l: "Card label (HDFC Visa\u2026)" }, { k: "num", l: "Card number", tp: "pass" }, { k: "nm", l: "Name on card" }, { k: "exp", l: "Expiry (MM/YY)" }, { k: "cvv", l: "CVV", tp: "pass" }, { k: "note", l: "Notes", tp: "ta" }] }
-  ];
-  function vcat(k) { for (var i = 0; i < VCATS.length; i++) if (VCATS[i].k === k) return VCATS[i]; return null; }
-  function vaultArr() { if (!Array.isArray(meta.cvault)) meta.cvault = []; return meta.cvault; }
-  var VREVEAL = {};
-  function vIn(k) { return vaultArr().filter(function (it) { return it.cat === k; }); }
-  function vMask(v) { v = String(v || ""); return v.length > 4 ? "\u2022\u2022\u2022\u2022 " + v.slice(-4) : "\u2022\u2022\u2022\u2022"; }
-  function vaultHtml() {
-    var m = /^@vault:(.+)$/.exec(CHAT_VIEW), c = m ? vcat(m[1]) : null;
-    if (!c) {
-      var h = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="@back">\u2190 Folders</button><span class="cf-open-name" style="color:oklch(0.4 0.05 265)"><span class="cf-emo sm">\ud83d\udd10</span>Vault</span><span class="chat-sec-n">' + vaultArr().length + '</span></li>';
-      h += '<li class="chat-grid">' + VCATS.map(function (cc) {
-        var n = vIn(cc.k).length, on = n > 0;
-        var st = on ? ' style="background:oklch(0.975 0.02 ' + cc.hue + ');border-color:oklch(0.88 0.06 ' + cc.hue + ')"' : '';
-        var cst = on ? ' style="background:oklch(0.55 0.16 ' + cc.hue + ');color:#fff"' : '';
-        return '<button type="button" class="chat-fcard' + (on ? "" : " empty") + '" data-cfold="@vault:' + cc.k + '"' + st + '><span class="cf-emo">' + cc.emo + '</span><span class="cf-name">' + esc(cc.l) + '</span><span class="cf-count"' + cst + '>' + (on ? n + (n === 1 ? " item" : " items") : "empty") + '</span></button>';
-      }).join("") + '</li>';
-      h += '<li class="vault-note">Stored with the rest of your board \u2014 this device plus your cloud sync. Keep truly critical secrets in a dedicated password manager.</li>';
-      return h;
-    }
-    var rows = vIn(c.k).slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
-    var h2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="@vault">\u2190 Vault</button><span class="cf-open-name" style="color:oklch(0.45 0.16 ' + c.hue + ')"><span class="cf-emo sm">' + c.emo + '</span>' + esc(c.l) + '</span><span class="chat-sec-n">' + rows.length + '</span><button type="button" class="tbtn primary vault-addbtn" data-vact="add" data-vcat="' + c.k + '">+ Add ' + esc(c.one) + '</button></li>';
-    h2 += rows.length ? rows.map(function (it) { return vRowHtml(c, it); }).join("") : '<li class="chat-empty">Nothing here yet \u2014 tap \u201c+ Add ' + esc(c.one) + '\u201d and fill the template.</li>';
-    return h2;
-  }
-  function vRowHtml(c, it) {
-    var f = it.f || {};
-    var body = c.fs.filter(function (fd) { return fd.k !== "t" && String(f[fd.k] || "").trim(); }).map(function (fd) {
-      var raw = f[fd.k], sec = fd.tp === "pass", open = VREVEAL[it.id + "|" + fd.k];
-      var val = sec && !open ? vMask(raw) : esc(raw);
-      var acts = "";
-      if (sec) acts += '<button class="v-ico" data-vact="reveal" data-vf="' + fd.k + '" title="' + (open ? "Hide" : "Show") + '">' + (open ? "\ud83d\ude48" : "\ud83d\udc41") + '</button>';
-      acts += '<button class="v-ico" data-vact="copy" data-vf="' + fd.k + '" title="Copy">\u2398</button>';
-      if (fd.tp === "url") acts += '<a class="tbtn chat-open v-open" href="' + esc(/^https?:\/\//i.test(raw) ? raw : "https://" + raw) + '" target="_blank" rel="noopener">Open \u2197</a>';
-      return '<div class="v-f' + (fd.tp === "ta" ? " ta" : "") + '"><span class="v-k">' + esc(fd.l) + '</span><span class="v-v' + (sec ? " sec" : "") + '">' + val + '</span><span class="v-acts">' + acts + '</span></div>';
-    }).join("");
-    return '<li class="vault-item" data-vid="' + esc(it.id) + '" style="border-color:oklch(0.9 0.04 ' + c.hue + ')"><div class="v-head"><span class="v-emo">' + c.emo + '</span><span class="v-title">' + esc(f.t || "Untitled") + '</span><button class="v-ico" data-vact="edit" title="Edit">\u270e</button><button class="sub-del" data-vact="vdel" title="Delete">\u00d7</button></div>' + (body ? '<div class="v-fields">' + body + '</div>' : "") + '</li>';
-  }
-  var VM_CAT = null, VM_ID = null;
-  function openVaultModal(catK, it) {
-    var c = vcat(catK), m = $("vaultModal"); if (!c || !m) return;
-    VM_CAT = catK; VM_ID = it ? it.id : null;
-    $("vmTitle").textContent = (it ? "Edit " : "Add ") + c.one;
-    var f = (it && it.f) || {};
-    $("vmBody").innerHTML = c.fs.map(function (fd) {
-      var v = esc(f[fd.k] || "");
-      var inp = fd.tp === "ta" ? '<textarea id="vmF_' + fd.k + '" rows="2">' + v + '</textarea>' : '<input id="vmF_' + fd.k + '" type="text" autocomplete="off" value="' + v + '">';
-      return '<div class="cfield"><label>' + esc(fd.l) + '</label>' + inp + '</div>';
-    }).join("");
-    $("vmDelete").style.display = it ? "" : "none";
-    m.classList.add("open");
-    setTimeout(function () { var fi = $("vmF_t"); if (fi) fi.focus(); }, 50);
-  }
-  function closeVaultModal() { var m = $("vaultModal"); if (m) m.classList.remove("open"); VM_CAT = VM_ID = null; }
-  function vCopy(txt) {
-    try { navigator.clipboard.writeText(txt).then(function () { toast("Copied \u2713"); }, function () { toast("Couldn't copy"); }); }
-    catch (e) { var ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Copied \u2713"); } catch (e2) {} document.body.removeChild(ta); }
-  }
   function renderChats() {
     var host = $("chatList"); if (!host) return;
     var arr = chatsArr().slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
@@ -2744,7 +2650,6 @@
     var FOLD_IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>';
     function chatsIn(f) { return arr.filter(function (c) { return ((c.fold || "").trim()) === f; }); }
     var starred = arr.filter(function (c) { return c.star; });
-    if (CHAT_VIEW === "@vault" || CHAT_VIEW.indexOf("@vault:") === 0) { host.innerHTML = vaultHtml(); return; }
     if (CHAT_VIEW) {
       var isStar = CHAT_VIEW === "@star";
       var fName = (CHAT_VIEW === "@un" || isStar) ? "" : CHAT_VIEW;
@@ -2767,8 +2672,7 @@
     }
     function lastU(f) { var m = 0; chatsIn(f).forEach(function (c) { if ((c.u || 0) > m) m = c.u; }); return m; }
     var html = "";
-    var vn = vaultArr().length;
-    html += '<li class="chat-grid"><button type="button" class="chat-fcard vaultcard" data-cfold="@vault"><span class="cf-emo">\ud83d\udd10</span><span class="cf-name">Vault</span><span class="cf-count">' + (vn ? vn + (vn === 1 ? " item" : " items") : "logins \u00b7 cards \u00b7 more") + '</span></button>' + (starred.length ? '<button type="button" class="chat-fcard starcard" data-cfold="@star"><span class="cf-emo">\u2b50</span><span class="cf-name">Starred</span><span class="cf-count">' + starred.length + (starred.length === 1 ? " chat" : " chats") + '</span></button>' : '') + '</li>';
+    if (starred.length) html += '<li class="chat-grid"><button type="button" class="chat-fcard starcard" data-cfold="@star"><span class="cf-emo">\u2b50</span><span class="cf-name">Starred</span><span class="cf-count">' + starred.length + (starred.length === 1 ? " chat" : " chats") + '</span></button></li>';
     chatFolderSections().forEach(function (s) {
       if (!s.fs.length) return;
       var fs = s.fs.slice().sort(function (a, b) {
@@ -2830,38 +2734,7 @@
         var cb = FOLD_MODAL_CB; closeFoldModal(); if (cb) cb(v);
       });
     }
-    var vm = $("vaultModal");
-    if (vm) vm.addEventListener("click", function (e) {
-      if (e.target === vm || e.target.closest("#vmClose")) { closeVaultModal(); return; }
-      if (e.target.closest("#vmDelete")) {
-        if (VM_ID && confirm("Delete this item?")) { var did = VM_ID; meta.cvault = vaultArr().filter(function (x) { return x.id !== did; }); saveChats(); closeVaultModal(); renderChats(); }
-        return;
-      }
-      if (e.target.closest("#vmSave")) {
-        var c = vcat(VM_CAT); if (!c) { closeVaultModal(); return; }
-        var f = {}, any = false;
-        c.fs.forEach(function (fd) { var el2 = $("vmF_" + fd.k); var v = el2 ? el2.value.trim() : ""; if (v) any = true; f[fd.k] = v; });
-        if (!any) { closeVaultModal(); return; }
-        if (VM_ID) { vaultArr().forEach(function (x) { if (x.id === VM_ID) { x.f = f; x.u = Date.now(); } }); }
-        else { vaultArr().push({ id: uid(), cat: VM_CAT, f: f, u: Date.now() }); CHAT_VIEW = "@vault:" + VM_CAT; saveChatView(); }
-        saveChats(); closeVaultModal(); renderChats(); toast("Saved \u2713");
-      }
-    });
     $("chatList").addEventListener("click", function (e) {
-      var vb = e.target.closest("[data-vact]");
-      if (vb) {
-        var va = vb.getAttribute("data-vact");
-        if (va === "add") { openVaultModal(vb.getAttribute("data-vcat"), null); return; }
-        var vrow = e.target.closest("[data-vid]"); if (!vrow) return;
-        var vid = vrow.getAttribute("data-vid"), vit = null;
-        vaultArr().forEach(function (x) { if (x.id === vid) vit = x; }); if (!vit) return;
-        if (va === "edit") { openVaultModal(vit.cat, vit); return; }
-        if (va === "vdel") { if (confirm("Delete \u201c" + ((vit.f || {}).t || "this item") + "\u201d?")) { meta.cvault = vaultArr().filter(function (x) { return x.id !== vid; }); saveChats(); renderChats(); } return; }
-        var vf = vb.getAttribute("data-vf");
-        if (va === "reveal") { var vkk = vid + "|" + vf; VREVEAL[vkk] = !VREVEAL[vkk]; renderChats(); return; }
-        if (va === "copy") { vCopy(String((vit.f || {})[vf] || "")); return; }
-        return;
-      }
       var fh = e.target.closest("[data-cfold]");
       if (fh) { var fk2 = fh.getAttribute("data-cfold"); CHAT_VIEW = fk2 === "@back" ? "" : fk2; saveChatView(); renderChats(); return; }
       var el = e.target.closest("[data-cact]"); if (!el) return;
@@ -3004,7 +2877,7 @@
       var row = b.closest("[data-lkid]"), lid = row && row.getAttribute("data-lkid");
       var l = null; linkList().forEach(function (x) { if (x.id === lid) l = x; });
       if (!l) return;
-      if (b.getAttribute("data-lkact") === "copy") { if (isLocalPath(l.url)) openLocalPath(l.url); else lkCopy(l.url); return; }
+      if (b.getAttribute("data-lkact") === "copy") { lkCopy(l.url); return; }
       if (b.getAttribute("data-lkact") === "del") { meta.links = linkList().filter(function (x) { return x.id !== lid; }); save(); cloudPushBoard(); renderLinks(); }
     });
     $("plHere").onclick = function () {
@@ -3021,7 +2894,6 @@
     document.addEventListener("visibilitychange", function () { if (!document.hidden) geoCheck(false); });
     /* minute tick: lets check-in nudges + ASAP states appear without a reload */
     setInterval(function () { renderTodayScreen(); }, 60000);
-    pingLauncher(); setInterval(pingLauncher, 60000);
     var pad = $("plAskDays");
     if (pad) pad.addEventListener("click", function (e) {
       var b = e.target.closest("[data-hday]"); if (!b) return;

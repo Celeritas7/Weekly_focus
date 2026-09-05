@@ -44,7 +44,7 @@ body[data-mode="office"]  { --accent: var(--office); --accent-soft: var(--office
 .modeseg .seg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------------- screens + bottom tabs ---------------- */
-.app { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
+.app { padding-bottom: 120px; }
 .screen { display: none; }
 .screen.on { display: block; animation: hs-in .15s ease; }
 @keyframes hs-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -57,7 +57,7 @@ body[data-mode="office"]  { --accent: var(--office); --accent-soft: var(--office
   border-top: 1px solid var(--hair);
   padding-bottom: env(safe-area-inset-bottom);
 }
-.htabbar-in { max-width: 640px; margin: 0 auto; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.htabbar-in { max-width: 640px; margin: 0 auto; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
 .htab {
   border: none; background: none; cursor: pointer; font-family: inherit;
   display: flex; flex-direction: column; align-items: center; gap: 4px;
