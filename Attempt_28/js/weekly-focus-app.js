@@ -200,51 +200,10 @@
   var MAX_TARGETS = 5;
   function isTarget(k) { return targetOrder.indexOf(k) >= 0; }
   function addTarget(k) { if (isTarget(k) || targetOrder.length >= MAX_TARGETS) return false; targetOrder.push(k); save(); cloudPushBoard(); return true; }
-  function addTargetAt(k, at) {
-    if (isTarget(k)) return false;
-    if (typeof at !== "number" || at < 0) return addTarget(k);
-    if (targetOrder.length >= MAX_TARGETS) targetOrder.pop();   // last Can drops back to Will
-    targetOrder.splice(Math.min(at, targetOrder.length), 0, k); save(); cloudPushBoard(); return true;
-  }
   function removeTarget(k) { var i = targetOrder.indexOf(k); if (i >= 0) { targetOrder.splice(i, 1); if (entries[k]) patch(k, { targetDone: false }); save(); cloudPushBoard(); } }
   function targetDone(k) { return getEntry(k).targetDone === true; }
   function pruneTargets() { targetOrder = targetOrder.filter(function (k) { var it = itemById(k); return it && isActive(it); }); }
   function labelFor(k) { var it = itemById(k); return it ? { name: it.name, crumb: it.group } : { name: k, crumb: "" }; }
-  /* ---- Ranked Five (v51): rank = position. 1 = Must, 2-5 = Can, 6 = Will ---- */
-  function rankedApps() {
-    var five = targetOrder.filter(function (k) { return kindOf(k) === "app"; });
-    var rest = flatSortActive(activeItems("app")).map(function (a) { return a.id; }).filter(function (k) { return five.indexOf(k) < 0; });
-    rest.sort(function (a, b) { var ra = getEntry(a).rank, rb = getEntry(b).rank, na = typeof ra === "number", nb = typeof rb === "number"; if (na && nb) return ra - rb; if (na) return -1; if (nb) return 1; return 0; });
-    return five.concat(rest);
-  }
-  /* explicit rank: 1-5 lands in The Five at that slot; 6+ orders the rest. Persisted as entries[id].rank
-     (per-item Supabase row) so it can be edited from Claude / SQL too. The Five order is targetOrder on __board. */
-  function setRank(id, n) {
-    var list = rankedApps().filter(function (k) { return k !== id; });
-    n = Math.max(1, Math.min(list.length + 1, Math.round(n) || 1));
-    list.splice(n - 1, 0, id);
-    var appsInFive = list.slice(0, MAX_TARGETS), others = targetOrder.filter(function (k) { return kindOf(k) !== "app"; });
-    var wasDone = {}; targetOrder.forEach(function (k) { wasDone[k] = targetDone(k); });
-    targetOrder = appsInFive.concat(others).slice(0, MAX_TARGETS);
-    list.forEach(function (k, i) { var e = getEntry(k); if (e.rank !== i + 1) patch(k, { rank: i + 1 }); if (i >= MAX_TARGETS && e.targetDone) patch(k, { targetDone: false }); });
-    save(); cloudPushBoard(); renderAll();
-    var role = rankRole(n); toast(labelFor(id).name + " \u2192 #" + n + (role ? " \u00b7 " + role : ""));
-  }
-  function syncRanks() { rankedApps().forEach(function (k, i) { if (getEntry(k).rank !== i + 1) patch(k, { rank: i + 1 }); }); }
-  var RANK_OPEN = null;
-  function rankPopHtml(id) {
-    var n = rankedApps().length, cur = rankOf(id), out = '<div class="rankpop" data-rankpop="' + esc(id) + '"><span class="rp-l">Move to rank</span><div class="rp-grid">';
-    for (var i = 1; i <= n; i++) out += '<button type="button" class="rp-b' + (i === cur ? " on" : "") + (i === 1 ? " must" : i === 6 ? " will" : "") + '" data-rank="' + i + '">' + i + '</button>';
-    return out + '</div><span class="rp-h">1 Must \u00b7 2\u20135 Can \u00b7 6 Will</span></div>';
-  }
-  function rankOf(id) { var i = rankedApps().indexOf(id); return i < 0 ? 0 : i + 1; }
-  function rankRole(r) { return r === 1 ? "Must" : r >= 2 && r <= 5 ? "Can" : r === 6 ? "Will" : ""; }
-  function willId() { return rankedApps()[5] || null; }
-  function rankBadge(id) {
-    var r = rankOf(id); if (!r) return "";
-    var role = rankRole(r);
-    return '<button type="button" class="rk' + (role ? " rk-" + role.toLowerCase() : "") + (RANK_OPEN === id ? " open" : "") + '" data-act="rank" title="' + (role ? role + " \u2014 rank " + r : "Rank " + r) + ' \u2014 tap to change">' + r + '</button>' + (RANK_OPEN === id ? rankPopHtml(id) : "");
-  }
 
   /* ============================================================
      RENDER
@@ -292,7 +251,7 @@
     targetOrder.forEach(function (k, i) {
       var lab = labelFor(k), done = targetDone(k), prog = subProgress(k);
       var card = document.createElement("div");
-      card.className = "tcard" + (done ? " done" : "") + (i === 0 && kindOf(k) === "app" ? " must" : "");
+      card.className = "tcard" + (done ? " done" : "");
       card.setAttribute("data-tkey", k);
       card.setAttribute("draggable", "true");
       card.setAttribute("data-tkind", kindOf(k));
@@ -303,7 +262,7 @@
       }).join("") + (sv.length > svShow.length ? '<li class="tmore">+' + (sv.length - svShow.length) + ' more</li>' : '') + '</ul>' : '';
       card.innerHTML =
         '<span class="tghost">' + (i + 1) + '</span>' +
-        '<div class="thead">' + (kindOf(k) === "app" ? '<button type="button" class="tnum tnum-btn" data-act="rank" data-key="' + esc(k) + '" title="Tap to change rank">0' + (i + 1) + '</button>' + (RANK_OPEN === k ? rankPopHtml(k) : '') : '<span class="tnum">0' + (i + 1) + '</span>') + (kindOf(k) === "app" && rankRole(i + 1) ? '<span class="trole trole-' + rankRole(i + 1).toLowerCase() + '">' + rankRole(i + 1) + '</span>' : '') + '<span class="trule"></span>' + (prog ? '<span class="tprog-n">' + prog.done + '/' + prog.total + '</span>' : '') + '</div>' +
+        '<div class="thead"><span class="tnum">0' + (i + 1) + '</span><span class="trule"></span>' + (prog ? '<span class="tprog-n">' + prog.done + '/' + prog.total + '</span>' : '') + '</div>' +
         '<button class="tcheck' + (done ? " on" : "") + '" data-act="tdone" title="Mark done"></button>' +
         '<div class="ttitle">' + esc(lab.name) + '</div>' +
         '<div class="tmeta">' + m + '</div>' +
@@ -317,14 +276,6 @@
       add.className = "tcard empty"; add.setAttribute("data-act", "tpick");
       add.innerHTML = '<span class="plus">+</span><span class="etxt">Add target</span>';
       grid.appendChild(add);
-    }
-    var wid = willId();
-    if (wid && targetOrder.length >= MAX_TARGETS) {
-      var wl = labelFor(wid), wc = document.createElement("div");
-      wc.className = "tcard will"; wc.setAttribute("data-key", wid);
-      wc.innerHTML = '<div class="thead"><span class="tnum">06</span><span class="trole trole-will">Will</span><span class="trule"></span></div>' +
-        '<div class="ttitle">' + esc(wl.name) + '</div><div class="tmeta">next up \u2014 moves in when a slot frees</div>';
-      grid.appendChild(wc);
     }
     $("fiveCount").textContent = targetOrder.length + "/" + MAX_TARGETS;
   }
@@ -545,7 +496,7 @@
       h.classList.toggle("tf-hide", !vis);
     });
   }
-  function renderCols() { renderColumn("app"); renderColumn("study"); renderColumn("office"); renderSpecial(); applyTagFilter(); refreshBuildSheet(); renderBuildBand(); }
+  function renderCols() { renderColumn("app"); renderColumn("study"); renderColumn("office"); renderSpecial(); applyTagFilter(); }
   function spordOf(id) { var e = entries[id]; return (e && e.spord != null) ? e.spord : null; }
   function specialSorted() {
     var items = activeItems("app").concat(activeItems("study")).filter(isSpecialItem).filter(function (it) { return !getEntry(it.id).arch; });
@@ -1060,7 +1011,7 @@
       var eB = getEntry(it.id), holdMs = eB.holdUntil ? eB.holdUntil - Date.now() : 0;
       li.innerHTML = '<button class="tgl tgl-sm" data-act="on" title="Bring into This Week"><span class="knob"></span></button>' +
         '<span class="bname">' + esc(it.name) + '</span>' +
-        (holdMs > 0 ? '<span class="holdchip" title="On hold \u2014 returns to This Week automatically">\u23F8 ' + fmtHold(holdMs) + (typeof eB.holdRank === "number" && eB.holdRank >= 0 ? ' \u00b7 #' + (eB.holdRank + 1) : '') + '</span>' : '') +
+        (holdMs > 0 ? '<span class="holdchip" title="On hold \u2014 returns to This Week automatically">\u23F8 ' + fmtHold(holdMs) + '</span>' : '') +
         (VIEW_GROUPED ? '' : gtagHtml(kind, it.group)) + genChip(it) +
         '<button class="brow-del" data-act="del" title="Delete forever">' + IC.trash + '</button>';
       return li;
@@ -1155,7 +1106,7 @@
     li.innerHTML =
       '<div class="item-row">' +
         '<div class="item-grip" data-act="open">' +
-          (kindOf(id) === "app" ? rankBadge(id) : '') + '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div>' + (!VIEW_GROUPED && it ? gtagHtml(kindOf(id), it.group) : '') + genChip(it) + '</div>' +
+          '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div>' + (!VIEW_GROUPED && it ? gtagHtml(kindOf(id), it.group) : '') + genChip(it) + '</div>' +
         '</div>' +
         '<div class="item-actions">' + ring +
           '<button class="updflag' + (updOn ? " on" : "") + '" data-act="flagupd" title="' + (updOn ? "Update pending — click to clear" : "Flag a pending update / prompt for Claude") + '">' + IC.flag + '</button>' +
@@ -1167,7 +1118,6 @@
       detailHtml(id);
     return li;
   }
-  function nextSub(id) { var a = visibleSubs(subs(id)).filter(function (x) { return !x.done; }); return a.length ? (a[0].t || "") : ""; }
   function priName(p) { return p === "H" ? "High" : p === "M" ? "Medium" : "Low"; }
   function detailHtml(id) {
     var e = getEntry(id), it = itemById(id), pri = priOf(id);
@@ -1286,9 +1236,6 @@
   document.addEventListener("click", function (e) {
     var pk = e.target.closest("[data-pick]");
     if (pk) { var k = pk.getAttribute("data-pick"); if (addTarget(k)) { renderAll(); openPicker(); } else toast("The Five is full \u2014 remove one first."); return; }
-    var rp = e.target.closest("[data-rank]");
-    if (rp) { var rpid = rp.closest("[data-rankpop]").getAttribute("data-rankpop"); RANK_OPEN = null; setRank(rpid, +rp.getAttribute("data-rank")); return; }
-    if (RANK_OPEN && !e.target.closest(".rankpop") && !e.target.closest("[data-act=\"rank\"]")) { RANK_OPEN = null; renderCols(); renderFive(); }
     var seg = e.target.closest("[data-pri]");
     if (seg) { patch(keyOf(seg), { pri: seg.getAttribute("data-pri") }); renderCols(); return; }
     var act = e.target.closest("[data-act]");
@@ -1309,17 +1256,16 @@
     if (a === "tdrop") { removeTarget(act.closest("[data-tkey]").getAttribute("data-tkey")); renderAll(); return; }
 
     var key = keyOf(act);
-    if (a === "rank") { RANK_OPEN = RANK_OPEN === key ? null : key; renderCols(); renderFive(); return; }
     if (a === "open") { detailOpen[key] = !detailOpen[key]; OPENING = detailOpen[key] ? key : null; renderCols(); OPENING = null; return; }
     if (a === "off") {
       /* flagged or starred blocks go on a 24h hold: parked in the backlog, auto-return tomorrow */
-      var eOff = getEntry(key), hold = !!eOff.upd || isTarget(key), rk = isTarget(key) ? targetOrder.indexOf(key) : -1;
-      patch(key, hold ? { active: false, holdUntil: Date.now() + 864e5, holdStar: isTarget(key), holdRank: rk } : { active: false });
+      var eOff = getEntry(key), hold = !!eOff.upd || isTarget(key);
+      patch(key, hold ? { active: false, holdUntil: Date.now() + 864e5, holdStar: isTarget(key) } : { active: false });
       removeTarget(key); detailOpen[key] = false; renderAll();
-      if (hold) { var nxt = kindOf(key) === "app" && rk === 0 ? rankedApps()[0] : null; toast("On hold \u2014 back in 24 hours" + (rk >= 0 ? " at #" + (rk + 1) : "") + "." + (nxt ? " " + labelFor(nxt).name + " is Must now." : "")); }
+      if (hold) toast("On hold \u2014 back in This Week in 24 hours.");
       return;
     }
-    if (a === "on") { var eOn = getEntry(key); patch(key, { active: true, holdUntil: null, holdStar: false, holdRank: null }); if (eOn.holdStar) addTargetAt(key, eOn.holdRank); renderAll(); return; }
+    if (a === "on") { var eOn = getEntry(key); patch(key, { active: true, holdUntil: null, holdStar: false }); if (eOn.holdStar) addTarget(key); renderAll(); return; }
     if (a === "linkopen") {
       var itO = itemById(key), rowO = e.target.closest(".lrow"), lO = itO && rowO && (itO.links || [])[+rowO.getAttribute("data-lix")];
       if (lO) openLocalPath(lO.url);
@@ -1433,12 +1379,12 @@
     Object.keys(entries).forEach(function (k) {
       var en = entries[k];
       if (!en || en.active || !en.holdUntil || en.holdUntil > now) return;
-      var wasStar = !!en.holdStar, hr = en.holdRank;
-      patch(k, { active: true, holdUntil: null, holdStar: false, holdRank: null });
-      if (wasStar) addTargetAt(k, hr);
+      var wasStar = !!en.holdStar;
+      patch(k, { active: true, holdUntil: null, holdStar: false });
+      if (wasStar) addTarget(k);
       freed++;
     });
-    if (freed) { renderAll(); toast(freed === 1 ? "Hold expired \u2014 back in This Week at its old rank." : freed + " holds expired \u2014 back in This Week at their old ranks."); }
+    if (freed) { renderAll(); toast(freed === 1 ? "Hold expired \u2014 task is back in This Week." : freed + " holds expired \u2014 tasks are back in This Week."); }
   }
   document.addEventListener("change", function (e) {
     if (!(e.target.getAttribute && e.target.getAttribute("data-act") === "gen")) return;
@@ -1511,9 +1457,6 @@
 
   /* ---- disclosure ---- */
   function wireDisclosure(headId, wrapId) { var h = $(headId); if (h) h.addEventListener("click", function () { $(wrapId).classList.toggle("open"); }); }
-
-  document.addEventListener("click", function (e) { if (e.target.id === "buildSheet") closeBuildSheet(); });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && BS_ID) closeBuildSheet(); });
 
   /* ---- toast ---- */
   var toastT;
@@ -1941,7 +1884,7 @@
       var before = afterEl(grid, e.clientX, "x", ".tcard[data-tkey]");
       var cur = targetOrder.slice(), from = cur.indexOf(DRAG.id); if (from < 0) return; cur.splice(from, 1);
       var at = before ? cur.indexOf(before.getAttribute("data-tkey")) : cur.length; if (at < 0) at = cur.length;
-      cur.splice(at, 0, DRAG.id); targetOrder = cur; save(); cloudPushBoard(); syncRanks(); renderFive(); renderCols();
+      cur.splice(at, 0, DRAG.id); targetOrder = cur; save(); cloudPushBoard(); renderFive();
     });
 
     // Active columns — drop to activate (if needed) + reorder
@@ -2112,11 +2055,10 @@
   function hTaskRow(o) {
     var it = itemById(o.itemId), k = kindOf(o.itemId);
     var chip = k === "study" ? "Study" : k === "office" ? "Office" : "App";
-    var role = o.rank ? rankRole(o.rank) : "";
-    return '<div class="trow' + (o.done ? " done" : "") + (o.will ? " will" : "") + (o.rank === 1 ? " must" : "") + '">' +
-      (o.will ? '<span class="hcheck hwill" aria-hidden="true"></span>' : '<button class="hcheck' + (o.done ? " on" : "") + '" data-hact="' + o.act + '" data-hkey="' + esc(o.key || o.itemId) + '" aria-label="Toggle done">' + HIC.check + "</button>") +
+    return '<div class="trow' + (o.done ? " done" : "") + '">' +
+      '<button class="hcheck' + (o.done ? " on" : "") + '" data-hact="' + o.act + '" data-hkey="' + esc(o.key || o.itemId) + '" aria-label="Toggle done">' + HIC.check + "</button>" +
       '<div class="tmain"><div class="hname">' + esc(labelFor(o.itemId).name) + "</div>" +
-      '<div class="hsub">' + (o.rank ? '<span class="hchip rank rk-' + (role || "x").toLowerCase() + '">#' + o.rank + (role ? " " + role : "") + "</span>" : "") + '<span class="hchip ' + k + '">' + chip + "</span>" +
+      '<div class="hsub"><span class="hchip ' + k + '">' + chip + "</span>" +
       (o.star ? '<span class="hstar" title="Weekly target">\u2605</span>' : "") +
       linkChips(it && it.links) + "</div></div>" +
       (o.removable ? '<button class="hdel" data-hact="sdel" data-hkey="' + esc(o.key) + '" aria-label="Remove">' + IC.trash + "</button>" : "") +
@@ -2349,73 +2291,6 @@
       (r.od ? '<span class="hchip odflag">OVERDUE' + (odDays > 0 ? " \u00b7 " + odDays + (odDays === 1 ? " day" : " days") : " \u00b7 today") + "</span>" : r.asap ? '<span class="hchip asapflag">' + IC.flag + "ASAP</span>" : "") +
       '<span class="hsrc">' + esc(r.it.name) + "</span>" + chip + subModeTag(r.x) + "</div></div></div>";
   }
-  /* ---- Build band (v52): ranked apps at the top of Today. Must + Can x4 + Will ---- */
-  function bandOn() { return getMode() !== "office"; }
-  function renderBuildBand() {
-    var host = $("buildBand"); if (!host) return;
-    var head = host.previousElementSibling;
-    if (!bandOn()) { host.style.display = "none"; if (head) head.style.display = "none"; return; }
-    host.style.display = ""; if (head) head.style.display = "";
-    var ranked = rankedApps();
-    if (!ranked.length) {
-      if ($("buildCount")) $("buildCount").textContent = "";
-      host.innerHTML = '<div class="bb-none">No apps in This Week yet \u2014 star up to five on the Week tab and they show up here, ranked.</div>';
-      return;
-    }
-    if ($("buildCount")) $("buildCount").textContent = "#1 of " + ranked.length + " app" + (ranked.length === 1 ? "" : "s");
-    var m0 = ranked[0], cans = ranked.slice(1, 5), will = ranked[5] || null;
-    var pr = subProgress(m0), nx = nextSub(m0);
-    var allDone = targetOrder.length && targetOrder.every(targetDone);
-    var h = '<div class="bb-hero' + (targetDone(m0) ? " done" : "") + '" data-hact="bopen" data-hkey="' + esc(m0) + '">' +
-      '<span class="bb-rk">1</span>' +
-      '<div class="bb-main"><div class="bb-role">Must</div><div class="bb-nm">' + esc(labelFor(m0).name) + '</div>' +
-      (nx ? '<div class="bb-ph">next \u00b7 <b>' + esc(nx) + '</b></div>' : '<div class="bb-ph">no open subtasks \u2014 open it and add the next phase</div>') +
-      (pr ? '<div class="bb-bar" title="' + pr.done + ' of ' + pr.total + ' done"><i style="width:' + Math.round(pr.pct * 100) + '%"></i></div>' : '') +
-      '</div>' +
-      '<div class="bb-acts">' + (pr ? '<span class="bb-n">' + pr.done + '/' + pr.total + '</span>' : '') +
-      '<button class="bb-b" data-hact="bopen" data-hkey="' + esc(m0) + '">Open</button>' +
-      '<button class="bb-b hold" data-hact="bhold" data-hkey="' + esc(m0) + '" title="Park it for 24 hours \u2014 it returns at this rank">Hold 24h</button>' +
-      '</div></div>';
-    if (cans.length) h += '<div class="bb-cans">' + cans.map(function (id, i) {
-      var n = nextSub(id), p2 = subProgress(id);
-      return '<button type="button" class="bb-can' + (targetDone(id) ? " done" : "") + '" data-hact="bopen" data-hkey="' + esc(id) + '">' +
-        '<span class="bb-crk">' + (i + 2) + '</span>' +
-        '<span class="bb-cnm">' + esc(labelFor(id).name) + '</span>' +
-        '<span class="bb-cph">' + (n ? esc(n) : "nothing open") + '</span>' +
-        (p2 ? '<span class="bb-cn">' + p2.done + '/' + p2.total + '</span>' : '') + '</button>';
-    }).join("") + '</div>';
-    if (will) h += '<div class="bb-will" data-hact="bopen" data-hkey="' + esc(will) + '">' +
-      '<span class="bb-wrk">6</span><span class="bb-wtx">Will \u00b7 <b>' + esc(labelFor(will).name) + '</b>' + (nextSub(will) ? ' \u2014 ' + esc(nextSub(will)) : '') + '</span>' +
-      '<span class="bb-wt">moves up when a slot frees</span></div>';
-    if (allDone) h += '<div class="bb-clear">\u2713 All five targets cleared this week.</div>';
-    host.innerHTML = h;
-  }
-
-  /* ---- Build sheet: the Week-tab detail panel, opened over Today ---- */
-  var BS_ID = null;
-  function openBuildSheet(id) {
-    if (!itemById(id)) return;
-    BS_ID = id; detailOpen[id] = true;
-    paintBuildSheet();
-    $("buildSheet").classList.add("open");
-  }
-  function paintBuildSheet() {
-    var id = BS_ID; if (!id) return;
-    var lab = labelFor(id), r = rankOf(id), role = rankRole(r), pr = subProgress(id);
-    $("bsHead").innerHTML = '<span class="bs-rk' + (r === 1 ? " must" : "") + '">' + (r || "\u00b7") + '</span>' +
-      '<div class="bs-t"><div class="bs-cr">' + esc(lab.crumb || "App") + (role ? " \u00b7 " + role : "") + '</div><div class="bs-nm">' + esc(lab.name) + '</div></div>' +
-      (pr ? '<span class="bs-n">' + pr.done + '/' + pr.total + '</span>' : '<span></span>') +
-      '<button class="bs-x" data-hact="bclose" title="Close">\u00d7</button>';
-    $("bsBody").innerHTML = '<div class="item open bs-item" data-key="' + esc(id) + '" data-kind="' + kindOf(id) + '">' + detailHtml(id) + '</div>';
-  }
-  function closeBuildSheet() { if (BS_ID) detailOpen[BS_ID] = false; BS_ID = null; var b = $("buildSheet"); if (b) b.classList.remove("open"); }
-  function refreshBuildSheet() {
-    if (!BS_ID) return;
-    var box = $("bsBody"); if (!box) return;
-    if (box.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
-    paintBuildSheet();
-  }
-
   function renderTodayScreen() {
     var host = $("todayRows"); if (!host) return;
     var mode = getMode(), t = hTodayIso();
@@ -2451,9 +2326,8 @@
     /* 4 \u2014 weekly targets */
     targetOrder.forEach(function (id) {
       if (modeOf(id) !== mode) return;
-      if (kindOf(id) === "app" && bandOn()) return;   // apps live in the Build band above
       total++; if (targetDone(id)) done++;
-      rows.push(hTaskRow({ itemId: id, done: targetDone(id), star: true, act: "ttoggle", rank: kindOf(id) === "app" ? rankOf(id) : 0 }));
+      rows.push(hTaskRow({ itemId: id, done: targetDone(id), star: true, act: "ttoggle" }));
     });
     /* 5 \u2014 tasks scheduled onto today from the Calendar tab */
     schedList(t, mode).forEach(function (s) {
@@ -2707,7 +2581,7 @@
   /* ---------------- MODE + TABS + WIRING ---------------- */
   function renderHome() {
     if (!$("scrToday")) return;
-    renderBuildBand(); renderTodayScreen(); renderCalScreen(); renderRoutinesScreen(); renderPlaces(); renderChats();
+    renderTodayScreen(); renderCalScreen(); renderRoutinesScreen(); renderPlaces(); renderChats();
   }
 
   function applyMode(mode, focusSeg) {
@@ -2778,11 +2652,10 @@
     { k: "vchat", l: "Chats", one: "chat", emo: "\ud83d\udcac", hue: 255, fs: [{ k: "t", l: "Topic" }, { k: "url", l: "Chat link", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
     { k: "addr", l: "Addresses", one: "address", emo: "\ud83c\udfe0", hue: 145, fs: [{ k: "t", l: "Label (Home, Office\u2026)" }, { k: "name", l: "Name" }, { k: "a1", l: "Street / building", tp: "ta" }, { k: "city", l: "City & PIN" }, { k: "ph", l: "Phone" }, { k: "note", l: "Notes", tp: "ta" }] },
     { k: "link", l: "Links", one: "link", emo: "\ud83d\udd17", hue: 210, fs: [{ k: "t", l: "Label" }, { k: "url", l: "URL", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "login", l: "Logins & passwords", one: "login", emo: "\ud83d\udd11", hue: 45, sb: "Password", sl: "Copy the password only", fs: [{ k: "t", l: "Site / app" }, { k: "user", l: "Username / email", cl: "User" }, { k: "pw", l: "Password", tp: "pass" }, { k: "url", l: "Login page", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "bank", l: "Bank (India)", one: "account", emo: "\ud83c\udfe6", hue: 160, sb: "Account no", sl: "Copy the account number only", fs: [{ k: "t", l: "Label (bank & account)" }, { k: "holder", l: "Account holder", cl: "Account holder" }, { k: "acc", l: "Account number", tp: "pass" }, { k: "ifsc", l: "IFSC / SWIFT", cl: "IFSC" }, { k: "branch", l: "Branch", cl: "Branch" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "bankjp", l: "Bank (Japan)", one: "account", emo: "\u26e9\ufe0f", hue: 350, sb: "Account no", sl: "Copy the account number only", fs: [{ k: "t", l: "Label (bank & account)" }, { k: "bank", l: "Bank name \u9280\u884c\u540d", cl: "Bank" }, { k: "bcode", l: "Bank code \u91d1\u878d\u6a5f\u95a2\u30b3\u30fc\u30c9 (4 digits)", cl: "Bank code" }, { k: "branch", l: "Branch name \u652f\u5e97\u540d", cl: "Branch" }, { k: "brcode", l: "Branch code \u652f\u5e97\u30b3\u30fc\u30c9 (3 digits)", cl: "Branch code" }, { k: "type", l: "Account type \u53e3\u5ea7\u79cb\u76ee", tp: "sel", opts: ["\u666e\u901a Futsu (ordinary)", "\u5f53\u5ea7 Toza (checking)", "\u8caf\u84c4 Chochiku (savings)"], cl: "Type" }, { k: "acc", l: "Account number \u53e3\u5ea7\u756a\u53f7 (7 digits)", tp: "pass" }, { k: "holder", l: "Account holder \u53e3\u5ea7\u540d\u7fa9 (katakana)", cl: "Holder" }, { k: "note", l: "Notes", tp: "ta" }] },
+    { k: "login", l: "Logins & passwords", one: "login", emo: "\ud83d\udd11", hue: 45, fs: [{ k: "t", l: "Site / app" }, { k: "user", l: "Username / email" }, { k: "pw", l: "Password", tp: "pass" }, { k: "url", l: "Login page", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
+    { k: "bank", l: "Bank details", one: "account", emo: "\ud83c\udfe6", hue: 160, fs: [{ k: "t", l: "Label (bank & account)" }, { k: "holder", l: "Account holder" }, { k: "acc", l: "Account number", tp: "pass" }, { k: "ifsc", l: "IFSC / SWIFT" }, { k: "branch", l: "Branch" }, { k: "note", l: "Notes", tp: "ta" }] },
     { k: "implink", l: "Important links", one: "link", emo: "\ud83d\udccc", hue: 20, fs: [{ k: "t", l: "Label (Netbanking, Tax portal\u2026)" }, { k: "url", l: "URL", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "card", l: "Cards", one: "card", emo: "\ud83d\udcb3", hue: 305, sb: "Number + CVV", sl: "Copy the card number and CVV only", fs: [{ k: "t", l: "Card label (HDFC Visa\u2026)" }, { k: "num", l: "Card number", tp: "pass" }, { k: "nm", l: "Name on card" }, { k: "exp", l: "Expiry (MM/YY)", cl: "Exp" }, { k: "cvv", l: "CVV", tp: "pass", cl: "CVV" }, { k: "note", l: "Notes", tp: "ta" }] }
+    { k: "card", l: "Cards", one: "card", emo: "\ud83d\udcb3", hue: 305, fs: [{ k: "t", l: "Card label (HDFC Visa\u2026)" }, { k: "num", l: "Card number", tp: "pass" }, { k: "nm", l: "Name on card" }, { k: "exp", l: "Expiry (MM/YY)" }, { k: "cvv", l: "CVV", tp: "pass" }, { k: "note", l: "Notes", tp: "ta" }] }
   ];
   function vcat(k) { for (var i = 0; i < VCATS.length; i++) if (VCATS[i].k === k) return VCATS[i]; return null; }
   function vaultArr() { if (!Array.isArray(meta.cvault)) meta.cvault = []; return meta.cvault; }
@@ -2809,22 +2682,16 @@
   }
   function vRowHtml(c, it) {
     var f = it.f || {};
-    var hasSec = false;
-    c.fs.forEach(function (fd) { if (fd.tp === "pass" && String(f[fd.k] || "").trim()) hasSec = true; });
     var body = c.fs.filter(function (fd) { return fd.k !== "t" && String(f[fd.k] || "").trim(); }).map(function (fd) {
       var raw = f[fd.k], sec = fd.tp === "pass", open = VREVEAL[it.id + "|" + fd.k];
       var val = sec && !open ? vMask(raw) : esc(raw);
       var acts = "";
-      if (sec) acts += '<button class="v-ico" data-vact="reveal" data-vf="' + fd.k + '" title="' + (open ? "Hide again" : "Show the real value") + '">' + (open ? "Hide" : "Show") + '</button>';
-      acts += '<button class="v-ico" data-vact="copy" data-vf="' + fd.k + '" title="Copy this field">Copy</button>';
+      if (sec) acts += '<button class="v-ico" data-vact="reveal" data-vf="' + fd.k + '" title="' + (open ? "Hide" : "Show") + '">' + (open ? "\ud83d\ude48" : "\ud83d\udc41") + '</button>';
+      acts += '<button class="v-ico" data-vact="copy" data-vf="' + fd.k + '" title="Copy">\u2398</button>';
       if (fd.tp === "url") acts += '<a class="tbtn chat-open v-open" href="' + esc(/^https?:\/\//i.test(raw) ? raw : "https://" + raw) + '" target="_blank" rel="noopener">Open \u2197</a>';
       return '<div class="v-f' + (fd.tp === "ta" ? " ta" : "") + '"><span class="v-k">' + esc(fd.l) + '</span><span class="v-v' + (sec ? " sec" : "") + '">' + val + '</span><span class="v-acts">' + acts + '</span></div>';
     }).join("");
-    var head = '<div class="v-head"><span class="v-emo">' + c.emo + '</span><span class="v-title">' + esc(f.t || "Untitled") + '</span>' +
-      '<button class="v-cta" data-vact="copyall" title="Copy the whole record' + (hasSec ? " \u2014 without secrets" : "") + '">Copy all</button>' +
-      (hasSec ? '<button class="v-cta sec" data-vact="copysec" title="' + esc(c.sl || "Copy the secret only") + ' \u2014 clipboard clears after 60s">' + esc(c.sb || "Secret") + '</button>' : '') +
-      '<button class="v-ico" data-vact="edit" title="Edit this item">Edit</button><button class="sub-del" data-vact="vdel" title="Delete">\u00d7</button></div>';
-    return '<li class="vault-item" data-vid="' + esc(it.id) + '" style="border-color:oklch(0.9 0.04 ' + c.hue + ')">' + head + (body ? '<div class="v-fields">' + body + '</div>' : "") + '</li>';
+    return '<li class="vault-item" data-vid="' + esc(it.id) + '" style="border-color:oklch(0.9 0.04 ' + c.hue + ')"><div class="v-head"><span class="v-emo">' + c.emo + '</span><span class="v-title">' + esc(f.t || "Untitled") + '</span><button class="v-ico" data-vact="edit" title="Edit">\u270e</button><button class="sub-del" data-vact="vdel" title="Delete">\u00d7</button></div>' + (body ? '<div class="v-fields">' + body + '</div>' : "") + '</li>';
   }
   var VM_CAT = null, VM_ID = null;
   function openVaultModal(catK, it) {
@@ -2834,9 +2701,7 @@
     var f = (it && it.f) || {};
     $("vmBody").innerHTML = c.fs.map(function (fd) {
       var v = esc(f[fd.k] || "");
-      var inp = fd.tp === "ta" ? '<textarea id="vmF_' + fd.k + '" rows="2">' + v + '</textarea>' :
-        fd.tp === "sel" ? '<select id="vmF_' + fd.k + '"><option value="">\u2014</option>' + (fd.opts || []).map(function (o) { return '<option value="' + esc(o) + '"' + (o === (f[fd.k] || "") ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' :
-        '<input id="vmF_' + fd.k + '" type="text" autocomplete="off" value="' + v + '">';
+      var inp = fd.tp === "ta" ? '<textarea id="vmF_' + fd.k + '" rows="2">' + v + '</textarea>' : '<input id="vmF_' + fd.k + '" type="text" autocomplete="off" value="' + v + '">';
       return '<div class="cfield"><label>' + esc(fd.l) + '</label>' + inp + '</div>';
     }).join("");
     $("vmDelete").style.display = it ? "" : "none";
@@ -2844,36 +2709,10 @@
     setTimeout(function () { var fi = $("vmF_t"); if (fi) fi.focus(); }, 50);
   }
   function closeVaultModal() { var m = $("vaultModal"); if (m) m.classList.remove("open"); VM_CAT = VM_ID = null; }
-  function vCopyText(c, it, secretsOnly) {
-    var f = it.f || {}, lines = [];
-    if (!secretsOnly && String(f.t || "").trim()) lines.push(String(f.t).trim());
-    c.fs.forEach(function (fd) {
-      if (fd.k === "t") return;
-      var v = String(f[fd.k] || "").trim(); if (!v) return;
-      if (secretsOnly !== (fd.tp === "pass")) return;
-      lines.push(fd.cl ? fd.cl + ": " + v : v);
-    });
-    return lines.join("\n");
+  function vCopy(txt) {
+    try { navigator.clipboard.writeText(txt).then(function () { toast("Copied \u2713"); }, function () { toast("Couldn't copy"); }); }
+    catch (e) { var ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Copied \u2713"); } catch (e2) {} document.body.removeChild(ta); }
   }
-  var VCLR = null;
-  function vArmClear(txt) {
-    if (VCLR) clearTimeout(VCLR);
-    VCLR = setTimeout(function () {
-      VCLR = null;
-      try {
-        navigator.clipboard.readText().then(function (cur) {
-          if (cur === txt) navigator.clipboard.writeText(" ").then(function () { toast("Clipboard cleared"); }, function () {});
-        }, function () {});
-      } catch (e) {}
-    }, 60000);
-  }
-  function vCopy(txt, secret) {
-    txt = String(txt || ""); if (!txt) { toast("Nothing to copy"); return; }
-    function ok() { toast(secret ? "Copied \u2014 clears in 60s" : "Copied \u2713"); if (secret) vArmClear(txt); }
-    try { navigator.clipboard.writeText(txt).then(ok, function () { toast("Couldn't copy"); }); }
-    catch (e) { var ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); ok(); } catch (e2) {} document.body.removeChild(ta); }
-  }
-
   function renderChats() {
     var host = $("chatList"); if (!host) return;
     var arr = chatsArr().slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
@@ -3018,12 +2857,9 @@
         vaultArr().forEach(function (x) { if (x.id === vid) vit = x; }); if (!vit) return;
         if (va === "edit") { openVaultModal(vit.cat, vit); return; }
         if (va === "vdel") { if (confirm("Delete \u201c" + ((vit.f || {}).t || "this item") + "\u201d?")) { meta.cvault = vaultArr().filter(function (x) { return x.id !== vid; }); saveChats(); renderChats(); } return; }
-        var vc = vcat(vit.cat);
-        if (va === "copyall") { if (vc) vCopy(vCopyText(vc, vit, false), false); return; }
-        if (va === "copysec") { if (vc) vCopy(vCopyText(vc, vit, true), true); return; }
         var vf = vb.getAttribute("data-vf");
         if (va === "reveal") { var vkk = vid + "|" + vf; VREVEAL[vkk] = !VREVEAL[vkk]; renderChats(); return; }
-        if (va === "copy") { var vfd = null; if (vc) vc.fs.forEach(function (x) { if (x.k === vf) vfd = x; }); vCopy(String((vit.f || {})[vf] || ""), !!(vfd && vfd.tp === "pass")); return; }
+        if (va === "copy") { vCopy(String((vit.f || {})[vf] || "")); return; }
         return;
       }
       var fh = e.target.closest("[data-cfold]");
@@ -3204,16 +3040,6 @@
     document.addEventListener("click", function (e) {
       var el = e.target.closest("[data-hact]"); if (!el) return;
       var a = el.getAttribute("data-hact"), k = el.getAttribute("data-hkey");
-      if (a === "bopen") { openBuildSheet(k); return; }
-      if (a === "bclose") { closeBuildSheet(); return; }
-      if (a === "bhold") {
-        var rkH = isTarget(k) ? targetOrder.indexOf(k) : -1;
-        patch(k, { active: false, holdUntil: Date.now() + 864e5, holdStar: isTarget(k), holdRank: rkH });
-        removeTarget(k); if (BS_ID === k) closeBuildSheet(); renderAll();
-        var nx2 = rankedApps()[0];
-        toast("On hold \u2014 back in 24 hours" + (rkH >= 0 ? " at #" + (rkH + 1) : "") + "." + (nx2 ? " " + labelFor(nx2).name + " is Must now." : ""));
-        return;
-      }
       if (a === "day") { hSel = k; renderCalScreen(); return; }
       if (a === "ttoggle") { patch(k, { targetDone: !targetDone(k) }); renderPulse(); renderFive(); renderTodayScreen(); return; }
       if (a === "stoggle") { patch(k, { done: !(entries[k] && entries[k].done) }); renderTodayScreen(); renderCalScreen(); return; }
