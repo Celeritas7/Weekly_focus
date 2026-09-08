@@ -86,6 +86,12 @@
         <span class="count" id="buildCount"></span>
       </div>
       <div class="buildband" id="buildBand"></div>
+      <div class="sec-head hsec" id="studyHead">
+        <span class="k">Study</span>
+        <span class="sub">what you learn today</span>
+        <span class="count" id="studyCount"></span>
+      </div>
+      <div class="buildband studyband" id="studyBand"></div>
       <div class="sec-head hsec" id="topTasksHead">
         <span class="k">Top Tasks</span>
         <span class="sub">weekly targets + today&rsquo;s schedule</span>
@@ -131,6 +137,19 @@
   <section class="screen" id="scrRoutines" data-screen-label="Routines">
     <div class="hone">
       <div class="sec-head hsec">
+        <span class="k">Wishlist</span>
+        <span class="sub">buy this at that shop</span>
+        <span class="count" id="wishCount"></span>
+        <span class="seg wseg" id="wishSeg"><button type="button" class="on" data-hact="wview" data-hkey="boxes">Boxes</button><button type="button" data-hact="wview" data-hkey="flow">Flow</button></span>
+      </div>
+      <div class="wish-add">
+        <textarea id="wishInp" rows="1" placeholder="Nitori: coffee mug &mdash; or just: batteries (lands in Unsorted)"></textarea>
+        <button class="tbtn primary" id="wishAdd">Add</button>
+      </div>
+      <div class="wish-hint"><b>Shop: a, b, c</b> adds three. No colon &rarr; Unsorted tray. Paste a whole list &mdash; every line is added.</div>
+      <div class="wtray" id="wishTray"></div>
+      <div class="wishrows" id="wishRows"></div>
+      <div class="sec-head hsec" style="margin-top:28px;">
         <span class="k">Daily Routines</span>
         <span class="sub">streaks &middot; quick links</span>
         <span class="count" id="routineCount">0/0</span>
@@ -397,6 +416,15 @@
       <button class="tbtn primary" id="rtSave">Save</button>
       <button class="tbtn" id="rtClose">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- ===================== WISHLIST SHOP SHEET ===================== -->
+<div class="modal-bg bsheet-bg" id="wishSheet">
+  <div class="bsheet wsheet" id="wsBox">
+    <div class="bsheet-grab"></div>
+    <div class="wsh-head" id="wsHead"></div>
+    <div class="bsheet-body" id="wsBody"></div>
   </div>
 </div>
 

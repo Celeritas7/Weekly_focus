@@ -1512,8 +1512,16 @@
   /* ---- disclosure ---- */
   function wireDisclosure(headId, wrapId) { var h = $(headId); if (h) h.addEventListener("click", function () { $(wrapId).classList.toggle("open"); }); }
 
-  document.addEventListener("click", function (e) { if (e.target.id === "buildSheet") closeBuildSheet(); });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && BS_ID) closeBuildSheet(); });
+  document.addEventListener("click", function (e) { if (e.target.closest("#wishAdd")) wishAddFromInput(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey && e.target && e.target.id === "wishInp") { e.preventDefault(); wishAddFromInput(); } });
+  document.addEventListener("click", function (e) { if (e.target.id === "buildSheet") closeBuildSheet(); if (e.target.id === "wishSheet") closeWishSheet(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && WS_SHOP) closeWishSheet(); if (e.key === "Enter" && e.target && e.target.id === "wsMoveNew") { e.preventDefault(); var g = e.target.parentNode.querySelector("[data-hact=wmovenew]"); if (g) g.click(); } if (e.key === "Enter" && e.target && e.target.id === "wsInp") { e.preventDefault(); var b = e.target.parentNode.querySelector("[data-hact=wsadd]"); if (b) b.click(); } });
+  document.addEventListener("dragstart", function (e) { var c = e.target.closest && e.target.closest("[data-wid]"); if (!c) return; e.dataTransfer.setData("text/plain", c.getAttribute("data-wid")); WISH_SEL = null; });
+  document.addEventListener("dragover", function (e) { var t = e.target.closest && e.target.closest("[data-wshop]"); if (!t) return; e.preventDefault(); t.classList.add("drop"); });
+  document.addEventListener("dragleave", function (e) { var t = e.target.closest && e.target.closest("[data-wshop]"); if (t) t.classList.remove("drop"); });
+  document.addEventListener("drop", function (e) { var t = e.target.closest && e.target.closest("[data-wshop]"); if (!t) return; e.preventDefault(); t.classList.remove("drop"); var id = e.dataTransfer.getData("text/plain"); if (id) wAssign(id, t.getAttribute("data-wshop")); });
+  window.addEventListener("resize", function () { if (WISH_VIEW === "flow") wPlaceWalker(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && BS_ID) closeBuildSheet(); if ((e.key === "Enter" || e.key === " ") && e.target && e.target.classList && e.target.classList.contains("bhero")) { e.preventDefault(); openBuildSheet(e.target.getAttribute("data-hkey")); } });
 
   /* ---- toast ---- */
   var toastT;
@@ -2193,7 +2201,10 @@
     var why = near ? '<span class="hchip nearby">' + HIC.pin + "you're nearby" + "</span>" : planned ? '<span class="hchip planned">planned today</span>' : "";
     var list = items.map(function (i) {
       return '<label class="plitem' + (dn[i.id] ? " done" : "") + '"><button class="sub-check' + (dn[i.id] ? " on" : "") + '" data-hact="plitem" data-hkey="' + esc(p.id) + '" data-hsid="' + esc(i.id) + '" aria-label="done"></button><span>' + esc(i.t) + "</span></label>";
-    }).join("") || '<span class="pl-none">List is empty — edit the place to add items.</span>';
+    }).join("");
+    var wl = wishFor(p.name);
+    if (wl.length) list += '<div class="pl-wish"><span class="pl-wk">Wishlist</span>' + wl.map(wishItemRow).join("") + '</div>';
+    if (!list) list = '<span class="pl-none">List is empty \u2014 edit the place to add items.</span>';
     var plans = onToday ? "" :
       '<div class="pl-plan">' +
       '<button class="chip' + (planned ? " on" : "") + '" data-hact="plplan" data-hkey="' + esc(p.id) + '">' + (planned ? "Planned today \u2713" : "Going today") + "</button>" +
@@ -2351,44 +2362,54 @@
   }
   /* ---- Build band (v52): ranked apps at the top of Today. Must + Can x4 + Will ---- */
   function bandOn() { return getMode() !== "office"; }
+  function bHue(id) { var n = labelFor(id).name || String(id), h = 0; for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0; return h % 360; }
+  function bMono(id) { var n = String(labelFor(id).name || "").replace(/[^A-Za-z0-9\u3040-\u30ff\u4e00-\u9faf]/g, ""); return n ? esc(n.slice(0, 2)) : "\u2022"; }
+  function bFill(id) { var p = subProgress(id); return p ? Math.round(p.pct * 100) : (targetDone(id) ? 100 : 0); }
+  function bTile(id, o) {
+    var pr = subProgress(id), nx = nextSub(id), done = targetDone(id);
+    return '<button type="button" class="btile' + (done ? " done" : "") + '" style="--h:' + bHue(id) + ';--fill:' + bFill(id) + '%" data-hact="bopen" data-hkey="' + esc(id) + '">' +
+      '<div class="bt-top">' + (o.rank ? '<span class="bt-rk">' + o.rank + '</span>' : '') + '<span class="bt-gl">' + bMono(id) + '</span>' +
+      (pr ? '<span class="bt-pill' + (done ? "" : " soft") + '">' + (done ? "\u2713 " : "") + pr.done + '/' + pr.total + '</span>' : (o.star ? '<span class="bt-pill soft">\u2605 target</span>' : '')) + '</div>' +
+      (o.role ? '<div class="bt-role">' + o.role + '</div>' : '') +
+      '<div class="bt-nm">' + esc(labelFor(id).name) + '</div>' +
+      '<div class="bt-nx">' + (done ? "done for the week" : nx ? esc(nx) : "no open subtasks") + '</div></button>';
+  }
   function renderBuildBand() {
     var host = $("buildBand"); if (!host) return;
     var head = host.previousElementSibling;
-    if (!bandOn()) { host.style.display = "none"; if (head) head.style.display = "none"; return; }
+    if (!bandOn()) { host.style.display = "none"; if (head) head.style.display = "none"; renderStudyBand(); return; }
     host.style.display = ""; if (head) head.style.display = "";
     var ranked = rankedApps();
     if (!ranked.length) {
       if ($("buildCount")) $("buildCount").textContent = "";
       host.innerHTML = '<div class="bb-none">No apps in This Week yet \u2014 star up to five on the Week tab and they show up here, ranked.</div>';
-      return;
+      renderStudyBand(); return;
     }
-    if ($("buildCount")) $("buildCount").textContent = "#1 of " + ranked.length + " app" + (ranked.length === 1 ? "" : "s");
+    if ($("buildCount")) $("buildCount").textContent = "#1 of " + ranked.length;
     var m0 = ranked[0], cans = ranked.slice(1, 5), will = ranked[5] || null;
-    var pr = subProgress(m0), nx = nextSub(m0);
-    var allDone = targetOrder.length && targetOrder.every(targetDone);
-    var h = '<div class="bb-hero' + (targetDone(m0) ? " done" : "") + '" data-hact="bopen" data-hkey="' + esc(m0) + '">' +
-      '<span class="bb-rk">1</span>' +
-      '<div class="bb-main"><div class="bb-role">Must</div><div class="bb-nm">' + esc(labelFor(m0).name) + '</div>' +
-      (nx ? '<div class="bb-ph">next \u00b7 <b>' + esc(nx) + '</b></div>' : '<div class="bb-ph">no open subtasks \u2014 open it and add the next phase</div>') +
-      (pr ? '<div class="bb-bar" title="' + pr.done + ' of ' + pr.total + ' done"><i style="width:' + Math.round(pr.pct * 100) + '%"></i></div>' : '') +
-      '</div>' +
-      '<div class="bb-acts">' + (pr ? '<span class="bb-n">' + pr.done + '/' + pr.total + '</span>' : '') +
-      '<button class="bb-b" data-hact="bopen" data-hkey="' + esc(m0) + '">Open</button>' +
-      '<button class="bb-b hold" data-hact="bhold" data-hkey="' + esc(m0) + '" title="Park it for 24 hours \u2014 it returns at this rank">Hold 24h</button>' +
-      '</div></div>';
-    if (cans.length) h += '<div class="bb-cans">' + cans.map(function (id, i) {
-      var n = nextSub(id), p2 = subProgress(id);
-      return '<button type="button" class="bb-can' + (targetDone(id) ? " done" : "") + '" data-hact="bopen" data-hkey="' + esc(id) + '">' +
-        '<span class="bb-crk">' + (i + 2) + '</span>' +
-        '<span class="bb-cnm">' + esc(labelFor(id).name) + '</span>' +
-        '<span class="bb-cph">' + (n ? esc(n) : "nothing open") + '</span>' +
-        (p2 ? '<span class="bb-cn">' + p2.done + '/' + p2.total + '</span>' : '') + '</button>';
-    }).join("") + '</div>';
-    if (will) h += '<div class="bb-will" data-hact="bopen" data-hkey="' + esc(will) + '">' +
-      '<span class="bb-wrk">6</span><span class="bb-wtx">Will \u00b7 <b>' + esc(labelFor(will).name) + '</b>' + (nextSub(will) ? ' \u2014 ' + esc(nextSub(will)) : '') + '</span>' +
-      '<span class="bb-wt">moves up when a slot frees</span></div>';
-    if (allDone) h += '<div class="bb-clear">\u2713 All five targets cleared this week.</div>';
+    var pr = subProgress(m0), nx = nextSub(m0), done0 = targetDone(m0);
+    var h = '<div class="btile bhero' + (done0 ? " done" : "") + '" role="button" tabindex="0" style="--h:' + bHue(m0) + ';--fill:' + bFill(m0) + '%" data-hact="bopen" data-hkey="' + esc(m0) + '">' +
+      '<span class="bt-rk big">1</span>' +
+      '<div class="bh-main"><div class="bt-role must">Must</div><div class="bt-nm">' + esc(labelFor(m0).name) + '</div>' +
+      '<div class="bt-nx">' + (done0 ? "done for the week \u2713" : nx ? 'next \u00b7 <b>' + esc(nx) + '</b>' : "no open subtasks \u2014 open it and add the next phase") + '</div></div>' +
+      '<div class="bh-acts">' + (pr ? '<span class="bt-pill soft">' + pr.done + ' / ' + pr.total + '</span>' : '') +
+      '<button type="button" class="bt-b go" data-hact="bopen" data-hkey="' + esc(m0) + '">Open</button>' +
+      '<button type="button" class="bt-b hold" data-hact="bhold" data-hkey="' + esc(m0) + '" title="Park it for 24 hours \u2014 it returns at this rank">Hold 24h</button></div></div>';
+    if (cans.length) h += '<div class="bb-cans">' + cans.map(function (id, i) { return bTile(id, { rank: i + 2, role: "Can" }); }).join("") + '</div>';
+    if (will) h += '<div class="bb-will" data-hact="bopen" data-hkey="' + esc(will) + '"><span class="bb-wrk">6</span><span class="bb-wtx">Will \u00b7 <b>' + esc(labelFor(will).name) + '</b>' + (nextSub(will) ? ' \u2014 ' + esc(nextSub(will)) : '') + '</span><span class="bb-wt">moves up when a slot frees</span></div>';
     host.innerHTML = h;
+    renderStudyBand();
+  }
+  /* ---- Study band (v55): starred Study targets, directly under Build ---- */
+  function studyTargets() { return targetOrder.filter(function (k) { return kindOf(k) === "study" && modeOf(k) === getMode(); }); }
+  function renderStudyBand() {
+    var host = $("studyBand"); if (!host) return;
+    var head = host.previousElementSibling, st = studyTargets();
+    if (!st.length) { host.style.display = "none"; if (head) head.style.display = "none"; return; }
+    host.style.display = ""; if (head) head.style.display = "";
+    var d = st.filter(targetDone).length;
+    if ($("studyCount")) $("studyCount").textContent = d + " of " + st.length;
+    host.innerHTML = '<div class="bb-study">' + st.map(function (id) { return bTile(id, { star: true }); }).join("") + '</div>';
   }
 
   /* ---- Build sheet: the Week-tab detail panel, opened over Today ---- */
@@ -2402,7 +2423,8 @@
   function paintBuildSheet() {
     var id = BS_ID; if (!id) return;
     var lab = labelFor(id), r = rankOf(id), role = rankRole(r), pr = subProgress(id);
-    $("bsHead").innerHTML = '<span class="bs-rk' + (r === 1 ? " must" : "") + '">' + (r || "\u00b7") + '</span>' +
+    $("bsBox").style.setProperty("--h", bHue(id));
+    $("bsHead").innerHTML = '<span class="bs-rk' + (r === 1 ? " must" : "") + '">' + (r || bMono(id)) + '</span>' +
       '<div class="bs-t"><div class="bs-cr">' + esc(lab.crumb || "App") + (role ? " \u00b7 " + role : "") + '</div><div class="bs-nm">' + esc(lab.name) + '</div></div>' +
       (pr ? '<span class="bs-n">' + pr.done + '/' + pr.total + '</span>' : '<span></span>') +
       '<button class="bs-x" data-hact="bclose" title="Close">\u00d7</button>';
@@ -2452,6 +2474,7 @@
     targetOrder.forEach(function (id) {
       if (modeOf(id) !== mode) return;
       if (kindOf(id) === "app" && bandOn()) return;   // apps live in the Build band above
+      if (kindOf(id) === "study") return;             // study targets live in the Study band
       total++; if (targetDone(id)) done++;
       rows.push(hTaskRow({ itemId: id, done: targetDone(id), star: true, act: "ttoggle", rank: kindOf(id) === "app" ? rankOf(id) : 0 }));
     });
@@ -2707,7 +2730,7 @@
   /* ---------------- MODE + TABS + WIRING ---------------- */
   function renderHome() {
     if (!$("scrToday")) return;
-    renderBuildBand(); renderTodayScreen(); renderCalScreen(); renderRoutinesScreen(); renderPlaces(); renderChats();
+    renderBuildBand(); renderTodayScreen(); renderCalScreen(); renderRoutinesScreen(); renderWish(); renderPlaces(); renderChats();
   }
 
   function applyMode(mode, focusSeg) {
@@ -2756,6 +2779,185 @@
     return out;
   }
   function saveChats() { save(); cloudPushBoard(); }
+
+  /* ============================================================
+     WISHLIST (v53) — "buy this at that shop". meta.wish rides on
+     the __board row, synced like the Vault. One line per item.
+     ============================================================ */
+  function wishArr() { if (!Array.isArray(meta.wish)) meta.wish = []; return meta.wish; }
+  function saveWish() { save(); cloudPushBoard(); }
+  function wishParse(text) {
+    var out = [];
+    String(text || "").split(/\r?\n/).forEach(function (line) {
+      line = line.trim(); if (!line) return;
+      var ix = line.indexOf(":"), shop = "", rest = line;
+      if (ix > 0) { shop = line.slice(0, ix).trim(); rest = line.slice(ix + 1); }
+      rest.split(",").forEach(function (t) {
+        t = t.trim().replace(/^[-\u2022*]\s*/, ""); if (!t) return;
+        out.push({ id: uid(), shop: shop ? wishShopName(shop) : "", t: t, at: Date.now(), done: false });
+      });
+    });
+    return out;
+  }
+  /* keep one casing per shop: reuse an existing name, a Place name, else as typed */
+  function wishShopName(s) {
+    var low = s.toLowerCase(), hit = null;
+    wishArr().forEach(function (w) { if (!hit && String(w.shop || "").toLowerCase() === low) hit = w.shop; });
+    if (!hit) placeList().forEach(function (p) { if (!hit && String(p.name || "").toLowerCase() === low) hit = p.name; });
+    return hit || s;
+  }
+  function wishAddFromInput() {
+    var el = $("wishInp"); if (!el) return;
+    var items = wishParse(el.value);
+    if (!items.length) { el.focus(); return; }
+    wishArr().push.apply(wishArr(), items);
+    el.value = ""; saveWish(); renderWish(); renderHome();
+    toast(items.length === 1 ? (items[0].shop ? "Added to " + items[0].shop : "Added to Unsorted \u2014 drag it onto a box") : items.length + " items added");
+  }
+  function wishPrune() {
+    wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === "anywhere") w.shop = ""; });
+    var cut = Date.now() - 30 * 864e5, before = wishArr().length;
+    meta.wish = wishArr().filter(function (w) { return !(w.done && (w.doneAt || 0) < cut); });
+    return meta.wish.length !== before;
+  }
+  function wishFor(shopName) {
+    var low = String(shopName || "").toLowerCase();
+    return wishArr().filter(function (w) { return !w.done && String(w.shop || "").toLowerCase() === low; });
+  }
+  /* ---- v54: boxes · journey · unsorted tray · shop sheet ---- */
+  var WISH_VIEW = "boxes", WISH_SEL = null, WS_SHOP = null, WISH_BOUGHT_OPEN = false, WS_MOVE = null;
+  var WEMO = { medical: "\ud83d\udc8a", pharmacy: "\ud83d\udc8a", nitori: "\ud83d\udecb\ufe0f", daiso: "\ud83e\uddfa", amazon: "\ud83d\udce6", "don quijote": "\ud83d\udc27", uniqlo: "\ud83d\udc55", muji: "\ud83e\uddf4", ikea: "\ud83e\ude91", supermarket: "\ud83d\uded2", konbini: "\ud83c\udfea" };
+  function wEmo(n) { return WEMO[String(n || "").toLowerCase()] || "\ud83d\udecd\ufe0f"; }
+  function wHue(n) { var h = 0; n = String(n || ""); for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0; return h % 360; }
+  function wishFlow() { if (!meta.wishFlow || !Array.isArray(meta.wishFlow.stops)) meta.wishFlow = { name: "Next run", stops: [] }; return meta.wishFlow; }
+  function wShops() {
+    var m = {}, order = [];
+    wishArr().forEach(function (w) {
+      var n = String(w.shop || "").trim(); if (!n) return;
+      var k = n.toLowerCase(); if (!m[k]) { m[k] = { name: n, open: 0, all: 0, items: [] }; order.push(k); }
+      m[k].all++; if (!w.done) m[k].open++; m[k].items.push(w);
+    });
+    return order.map(function (k) { return m[k]; });
+  }
+  function wShop(name) { var low = String(name || "").toLowerCase(), hit = null; wShops().forEach(function (s) { if (s.name.toLowerCase() === low) hit = s; }); return hit; }
+  function wOpenOf(name) { var s = wShop(name); return s ? s.open : 0; }
+  function wTileHtml(s, stopState) {
+    var near = wishNear(s.name), full = s.open === 0, fill = s.all ? Math.round((s.all - s.open) / s.all * 100) : 0;
+    var tag = near ? "nearby" : full ? "all bought" : (s.all - s.open) ? (s.all - s.open) + " of " + s.all + " bought" : "to buy";
+    return '<button type="button" class="wtile' + (full ? " full" : "") + (near ? " near" : "") + (WISH_SEL ? " target" : "") + '" style="--h:' + wHue(s.name) + ';--fill:' + fill + '%" data-hact="wtile" data-hkey="' + esc(s.name) + '" data-wshop="' + esc(s.name) + '">' +
+      '<span class="wcnt">' + (full ? "\u2713 " : "") + s.open + '</span><span class="wem">' + wEmo(s.name) + '</span><span class="wnm">' + esc(s.name) + '</span><span class="wtag">' + tag + '</span></button>';
+  }
+  function wChipHtml(w) { return '<button type="button" class="wchip' + (WISH_SEL === w.id ? " sel" : "") + '" draggable="true" data-hact="wchip" data-hkey="' + esc(w.id) + '" data-wid="' + esc(w.id) + '"><span class="g">\u283f</span>' + esc(w.t) + '</button>'; }
+  function renderWishTray() {
+    var host = $("wishTray"); if (!host) return;
+    var un = wishArr().filter(function (w) { return !w.done && !String(w.shop || "").trim(); });
+    if (!un.length) { host.style.display = "none"; host.innerHTML = ""; return; }
+    host.style.display = "";
+    host.innerHTML = '<div class="wtk">Unsorted <b>' + un.length + '</b><span class="wth">' + (WISH_SEL ? "now tap a box to file it" : "drag onto a box, or tap then tap the box") + '</span></div><div class="wchips">' + un.map(wChipHtml).join("") + '</div>';
+  }
+  function renderWish() {
+    var host = $("wishRows"); if (!host) return;
+    if (wishPrune()) saveWish();
+    var S = wShops(), open = wishArr().filter(function (w) { return !w.done; });
+    if ($("wishCount")) $("wishCount").textContent = open.length ? open.length + " to buy" : "";
+    var seg = $("wishSeg"); if (seg) Array.prototype.forEach.call(seg.children, function (b) { b.classList.toggle("on", b.getAttribute("data-hkey") === WISH_VIEW); });
+    renderWishTray();
+    var h = "";
+    if (WISH_VIEW === "boxes") {
+      S.sort(function (a, b) { return (wishNear(b.name) - wishNear(a.name)) || ((a.open === 0) - (b.open === 0)) || (b.open - a.open) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
+      h = S.length ? '<div class="wtiles">' + S.map(function (s) { return wTileHtml(s); }).join("") + '</div>'
+        : '<div class="bb-none">No shops yet \u2014 type <b>Medical: facewash</b> above and press Add.</div>';
+    } else {
+      var fl = wishFlow();
+      fl.stops = fl.stops.filter(function (n) { return !!wShop(n); });
+      var stops = fl.stops, cur = -1;
+      for (var i = 0; i < stops.length; i++) if (wOpenOf(stops[i]) > 0) { cur = i; break; }
+      var tot = 0, done = 0; wishArr().forEach(function (w) { if (stops.some(function (n) { return n.toLowerCase() === String(w.shop || "").toLowerCase(); })) { tot++; if (w.done) done++; } });
+      h += '<div class="wfl-h"><span class="wfl-n">' + esc(fl.name || "Next run") + '</span><span class="wfl-s">' + (stops.length ? stops.length + " stop" + (stops.length > 1 ? "s" : "") + " \u00b7 " + done + " of " + tot + " bought" : "no stops yet \u2014 add from the pool below") + '</span>' +
+        (stops.length ? '<button type="button" class="tbtn" data-hact="wflclear">Clear route</button>' : '') + '</div>';
+      h += '<div class="wjscroll"><div class="wjourney" id="wJourney"><div class="wtrack"><div class="wfillbar' + ((cur <= 0 && !stops.some(function (n) { return wOpenOf(n) === 0; })) ? " empty" : "") + '" id="wFillbar"></div><span class="wwalker" id="wWalker">' + (cur < 0 && stops.length ? "\ud83c\udfc1" : "\ud83d\udeb6") + '</span></div>' +
+        stops.map(function (n, i) {
+          var s = wShop(n), st = s.open === 0 ? "done" : i === cur ? "cur" : "";
+          return '<div class="wstop ' + st + '"><span class="wnode"></span><span class="wnum">' + (st === "done" ? "\u2713" : (i + 1)) + '</span>' + wTileHtml(s, st) +
+            '<div class="wst-row"><span class="wst">' + (st === "done" ? "Done" : st === "cur" ? "You are here" : i === cur + 1 ? "Next" : "&nbsp;") + '</span>' +
+            (i > 0 ? '<button type="button" class="wmv" data-hact="wflmv" data-hkey="' + i + '|-1" title="Move earlier">\u2039</button>' : '') +
+            (i < stops.length - 1 ? '<button type="button" class="wmv" data-hact="wflmv" data-hkey="' + i + '|1" title="Move later">\u203a</button>' : '') + '</div></div>';
+        }).join("") + '</div></div>';
+      if (stops.length && cur < 0) h += '<div class="wfin">\ud83c\udfc1 Route complete \u2014 everything bought.</div>';
+      var pool = S.filter(function (s) { return s.open > 0 && !stops.some(function (n) { return n.toLowerCase() === s.name.toLowerCase(); }); });
+      h += '<div class="wpool"><div class="wtk">Shops not on this route \u00b7 tap to add as a stop</div><div class="wchips">' + (pool.length ? pool.map(function (s) { return '<button type="button" class="wshopchip" data-hact="wfladd" data-hkey="' + esc(s.name) + '">' + esc(s.name) + '<b>' + s.open + '</b></button>'; }).join("") : '<span class="wnone">' + (S.length ? "Everything with items is on the route." : "Add some items first.") + '</span>') + '</div></div>';
+    }
+    var bought = wishArr().filter(function (w) { return w.done; });
+    if (bought.length) {
+      bought.sort(function (a, b) { return (b.doneAt || 0) - (a.doneAt || 0); });
+      h += '<button type="button" class="wbought" data-hact="wbtog">' + (WISH_BOUGHT_OPEN ? "Hide" : "Show") + " bought \u00b7 " + bought.length + " (kept 30 days)</button>";
+      if (WISH_BOUGHT_OPEN) h += '<div class="wshop bought"><div class="witems">' + bought.map(wishItemRow).join("") + '</div></div>';
+    }
+    host.innerHTML = h;
+    if (WISH_VIEW === "flow") requestAnimationFrame(wPlaceWalker);
+    if (WS_SHOP) paintWishSheet();
+  }
+  function wPlaceWalker() {
+    var j = $("wJourney"), w = $("wWalker"), fb = $("wFillbar"); if (!j || !w || !fb) return;
+    var tr = j.querySelector(".wtrack"), els = j.querySelectorAll(".wstop");
+    if (!els.length) { w.style.display = "none"; fb.style.width = "0"; fb.classList.add("empty"); return; }
+    w.style.display = "";
+    var tl = tr.getBoundingClientRect();
+    function cx(e) { var r = e.getBoundingClientRect(); return r.left + r.width / 2 - tl.left; }
+    var cur = -1, lastDone = -1;
+    for (var i = 0; i < els.length; i++) { if (els[i].classList.contains("cur")) cur = i; if (els[i].classList.contains("done")) lastDone = i; }
+    var target = cur >= 0 ? els[cur] : els[els.length - 1];
+    w.style.left = cx(target) + "px";
+    var wpx = cur >= 0 ? (lastDone >= 0 ? cx(els[Math.min(lastDone, cur)]) : 0) : cx(els[els.length - 1]);
+    if (cur < 0 && lastDone < 0) wpx = 0;
+    fb.style.width = wpx + "px"; fb.classList.toggle("empty", wpx === 0);
+  }
+  function wishItemRow(w) {
+    return '<label class="witem' + (w.done ? " done" : "") + '"><button class="sub-check' + (w.done ? " on" : "") + '" data-hact="wtog" data-hkey="' + esc(w.id) + '" aria-label="Bought"></button>' +
+      '<span class="wtx">' + esc(w.t) + '</span>' +
+      (w.done && w.doneAt ? '<span class="wdate">' + new Date(w.doneAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + '</span>' : '<span class="wdate">' + esc(w.shop || "Unsorted") + '</span>') +
+      '<button class="sub-del" data-hact="wdel" data-hkey="' + esc(w.id) + '" title="Remove">\u00d7</button></label>';
+  }
+  /* shop sheet */
+  function openWishSheet(name) { WS_SHOP = name; WS_MOVE = null; paintWishSheet(); var m = $("wishSheet"); if (m) m.classList.add("open"); }
+  function closeWishSheet() {
+    var m = $("wishSheet"); if (m) m.classList.remove("open");
+    if (WS_SHOP && WISH_VIEW === "flow") { var st = wishFlow().stops, i = -1; st.forEach(function (n, k) { if (n.toLowerCase() === WS_SHOP.toLowerCase()) i = k; });
+      if (i >= 0 && wOpenOf(WS_SHOP) === 0) { var nx = null; for (var k = i + 1; k < st.length; k++) if (wOpenOf(st[k]) > 0) { nx = st[k]; break; } toast(nx ? "Stop cleared \u2192 walking to " + nx : "Route complete \ud83c\udfc1"); } }
+    WS_SHOP = null; WS_MOVE = null;
+  }
+  function paintWishSheet() {
+    var name = WS_SHOP, s = wShop(name), hd = $("wsHead"), bd = $("wsBody"); if (!hd || !bd) return;
+    var items = s ? s.items.slice() : [], open = s ? s.open : 0, near = wishNear(name), pl = wishPlace(name);
+    var st = wishFlow().stops, fi = -1; st.forEach(function (n, k) { if (n.toLowerCase() === String(name).toLowerCase()) fi = k; });
+    var inFlow = WISH_VIEW === "flow" && fi >= 0, nx = null; if (inFlow) for (var k = fi + 1; k < st.length; k++) if (wOpenOf(st[k]) > 0) { nx = st[k]; break; }
+    $("wsBox").style.setProperty("--h", wHue(name));
+    hd.innerHTML = '<span class="wsem">' + wEmo(name) + '</span><div class="wst-t"><div class="wscr">' + (inFlow ? "stop " + (fi + 1) + " of " + st.length + (open ? " \u00b7 you are here" : " \u00b7 done") : near ? "nearby" : open ? open + " to buy" : "all bought") + '</div><div class="wsnm">' + esc(name) + '</div></div>' +
+      '<button type="button" class="bs-x" data-hact="wsclose" title="Close">\u00d7</button>';
+    items.sort(function (a, b) { return (a.done - b.done) || ((a.at || 0) - (b.at || 0)); });
+    bd.innerHTML = '<div class="wsitems">' + (items.length ? items.map(function (w) {
+      var row = '<div class="wsit' + (w.done ? " done" : "") + (WS_MOVE === w.id ? " moving" : "") + '"><button type="button" class="wsck" data-hact="wtog" data-hkey="' + esc(w.id) + '" aria-label="Bought"></button><span class="wst">' + esc(w.t) + '</span>' +
+        '<button type="button" class="wsmv' + (WS_MOVE === w.id ? " on" : "") + '" data-hact="wmove" data-hkey="' + esc(w.id) + '" title="Move to another shop">' + (WS_MOVE === w.id ? "Cancel" : "Move") + '</button><button type="button" class="sub-del" data-hact="wdel" data-hkey="' + esc(w.id) + '">\u00d7</button></div>';
+      if (WS_MOVE === w.id) {
+        var others = wShops().filter(function (x) { return x.name.toLowerCase() !== String(name).toLowerCase(); });
+        row += '<div class="wsmove"><span class="wtk" style="margin:0 6px 0 0">Move to</span>' +
+          others.map(function (x) { return '<button type="button" class="wshopchip" style="--h:' + wHue(x.name) + '" data-hact="wmoveto" data-hkey="' + esc(w.id) + '|' + esc(x.name) + '">' + wEmo(x.name) + ' ' + esc(x.name) + '</button>'; }).join("") +
+          '<button type="button" class="wshopchip un" data-hact="wmoveto" data-hkey="' + esc(w.id) + '|">\u2b06 Unsorted tray</button>' +
+          '<span class="wsnew"><input id="wsMoveNew" placeholder="new shop\u2026" autocomplete="off"><button type="button" class="tbtn" data-hact="wmovenew" data-hkey="' + esc(w.id) + '">Go</button></span></div>';
+      }
+      return row;
+    }).join("") : '<div class="wnone" style="padding:14px 0;text-align:center">Nothing here \u2014 add below or drag from Unsorted.</div>') + '</div>' +
+      '<div class="wsadd"><input id="wsInp" placeholder="Add an item to ' + esc(name) + '\u2026" autocomplete="off"><button type="button" class="tbtn primary" data-hact="wsadd" data-hkey="' + esc(name) + '">Add</button></div>' +
+      '<div class="wsfoot">' + (inFlow
+        ? '<button type="button" class="tbtn" data-hact="wflskip" data-hkey="' + fi + '">Skip this stop</button><button type="button" class="tbtn wsdone" data-hact="wsdoneall" data-hkey="' + esc(name) + '">Done here' + (nx ? " \u2192 " + esc(nx) : "") + '</button>'
+        : (pl ? '<span class="hchip planned">Place \u00b7 ' + esc(pl.name) + '</span>' : '<button type="button" class="tbtn" data-hact="wmkplace" data-hkey="' + esc(name) + '">+ Make a Place</button>') + '<button type="button" class="tbtn" data-hact="wrename" data-hkey="' + esc(name) + '">Rename shop</button>') + '</div>';
+  }
+  function wAssign(id, shop) {
+    var w = null; wishArr().forEach(function (x) { if (x.id === id) w = x; }); if (!w) return;
+    w.shop = wishShopName(shop); WISH_SEL = null; saveWish(); renderWish(); renderHome(); toast(w.t + " \u2192 " + w.shop);
+  }
+  function wishPlace(name) { var low = String(name || "").toLowerCase(), hit = null; placeList().forEach(function (p) { if (String(p.name || "").toLowerCase() === low) hit = p; }); return hit; }
+  function wishNear(name) { var p = wishPlace(name); return !!(p && (nearIds[p.id] != null || (getEntry("place:" + p.id).plan === hTodayIso()))); }
   var FOLD_MODAL_CB = null;
   function openFoldModal(title, cur, cb) {
     var m = $("chatFoldModal"); if (!m) return;
@@ -2779,14 +2981,26 @@
     { k: "addr", l: "Addresses", one: "address", emo: "\ud83c\udfe0", hue: 145, fs: [{ k: "t", l: "Label (Home, Office\u2026)" }, { k: "name", l: "Name" }, { k: "a1", l: "Street / building", tp: "ta" }, { k: "city", l: "City & PIN" }, { k: "ph", l: "Phone" }, { k: "note", l: "Notes", tp: "ta" }] },
     { k: "link", l: "Links", one: "link", emo: "\ud83d\udd17", hue: 210, fs: [{ k: "t", l: "Label" }, { k: "url", l: "URL", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
     { k: "login", l: "Logins & passwords", one: "login", emo: "\ud83d\udd11", hue: 45, sb: "Password", sl: "Copy the password only", fs: [{ k: "t", l: "Site / app" }, { k: "user", l: "Username / email", cl: "User" }, { k: "pw", l: "Password", tp: "pass" }, { k: "url", l: "Login page", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "bank", l: "Bank (India)", one: "account", emo: "\ud83c\udfe6", hue: 160, sb: "Account no", sl: "Copy the account number only", fs: [{ k: "t", l: "Label (bank & account)" }, { k: "holder", l: "Account holder", cl: "Account holder" }, { k: "acc", l: "Account number", tp: "pass" }, { k: "ifsc", l: "IFSC / SWIFT", cl: "IFSC" }, { k: "branch", l: "Branch", cl: "Branch" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "bankjp", l: "Bank (Japan)", one: "account", emo: "\u26e9\ufe0f", hue: 350, sb: "Account no", sl: "Copy the account number only", fs: [{ k: "t", l: "Label (bank & account)" }, { k: "bank", l: "Bank name \u9280\u884c\u540d", cl: "Bank" }, { k: "bcode", l: "Bank code \u91d1\u878d\u6a5f\u95a2\u30b3\u30fc\u30c9 (4 digits)", cl: "Bank code" }, { k: "branch", l: "Branch name \u652f\u5e97\u540d", cl: "Branch" }, { k: "brcode", l: "Branch code \u652f\u5e97\u30b3\u30fc\u30c9 (3 digits)", cl: "Branch code" }, { k: "type", l: "Account type \u53e3\u5ea7\u79cb\u76ee", tp: "sel", opts: ["\u666e\u901a Futsu (ordinary)", "\u5f53\u5ea7 Toza (checking)", "\u8caf\u84c4 Chochiku (savings)"], cl: "Type" }, { k: "acc", l: "Account number \u53e3\u5ea7\u756a\u53f7 (7 digits)", tp: "pass" }, { k: "holder", l: "Account holder \u53e3\u5ea7\u540d\u7fa9 (katakana)", cl: "Holder" }, { k: "note", l: "Notes", tp: "ta" }] },
+    { k: "bank", l: "Bank details", one: "account", emo: "\ud83c\udfe6", hue: 160, sb: "Account no", sl: "Copy the account number only", ctry: true, fs: [{ k: "t", l: "Label (bank & account)" }, { k: "holder", l: "Account holder", cl: "Account holder" }, { k: "acc", l: "Account number", tp: "pass" }, { k: "ifsc", l: "IFSC / SWIFT", cl: "IFSC" }, { k: "branch", l: "Branch", cl: "Branch" }, { k: "note", l: "Notes", tp: "ta" }], fsBy: {
+      IN: [{ k: "t", l: "Label (bank & account)" }, { k: "holder", l: "Account holder", cl: "Account holder" }, { k: "acc", l: "Account number", tp: "pass" }, { k: "ifsc", l: "IFSC / SWIFT", cl: "IFSC" }, { k: "branch", l: "Branch", cl: "Branch" }, { k: "note", l: "Notes", tp: "ta" }],
+      JP: [{ k: "t", l: "Label (bank & account)" }, { k: "bank", l: "Bank name \u9280\u884c\u540d", cl: "Bank" }, { k: "bcode", l: "Bank code \u91d1\u878d\u6a5f\u95a2\u30b3\u30fc\u30c9 (4 digits)", cl: "Bank code" }, { k: "branch", l: "Branch name \u652f\u5e97\u540d", cl: "Branch" }, { k: "brcode", l: "Branch code \u652f\u5e97\u30b3\u30fc\u30c9 (3 digits)", cl: "Branch code" }, { k: "type", l: "Account type \u53e3\u5ea7\u7a2e\u76ee", tp: "sel", opts: ["\u666e\u901a Futsu (ordinary)", "\u5f53\u5ea7 Toza (checking)", "\u8caf\u84c4 Chochiku (savings)"], cl: "Type" }, { k: "acc", l: "Account number \u53e3\u5ea7\u756a\u53f7 (7 digits)", tp: "pass" }, { k: "holder", l: "Account holder \u53e3\u5ea7\u540d\u7fa9 (katakana)", cl: "Holder" }, { k: "note", l: "Notes", tp: "ta" }]
+    } },
     { k: "implink", l: "Important links", one: "link", emo: "\ud83d\udccc", hue: 20, fs: [{ k: "t", l: "Label (Netbanking, Tax portal\u2026)" }, { k: "url", l: "URL", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
     { k: "card", l: "Cards", one: "card", emo: "\ud83d\udcb3", hue: 305, sb: "Number + CVV", sl: "Copy the card number and CVV only", fs: [{ k: "t", l: "Card label (HDFC Visa\u2026)" }, { k: "num", l: "Card number", tp: "pass" }, { k: "nm", l: "Name on card" }, { k: "exp", l: "Expiry (MM/YY)", cl: "Exp" }, { k: "cvv", l: "CVV", tp: "pass", cl: "CVV" }, { k: "note", l: "Notes", tp: "ta" }] }
   ];
   function vcat(k) { for (var i = 0; i < VCATS.length; i++) if (VCATS[i].k === k) return VCATS[i]; return null; }
   function vaultArr() { if (!Array.isArray(meta.cvault)) meta.cvault = []; return meta.cvault; }
   var VREVEAL = {};
+  /* v53: one Bank folder, country chosen per record (tag on the block) */
+  var VCTRY = [{ k: "IN", l: "India" }, { k: "JP", l: "Japan" }];
+  function vctryL(k) { for (var i = 0; i < VCTRY.length; i++) if (VCTRY[i].k === k) return VCTRY[i].l; return "India"; }
+  function vctryOf(it) { var v = it && it.f && it.f.ctry; return v === "JP" ? "JP" : "IN"; }
+  function vfs(c, it) { if (!c || !c.fsBy) return (c && c.fs) || []; return c.fsBy[vctryOf(it)] || c.fsBy.IN; }
+  function vMigrate() {
+    var ch = false;
+    vaultArr().forEach(function (x) { if (x.cat === "bankjp") { x.cat = "bank"; x.f = x.f || {}; x.f.ctry = "JP"; x.u = Date.now(); ch = true; } });
+    if (ch) saveChats();
+  }
   function vIn(k) { return vaultArr().filter(function (it) { return it.cat === k; }); }
   function vMask(v) { v = String(v || ""); return v.length > 4 ? "\u2022\u2022\u2022\u2022 " + v.slice(-4) : "\u2022\u2022\u2022\u2022"; }
   function vaultHtml() {
@@ -2810,8 +3024,9 @@
   function vRowHtml(c, it) {
     var f = it.f || {};
     var hasSec = false;
-    c.fs.forEach(function (fd) { if (fd.tp === "pass" && String(f[fd.k] || "").trim()) hasSec = true; });
-    var body = c.fs.filter(function (fd) { return fd.k !== "t" && String(f[fd.k] || "").trim(); }).map(function (fd) {
+    var FS = vfs(c, it);
+    FS.forEach(function (fd) { if (fd.tp === "pass" && String(f[fd.k] || "").trim()) hasSec = true; });
+    var body = FS.filter(function (fd) { return fd.k !== "t" && String(f[fd.k] || "").trim(); }).map(function (fd) {
       var raw = f[fd.k], sec = fd.tp === "pass", open = VREVEAL[it.id + "|" + fd.k];
       var val = sec && !open ? vMask(raw) : esc(raw);
       var acts = "";
@@ -2821,18 +3036,23 @@
       return '<div class="v-f' + (fd.tp === "ta" ? " ta" : "") + '"><span class="v-k">' + esc(fd.l) + '</span><span class="v-v' + (sec ? " sec" : "") + '">' + val + '</span><span class="v-acts">' + acts + '</span></div>';
     }).join("");
     var head = '<div class="v-head"><span class="v-emo">' + c.emo + '</span><span class="v-title">' + esc(f.t || "Untitled") + '</span>' +
+      (c.ctry ? '<span class="v-ctry ctry-' + vctryOf(it).toLowerCase() + '">' + esc(vctryL(vctryOf(it))) + '</span>' : '') +
       '<button class="v-cta" data-vact="copyall" title="Copy the whole record' + (hasSec ? " \u2014 without secrets" : "") + '">Copy all</button>' +
       (hasSec ? '<button class="v-cta sec" data-vact="copysec" title="' + esc(c.sl || "Copy the secret only") + ' \u2014 clipboard clears after 60s">' + esc(c.sb || "Secret") + '</button>' : '') +
       '<button class="v-ico" data-vact="edit" title="Edit this item">Edit</button><button class="sub-del" data-vact="vdel" title="Delete">\u00d7</button></div>';
     return '<li class="vault-item" data-vid="' + esc(it.id) + '" style="border-color:oklch(0.9 0.04 ' + c.hue + ')">' + head + (body ? '<div class="v-fields">' + body + '</div>' : "") + '</li>';
   }
-  var VM_CAT = null, VM_ID = null;
+  var VM_CAT = null, VM_ID = null, VM_CTRY = null;
   function openVaultModal(catK, it) {
     var c = vcat(catK), m = $("vaultModal"); if (!c || !m) return;
     VM_CAT = catK; VM_ID = it ? it.id : null;
-    $("vmTitle").textContent = (it ? "Edit " : "Add ") + c.one;
+    $("vmTitle").textContent = ((it && it.id) ? "Edit " : "Add ") + c.one;
     var f = (it && it.f) || {};
-    $("vmBody").innerHTML = c.fs.map(function (fd) {
+    VM_CTRY = c.ctry ? vctryOf(it) : null;
+    var ctrySeg = c.ctry ? '<div class="cfield"><label>Country</label><div class="v-ctryseg">' + VCTRY.map(function (x) {
+      return '<button type="button" class="vcseg' + (x.k === VM_CTRY ? " on" : "") + '" data-vctry="' + x.k + '">' + esc(x.l) + '</button>';
+    }).join("") + '</div><span class="cf-hint">picks the fields below \u2014 shown as a tag on the saved record</span></div>' : '';
+    $("vmBody").innerHTML = ctrySeg + vfs(c, { f: { ctry: VM_CTRY } }).map(function (fd) {
       var v = esc(f[fd.k] || "");
       var inp = fd.tp === "ta" ? '<textarea id="vmF_' + fd.k + '" rows="2">' + v + '</textarea>' :
         fd.tp === "sel" ? '<select id="vmF_' + fd.k + '"><option value="">\u2014</option>' + (fd.opts || []).map(function (o) { return '<option value="' + esc(o) + '"' + (o === (f[fd.k] || "") ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' :
@@ -2847,7 +3067,8 @@
   function vCopyText(c, it, secretsOnly) {
     var f = it.f || {}, lines = [];
     if (!secretsOnly && String(f.t || "").trim()) lines.push(String(f.t).trim());
-    c.fs.forEach(function (fd) {
+    if (!secretsOnly && c.ctry) lines.push("Country: " + vctryL(vctryOf(it)));
+    vfs(c, it).forEach(function (fd) {
       if (fd.k === "t") return;
       var v = String(f[fd.k] || "").trim(); if (!v) return;
       if (secretsOnly !== (fd.tp === "pass")) return;
@@ -2875,6 +3096,7 @@
   }
 
   function renderChats() {
+    vMigrate();
     var host = $("chatList"); if (!host) return;
     var arr = chatsArr().slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
     var n = $("chatCount"); if (n) n.textContent = arr.length || "";
@@ -2998,10 +3220,20 @@
         if (VM_ID && confirm("Delete this item?")) { var did = VM_ID; meta.cvault = vaultArr().filter(function (x) { return x.id !== did; }); saveChats(); closeVaultModal(); renderChats(); }
         return;
       }
+      var vcb = e.target.closest("[data-vctry]");
+      if (vcb) {
+        var cc = vcat(VM_CAT); if (!cc) return;
+        var tmp = {};
+        vfs(cc, { f: { ctry: VM_CTRY } }).forEach(function (fd) { var el3 = $("vmF_" + fd.k); if (el3) tmp[fd.k] = el3.value; });
+        tmp.ctry = vcb.getAttribute("data-vctry");
+        openVaultModal(VM_CAT, { id: VM_ID, f: tmp });
+        return;
+      }
       if (e.target.closest("#vmSave")) {
         var c = vcat(VM_CAT); if (!c) { closeVaultModal(); return; }
         var f = {}, any = false;
-        c.fs.forEach(function (fd) { var el2 = $("vmF_" + fd.k); var v = el2 ? el2.value.trim() : ""; if (v) any = true; f[fd.k] = v; });
+        vfs(c, { f: { ctry: VM_CTRY } }).forEach(function (fd) { var el2 = $("vmF_" + fd.k); var v = el2 ? el2.value.trim() : ""; if (v) any = true; f[fd.k] = v; });
+        if (c.ctry) f.ctry = VM_CTRY || "IN";
         if (!any) { closeVaultModal(); return; }
         if (VM_ID) { vaultArr().forEach(function (x) { if (x.id === VM_ID) { x.f = f; x.u = Date.now(); } }); }
         else { vaultArr().push({ id: uid(), cat: VM_CAT, f: f, u: Date.now() }); CHAT_VIEW = "@vault:" + VM_CAT; saveChatView(); }
@@ -3023,7 +3255,7 @@
         if (va === "copysec") { if (vc) vCopy(vCopyText(vc, vit, true), true); return; }
         var vf = vb.getAttribute("data-vf");
         if (va === "reveal") { var vkk = vid + "|" + vf; VREVEAL[vkk] = !VREVEAL[vkk]; renderChats(); return; }
-        if (va === "copy") { var vfd = null; if (vc) vc.fs.forEach(function (x) { if (x.k === vf) vfd = x; }); vCopy(String((vit.f || {})[vf] || ""), !!(vfd && vfd.tp === "pass")); return; }
+        if (va === "copy") { var vfd = null; if (vc) vfs(vc, vit).forEach(function (x) { if (x.k === vf) vfd = x; }); vCopy(String((vit.f || {})[vf] || ""), !!(vfd && vfd.tp === "pass")); return; }
         return;
       }
       var fh = e.target.closest("[data-cfold]");
@@ -3204,6 +3436,24 @@
     document.addEventListener("click", function (e) {
       var el = e.target.closest("[data-hact]"); if (!el) return;
       var a = el.getAttribute("data-hact"), k = el.getAttribute("data-hkey");
+      if (a === "wtog") { wishArr().forEach(function (w) { if (w.id === k) { w.done = !w.done; w.doneAt = w.done ? Date.now() : null; } }); saveWish(); renderWish(); renderHome(); return; }
+      if (a === "wdel") { meta.wish = wishArr().filter(function (w) { return w.id !== k; }); saveWish(); renderWish(); renderHome(); return; }
+      if (a === "wbtog") { WISH_BOUGHT_OPEN = !WISH_BOUGHT_OPEN; renderWish(); return; }
+      if (a === "wview") { WISH_VIEW = k === "flow" ? "flow" : "boxes"; WISH_SEL = null; renderWish(); return; }
+      if (a === "wchip") { WISH_SEL = WISH_SEL === k ? null : k; renderWish(); if (WISH_SEL) toast("Now tap a box to file it"); return; }
+      if (a === "wtile") { if (WISH_SEL) { wAssign(WISH_SEL, k); return; } openWishSheet(k); return; }
+      if (a === "wsclose") { closeWishSheet(); return; }
+      if (a === "wsadd") { var wi = $("wsInp"), wt = wi ? wi.value.trim() : ""; if (!wt) return; wishArr().push({ id: uid(), shop: wishShopName(k), t: wt, at: Date.now(), done: false }); saveWish(); renderWish(); renderHome(); return; }
+      if (a === "wsdoneall") { wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === k.toLowerCase() && !w.done) { w.done = true; w.doneAt = Date.now(); } }); saveWish(); closeWishSheet(); renderWish(); renderHome(); return; }
+      if (a === "wmove") { WS_MOVE = WS_MOVE === k ? null : k; paintWishSheet(); return; }
+      if (a === "wmoveto") { var mp = k.split("|"), mid = mp[0], mto = mp.slice(1).join("|"); var mw2 = null; wishArr().forEach(function (x) { if (x.id === mid) mw2 = x; }); if (!mw2) return; mw2.shop = mto ? wishShopName(mto) : ""; WS_MOVE = null; saveWish(); renderWish(); renderHome(); toast(mw2.t + " \u2192 " + (mto || "Unsorted")); return; }
+      if (a === "wmovenew") { var ni = $("wsMoveNew"), nv = ni ? ni.value.trim() : ""; if (!nv) { if (ni) ni.focus(); return; } var mw3 = null; wishArr().forEach(function (x) { if (x.id === k) mw3 = x; }); if (!mw3) return; mw3.shop = wishShopName(nv); WS_MOVE = null; saveWish(); renderWish(); renderHome(); toast(mw3.t + " \u2192 " + mw3.shop); return; }
+      if (a === "wrename") { var rn = prompt("Rename shop", k); if (!rn || !rn.trim() || rn.trim() === k) return; rn = rn.trim(); wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === k.toLowerCase()) w.shop = rn; }); wishFlow().stops = wishFlow().stops.map(function (n) { return n.toLowerCase() === k.toLowerCase() ? rn : n; }); saveWish(); WS_SHOP = rn; renderWish(); return; }
+      if (a === "wfladd") { if (!wishFlow().stops.some(function (n) { return n.toLowerCase() === k.toLowerCase(); })) wishFlow().stops.push(k); saveWish(); renderWish(); toast(k + " added as stop " + wishFlow().stops.length); return; }
+      if (a === "wflclear") { wishFlow().stops = []; saveWish(); renderWish(); return; }
+      if (a === "wflskip") { wishFlow().stops.splice(+k, 1); saveWish(); closeWishSheet(); renderWish(); return; }
+      if (a === "wflmv") { var pp = k.split("|"), fi2 = +pp[0], dd = +pp[1], sa = wishFlow().stops, ti = fi2 + dd; if (ti < 0 || ti >= sa.length) return; var tmp = sa[fi2]; sa[fi2] = sa[ti]; sa[ti] = tmp; saveWish(); renderWish(); return; }
+      if (a === "wmkplace") { closeWishSheet(); openPlaceEd(null); var pn = $("plName"); if (pn) pn.value = k; return; }
       if (a === "bopen") { openBuildSheet(k); return; }
       if (a === "bclose") { closeBuildSheet(); return; }
       if (a === "bhold") {
