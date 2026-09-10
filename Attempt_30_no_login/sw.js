@@ -3,11 +3,11 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v74";
+const CACHE = "weekly-focus-v73";
 const ASSETS = [
   "./", "./index.html",
   "./js/config.js", "./js/weekly-focus-app.js", "./js/info-feeds.js", "./js/wf-cc-bridge-v2.js",
-  "./css/weekly-focus.css", "./css/home-screens.css", "./css/wf-login.css", "./js/wf-login.js",
+  "./css/weekly-focus.css", "./css/home-screens.css",
   "./manifest.webmanifest",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png"
 ];
