@@ -2804,44 +2804,7 @@
   try { CHAT_VIEW = localStorage.getItem("wf-chatview") || ""; } catch (e) {}
   function saveChatView() { try { localStorage.setItem("wf-chatview", CHAT_VIEW); } catch (e) {} }
   /* stable color per folder name */
-  /* v60: a folder can override its auto colour (meta.cfoldHue[lowercase name] = hue) */
-  function foldHueOv() { if (!meta.cfoldHue || typeof meta.cfoldHue !== "object") meta.cfoldHue = {}; return meta.cfoldHue; }
-  function foldHue(n) { n = n || ""; var ov = foldHueOv()[n.toLowerCase()]; if (ov != null && !isNaN(+ov)) return +ov; var h = 0; for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) % 360; return h; }
-  function chatHue(c) { return c && c.hue != null && !isNaN(+c.hue) ? +c.hue : foldHue((c && c.fold) || "Unsorted"); }
-  function chatById(id) { var r = null; chatsArr().forEach(function (c) { if (c.id === id) r = c; }); return r; }
-  var CHUES = [20, 45, 85, 145, 175, 210, 255, 290, 320];
-  function hueSwatches(act, attrs, cur, autoLbl) {
-    var a = Object.keys(attrs).map(function (k) { return ' data-' + k + '="' + esc(attrs[k]) + '"'; }).join("");
-    var has = cur != null && !isNaN(+cur);
-    return CHUES.map(function (h) { return '<button type="button" class="hsw' + (has && +cur === h ? " on" : "") + '" style="--h:' + h + '" data-chact="' + act + '"' + a + ' data-hue="' + h + '" aria-label="Colour ' + h + '"></button>'; }).join("") +
-      '<button type="button" class="hsw auto' + (has ? "" : " on") + '" data-chact="' + act + '"' + a + ' data-hue="">' + esc(autoLbl) + '</button>';
-  }
-  var CHAT_FOLDHUE_OPEN = false;
-  /* v60: chat tile — solid folder colour, first line + star; tap opens the detail sheet */
-  function ctileHtml(c) {
-    var h = chatHue(c), tg = c.tag && SUB_TAGS[c.tag] ? SUB_TAGS[c.tag] : "";
-    return '<button type="button" class="ctile' + (c.star ? " starred" : "") + '" style="--h:' + h + '" data-cact="csheet" data-cid="' + esc(c.id) + '">' +
-      '<span class="ct-top"><span class="ct-fold">' + esc(c.fold || "Unsorted") + '</span>' + (c.star ? '<span class="ct-star">\u2605</span>' : '') + '</span>' +
-      '<span class="ct-t">' + esc(c.t || "Untitled discussion") + '</span>' +
-      '<span class="ct-bot">' + (tg ? '<span class="ct-tag">' + esc(tg) + '</span>' : '') + (c.url ? '<span class="ct-open">Open \u2197</span>' : '<span class="ct-open dim">no link yet</span>') + '</span></button>';
-  }
-  /* v60: chat detail sheet */
-  var CS_ID = null;
-  function openChatSheet(id) { CS_ID = id; paintChatSheet(); var m = $("chatSheet"); if (m) m.classList.add("open"); }
-  function closeChatSheet() { var m = $("chatSheet"); if (m) m.classList.remove("open"); CS_ID = null; }
-  function csBtn(act, lbl, on) { return '<button type="button" class="cs-b' + (on ? " on" : "") + '" data-chact="' + act + '">' + lbl + '</button>'; }
-  function paintChatSheet() {
-    var c = chatById(CS_ID), hd = $("csHead"), bd = $("csBody"), box = $("csBox"); if (!c || !hd || !bd) { closeChatSheet(); return; }
-    var h = chatHue(c), fl = c.fold || "Unsorted", em = foldEmo(fl) || "\ud83d\udcac";
-    if (box) box.style.setProperty("--h", h);
-    hd.innerHTML = '<span class="wsem">' + em + '</span><div class="wst-t"><div class="wscr">' + esc(fl) + (c.star ? " \u00b7 starred" : "") + '</div><div class="wsnm">' + esc(c.t || "Untitled discussion") + '</div></div><button type="button" class="bs-x" data-chact="csclose" title="Close">\u00d7</button>';
-    var tg = c.tag && SUB_TAGS[c.tag] ? SUB_TAGS[c.tag] : "";
-    bd.innerHTML =
-      (c.url ? '<a class="cs-open" href="' + esc(c.url) + '" target="_blank" rel="noopener">Open chat \u2197<span>' + esc(c.url.replace(/^https?:\/\//, "")) + '</span></a>' : '<button type="button" class="cs-open none" data-chact="cslink">+ Add the claude.ai link</button>') +
-      '<div class="cs-acts">' + csBtn("csstar", (c.star ? "\u2605 Unstar" : "\u2606 Star"), c.star) + csBtn("csmove", "Move") + csBtn("csrename", "Rename") + csBtn("cslink", c.url ? "Edit link" : "Add link") + csBtn("cscopy", "Copy link") + csBtn("cstag", tg ? "Tag \u00b7 " + esc(tg) : "Tag", !!tg) + '</div>' +
-      '<div class="wtk" style="margin-top:14px">Tile colour</div><div class="cf-hues in-sheet">' + hueSwatches("cshue", {}, c.hue, "Folder colour") + '</div>' +
-      '<div class="wsfoot"><span class="cs-meta">' + (c.u ? "updated " + new Date(c.u).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "") + '</span><button type="button" class="tbtn danger" data-chact="csdel" style="margin-left:auto">Delete</button></div>';
-  }
+  function foldHue(n) { var h = 0; n = n || ""; for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) % 360; return h; }
   /* keyword -> emoji per folder name; first match wins, folder svg as fallback */
   var FOLD_EMO = [[/cod|dev|program|app|software/i, "\ud83d\udcbb"], [/academ|thesis|research|univ|college/i, "\ud83c\udf93"], [/math|ai\b|_ai|ml|data/i, "\ud83e\udde0"], [/language|vocab|german|english|study/i, "\ud83d\udcda"], [/financ|money|invest|budget/i, "\ud83d\udcb0"], [/health|fit|gym|med/i, "\ud83e\ude7a"], [/mechan|hardware|robot|cad/i, "\u2699\ufe0f"], [/roadmap|plan|goal/i, "\ud83e\udded"], [/design|art|draw|ui/i, "\ud83c\udfa8"], [/3d|model|print/i, "\ud83e\uddca"], [/office|work|team|meet/i, "\ud83d\udcbc"], [/home|house|family/i, "\ud83c\udfe1"], [/travel|trip/i, "\u2708\ufe0f"], [/music|audio/i, "\ud83c\udfb5"], [/game/i, "\ud83c\udfae"], [/general|misc|other|unsorted/i, "\ud83d\uddc2\ufe0f"]];
   function foldEmo(n) { for (var i = 0; i < FOLD_EMO.length; i++) if (FOLD_EMO[i][0].test(n || "")) return FOLD_EMO[i][1]; return ""; }
@@ -3087,34 +3050,22 @@
     if (ch) saveChats();
   }
   function vIn(k) { return vaultArr().filter(function (it) { return it.cat === k; }); }
-  /* v60: optional folder on a vault record — shows on that Chats folder's Vault strip; central Vault stays the union */
-  function vfoldOf(it) { return String((it && it.fold) || "").trim(); }
-  function vaultInFold(f) { f = String(f || "").toLowerCase(); return vaultArr().filter(function (it) { return vfoldOf(it).toLowerCase() === f; }); }
   function vMask(v) { v = String(v || ""); return v.length > 4 ? "\u2022\u2022\u2022\u2022 " + v.slice(-4) : "\u2022\u2022\u2022\u2022"; }
-  /* views: @vault · @vault:<cat> · @vaultf:<folder> · @vaultf:<folder>:<cat> */
   function vaultHtml() {
-    var mf = /^@vaultf:([^:]*)(?::(.+))?$/.exec(CHAT_VIEW), m = mf ? null : /^@vault:(.+)$/.exec(CHAT_VIEW);
-    var fold = mf ? mf[1] : null, catK = mf ? (mf[2] || null) : (m ? m[1] : null), c = catK ? vcat(catK) : null;
-    var scoped = fold != null, pool = scoped ? vaultInFold(fold) : vaultArr();
-    var fLabel = fold || "Unsorted", fh = foldHue(fLabel);
-    var scopeTag = scoped ? '<span class="v-scope" style="color:oklch(0.45 0.16 ' + fh + ')">\u00b7 ' + esc(fLabel) + '</span>' : '';
-    function inCat(k) { return pool.filter(function (it) { return it.cat === k; }); }
+    var m = /^@vault:(.+)$/.exec(CHAT_VIEW), c = m ? vcat(m[1]) : null;
     if (!c) {
-      var backKey = scoped ? (fold || "@un") : "@back", backLbl = scoped ? "\u2190 " + esc(fLabel) : "\u2190 Folders";
-      var h = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="' + esc(backKey) + '">' + backLbl + '</button><span class="cf-open-name" style="color:oklch(0.4 0.05 265)"><span class="cf-emo sm">\ud83d\udd10</span>Vault' + scopeTag + '</span><span class="chat-sec-n">' + pool.length + '</span></li>';
+      var h = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="@back">\u2190 Folders</button><span class="cf-open-name" style="color:oklch(0.4 0.05 265)"><span class="cf-emo sm">\ud83d\udd10</span>Vault</span><span class="chat-sec-n">' + vaultArr().length + '</span></li>';
       h += '<li class="chat-grid">' + VCATS.map(function (cc) {
-        var n = inCat(cc.k).length, on = n > 0;
+        var n = vIn(cc.k).length, on = n > 0;
         var st = on ? ' style="background:oklch(0.975 0.02 ' + cc.hue + ');border-color:oklch(0.88 0.06 ' + cc.hue + ')"' : '';
         var cst = on ? ' style="background:oklch(0.55 0.16 ' + cc.hue + ');color:#fff"' : '';
-        return '<button type="button" class="chat-fcard' + (on ? "" : " empty") + '" data-cfold="' + (scoped ? '@vaultf:' + esc(fold) + ':' : '@vault:') + cc.k + '"' + st + '><span class="cf-emo">' + cc.emo + '</span><span class="cf-name">' + esc(cc.l) + '</span><span class="cf-count"' + cst + '>' + (on ? n + (n === 1 ? " item" : " items") : "empty") + '</span></button>';
+        return '<button type="button" class="chat-fcard' + (on ? "" : " empty") + '" data-cfold="@vault:' + cc.k + '"' + st + '><span class="cf-emo">' + cc.emo + '</span><span class="cf-name">' + esc(cc.l) + '</span><span class="cf-count"' + cst + '>' + (on ? n + (n === 1 ? " item" : " items") : "empty") + '</span></button>';
       }).join("") + '</li>';
-      h += scoped ? '<li class="vault-note">Only records filed under <b>' + esc(fLabel) + '</b>. The Vault card on the Chats home still shows everything.</li>'
-        : '<li class="vault-note">Stored with the rest of your board \u2014 this device plus your cloud sync. Keep truly critical secrets in a dedicated password manager.</li>';
+      h += '<li class="vault-note">Stored with the rest of your board \u2014 this device plus your cloud sync. Keep truly critical secrets in a dedicated password manager.</li>';
       return h;
     }
-    var rows = inCat(c.k).slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
-    var back = scoped ? '@vaultf:' + fold : '@vault';
-    var h2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="' + esc(back) + '">\u2190 Vault</button><span class="cf-open-name" style="color:oklch(0.45 0.16 ' + c.hue + ')"><span class="cf-emo sm">' + c.emo + '</span>' + esc(c.l) + scopeTag + '</span><span class="chat-sec-n">' + rows.length + '</span><button type="button" class="tbtn primary vault-addbtn" data-vact="add" data-vcat="' + c.k + '" data-vfold="' + esc(fold || "") + '">+ Add ' + esc(c.one) + '</button></li>';
+    var rows = vIn(c.k).slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
+    var h2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="@vault">\u2190 Vault</button><span class="cf-open-name" style="color:oklch(0.45 0.16 ' + c.hue + ')"><span class="cf-emo sm">' + c.emo + '</span>' + esc(c.l) + '</span><span class="chat-sec-n">' + rows.length + '</span><button type="button" class="tbtn primary vault-addbtn" data-vact="add" data-vcat="' + c.k + '">+ Add ' + esc(c.one) + '</button></li>';
     h2 += rows.length ? rows.map(function (it) { return vRowHtml(c, it); }).join("") : '<li class="chat-empty">Nothing here yet \u2014 tap \u201c+ Add ' + esc(c.one) + '\u201d and fill the template.</li>';
     return h2;
   }
@@ -3132,34 +3083,24 @@
       if (fd.tp === "url") acts += '<a class="tbtn chat-open v-open" href="' + esc(/^https?:\/\//i.test(raw) ? raw : "https://" + raw) + '" target="_blank" rel="noopener">Open \u2197</a>';
       return '<div class="v-f' + (fd.tp === "ta" ? " ta" : "") + '"><span class="v-k">' + esc(fd.l) + '</span><span class="v-v' + (sec ? " sec" : "") + '">' + val + '</span><span class="v-acts">' + acts + '</span></div>';
     }).join("");
-    var vfo = vfoldOf(it), vfh = foldHue(vfo);
     var head = '<div class="v-head"><span class="v-emo">' + c.emo + '</span><span class="v-title">' + esc(f.t || "Untitled") + '</span>' +
-      (vfo ? '<span class="v-fold" style="color:oklch(0.45 0.16 ' + vfh + ');background:oklch(0.96 0.03 ' + vfh + ')">' + esc(vfo) + '</span>' : '') +
       (c.ctry ? '<span class="v-ctry ctry-' + vctryOf(it).toLowerCase() + '">' + esc(vctryL(vctryOf(it))) + '</span>' : '') +
       '<button class="v-cta" data-vact="copyall" title="Copy the whole record' + (hasSec ? " \u2014 without secrets" : "") + '">Copy all</button>' +
       (hasSec ? '<button class="v-cta sec" data-vact="copysec" title="' + esc(c.sl || "Copy the secret only") + ' \u2014 clipboard clears after 60s">' + esc(c.sb || "Secret") + '</button>' : '') +
       '<button class="v-ico" data-vact="edit" title="Edit this item">Edit</button><button class="sub-del" data-vact="vdel" title="Delete">\u00d7</button></div>';
     return '<li class="vault-item" data-vid="' + esc(it.id) + '" style="border-color:oklch(0.9 0.04 ' + c.hue + ')">' + head + (body ? '<div class="v-fields">' + body + '</div>' : "") + '</li>';
   }
-  var VM_CAT = null, VM_ID = null, VM_CTRY = null, VM_FOLD = "", VM_RET = "";
-  function vmFoldBtnHtml() {
-    var fh = VM_FOLD ? foldHue(VM_FOLD) : 0, fe = VM_FOLD ? foldEmo(VM_FOLD) : "";
-    return '<button type="button" class="vm-fold' + (VM_FOLD ? " on" : "") + '" id="vmFold"' + (VM_FOLD ? ' style="color:oklch(0.45 0.16 ' + fh + ');border-color:oklch(0.8 0.08 ' + fh + ');background:oklch(0.97 0.02 ' + fh + ')"' : '') + '>' + (VM_FOLD ? (fe ? fe + " " : "") + esc(VM_FOLD) : "Not filed \u2014 central Vault only") + ' <span class="cfb-car">\u25be</span></button>';
-  }
-  function openVaultModal(catK, it, fold) {
+  var VM_CAT = null, VM_ID = null, VM_CTRY = null;
+  function openVaultModal(catK, it) {
     var c = vcat(catK), m = $("vaultModal"); if (!c || !m) return;
-    var reopen = VM_CAT === catK && m.classList.contains("open");
-    if (!reopen) VM_RET = CHAT_VIEW;
     VM_CAT = catK; VM_ID = it ? it.id : null;
-    VM_FOLD = fold != null ? String(fold) : (reopen ? VM_FOLD : vfoldOf(it));
     $("vmTitle").textContent = ((it && it.id) ? "Edit " : "Add ") + c.one;
     var f = (it && it.f) || {};
     VM_CTRY = c.ctry ? vctryOf(it) : null;
     var ctrySeg = c.ctry ? '<div class="cfield"><label>Country</label><div class="v-ctryseg">' + VCTRY.map(function (x) {
       return '<button type="button" class="vcseg' + (x.k === VM_CTRY ? " on" : "") + '" data-vctry="' + x.k + '">' + esc(x.l) + '</button>';
     }).join("") + '</div><span class="cf-hint">picks the fields below \u2014 shown as a tag on the saved record</span></div>' : '';
-    var foldRow = '<div class="cfield"><label>Folder</label>' + vmFoldBtnHtml() + '<span class="cf-hint">also appears on that folder\u2019s Vault strip</span></div>';
-    $("vmBody").innerHTML = foldRow + ctrySeg + vfs(c, { f: { ctry: VM_CTRY } }).map(function (fd) {
+    $("vmBody").innerHTML = ctrySeg + vfs(c, { f: { ctry: VM_CTRY } }).map(function (fd) {
       var v = esc(f[fd.k] || "");
       var inp = fd.tp === "ta" ? '<textarea id="vmF_' + fd.k + '" rows="2">' + v + '</textarea>' :
         fd.tp === "sel" ? '<select id="vmF_' + fd.k + '"><option value="">\u2014</option>' + (fd.opts || []).map(function (o) { return '<option value="' + esc(o) + '"' + (o === (f[fd.k] || "") ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' :
@@ -3234,21 +3175,15 @@
     var FOLD_IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>';
     function chatsIn(f) { return arr.filter(function (c) { return ((c.fold || "").trim()) === f; }); }
     var starred = arr.filter(function (c) { return c.star; });
-    if (CHAT_VIEW === "@vault" || CHAT_VIEW.indexOf("@vault:") === 0 || CHAT_VIEW.indexOf("@vaultf:") === 0) { host.innerHTML = vaultHtml(); return; }
+    if (CHAT_VIEW === "@vault" || CHAT_VIEW.indexOf("@vault:") === 0) { host.innerHTML = vaultHtml(); return; }
     if (CHAT_VIEW) {
       var isStar = CHAT_VIEW === "@star";
       var fName = (CHAT_VIEW === "@un" || isStar) ? "" : CHAT_VIEW;
       var rows = isStar ? starred : chatsIn(fName);
       var hOpen = isStar ? 85 : foldHue(fName || "Unsorted");
       var em0 = isStar ? "\u2b50" : foldEmo(fName || "Unsorted");
-      var html2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="@back">\u2190 Folders</button><span class="cf-open-name" style="color:oklch(0.5 0.16 ' + hOpen + ')">' + (em0 ? '<span class="cf-emo sm">' + em0 + '</span>' : FOLD_IC) + esc(isStar ? "Starred" : (fName || "Unsorted")) + '</span><span class="chat-sec-n">' + rows.length + '</span>' +
-        (isStar ? '' : '<button type="button" class="tbtn cf-huebtn' + (CHAT_FOLDHUE_OPEN ? " on" : "") + '" data-chact="fhue" title="Folder colour"><span class="cf-huedot" style="background:oklch(0.55 0.16 ' + hOpen + ')"></span>Colour</button>') + '</li>';
-      if (!isStar && CHAT_FOLDHUE_OPEN) html2 += '<li class="cf-hues">' + hueSwatches("fhueset", { fold: fName || "Unsorted" }, foldHueOv()[(fName || "Unsorted").toLowerCase()], "Auto") + '</li>';
-      if (!isStar) {
-        var vf = vaultInFold(fName).length;
-        html2 += '<li class="cvault"><button type="button" data-cfold="@vaultf:' + esc(fName) + '"><span class="cv-em">\ud83d\udd10</span><span><span class="cv-t">Vault</span><span class="cv-s"> \u00b7 ' + (vf ? "records filed under " + esc(fName || "Unsorted") : "nothing filed here yet") + '</span></span><span class="cv-n">' + (vf ? vf + (vf === 1 ? " item" : " items") : "open") + '</span></button></li>';
-      }
-      html2 += rows.length ? '<li class="ctiles">' + rows.map(ctileHtml).join("") + '</li>' : '<li class="chat-empty">' + (isStar ? "No starred chats yet \u2014 open any chat tile and tap \u2606 Star to pin it here." : "Nothing in this folder yet \u2014 move a chat here, or pick this folder when saving.") + '</li>';
+      var html2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="@back">\u2190 Folders</button><span class="cf-open-name" style="color:oklch(0.5 0.16 ' + hOpen + ')">' + (em0 ? '<span class="cf-emo sm">' + em0 + '</span>' : FOLD_IC) + esc(isStar ? "Starred" : (fName || "Unsorted")) + '</span><span class="chat-sec-n">' + rows.length + '</span></li>';
+      html2 += rows.length ? rows.map(rowHtml).join("") : '<li class="chat-empty">' + (isStar ? "No starred chats yet \u2014 tap the \u2606 on any chat to pin it here." : "Nothing in this folder yet \u2014 move a chat here, or pick this folder when saving.") + '</li>';
       host.innerHTML = html2; return;
     }
     var unsorted = chatsIn("");
@@ -3329,10 +3264,6 @@
     var vm = $("vaultModal");
     if (vm) vm.addEventListener("click", function (e) {
       if (e.target === vm || e.target.closest("#vmClose")) { closeVaultModal(); return; }
-      if (e.target.closest("#vmFold")) {
-        openFoldModal("File this record under\u2026", VM_FOLD, function (v) { VM_FOLD = v || ""; var b = $("vmFold"); if (b) b.outerHTML = vmFoldBtnHtml(); });
-        return;
-      }
       if (e.target.closest("#vmDelete")) {
         if (VM_ID && confirm("Delete this item?")) { var did = VM_ID; meta.cvault = vaultArr().filter(function (x) { return x.id !== did; }); saveChats(); closeVaultModal(); renderChats(); }
         return;
@@ -3352,14 +3283,8 @@
         vfs(c, { f: { ctry: VM_CTRY } }).forEach(function (fd) { var el2 = $("vmF_" + fd.k); var v = el2 ? el2.value.trim() : ""; if (v) any = true; f[fd.k] = v; });
         if (c.ctry) f.ctry = VM_CTRY || "IN";
         if (!any) { closeVaultModal(); return; }
-        var fold2 = VM_FOLD || null;
-        if (VM_ID) { vaultArr().forEach(function (x) { if (x.id === VM_ID) { x.f = f; x.fold = fold2; x.u = Date.now(); } }); }
-        else {
-          vaultArr().push({ id: uid(), cat: VM_CAT, f: f, fold: fold2, u: Date.now() });
-          var ret = VM_RET || "";
-          if (/^@vaultf:[^:]*$/.test(ret)) ret += ":" + VM_CAT; else if (!/^@vault(f)?:/.test(ret)) ret = "@vault:" + VM_CAT;
-          CHAT_VIEW = ret; saveChatView();
-        }
+        if (VM_ID) { vaultArr().forEach(function (x) { if (x.id === VM_ID) { x.f = f; x.u = Date.now(); } }); }
+        else { vaultArr().push({ id: uid(), cat: VM_CAT, f: f, u: Date.now() }); CHAT_VIEW = "@vault:" + VM_CAT; saveChatView(); }
         saveChats(); closeVaultModal(); renderChats(); toast("Saved \u2713");
       }
     });
@@ -3367,7 +3292,7 @@
       var vb = e.target.closest("[data-vact]");
       if (vb) {
         var va = vb.getAttribute("data-vact");
-        if (va === "add") { openVaultModal(vb.getAttribute("data-vcat"), null, vb.getAttribute("data-vfold") || ""); return; }
+        if (va === "add") { openVaultModal(vb.getAttribute("data-vcat"), null); return; }
         var vrow = e.target.closest("[data-vid]"); if (!vrow) return;
         var vid = vrow.getAttribute("data-vid"), vit = null;
         vaultArr().forEach(function (x) { if (x.id === vid) vit = x; }); if (!vit) return;
@@ -3386,7 +3311,6 @@
       var el = e.target.closest("[data-cact]"); if (!el) return;
       var row = e.target.closest("[data-cid]"); if (!row) return;
       var cid = row.getAttribute("data-cid"), arr = chatsArr(), act2 = el.getAttribute("data-cact");
-      if (act2 === "csheet") { openChatSheet(cid); return; }
       if (act2 === "del") { meta.cchats = arr.filter(function (c) { return c.id !== cid; }); saveChats(); renderChats(); return; }
       if (act2 === "star") { arr.forEach(function (x) { if (x.id === cid) { x.star = !x.star; x.u = Date.now(); } }); saveChats(); renderChats(); return; }
       if (act2 === "fold") {
@@ -3554,34 +3478,6 @@
         closeRoutineEd();
         ["schedModal", "taskModal", "hoursModal", "placeModal", "linksModal"].forEach(function (id) { var m = $(id); if (m) m.classList.remove("open"); });
       }
-    });
-
-    /* v60: chat sheet + folder colour actions */
-    document.addEventListener("click", function (e) {
-      var csm = $("chatSheet");
-      if (csm && e.target === csm) { closeChatSheet(); return; }
-      var el = e.target.closest("[data-chact]"); if (!el) return;
-      var a = el.getAttribute("data-chact");
-      if (a === "fhue") { CHAT_FOLDHUE_OPEN = !CHAT_FOLDHUE_OPEN; renderChats(); return; }
-      if (a === "fhueset") {
-        var fk = String(el.getAttribute("data-fold") || "Unsorted").toLowerCase(), hv = el.getAttribute("data-hue");
-        if (hv === "") delete foldHueOv()[fk]; else foldHueOv()[fk] = +hv;
-        CHAT_FOLDHUE_OPEN = false; saveChats(); renderChats(); return;
-      }
-      if (a === "csclose") { closeChatSheet(); return; }
-      var c = chatById(CS_ID); if (!c) return;
-      function bump() { c.u = Date.now(); saveChats(); renderChats(); paintChatSheet(); }
-      if (a === "csstar") { c.star = !c.star; bump(); return; }
-      if (a === "csmove") {
-        openFoldModal("Move \u201c" + (c.t || "this chat") + "\u201d to\u2026", c.fold || "", function (v) { c.fold = v || null; CHAT_VIEW = v || "@un"; saveChatView(); bump(); toast("Moved to " + (v || "Unsorted")); });
-        return;
-      }
-      if (a === "csrename") { var nn = prompt("Rename this chat", c.t || ""); if (nn == null) return; nn = nn.trim(); if (!nn) return; c.t = nn; bump(); return; }
-      if (a === "cslink") { var nu = prompt("claude.ai chat link", c.url || ""); if (nu == null) return; nu = nu.trim(); if (nu && !/^https?:\/\//i.test(nu)) nu = "https://" + nu; c.url = nu; bump(); return; }
-      if (a === "cscopy") { if (!c.url) { toast("No link saved yet"); return; } vCopy(c.url, false); return; }
-      if (a === "cstag") { var tord = [""].concat(TAG_KEYS), ci = tord.indexOf(c.tag && SUB_TAGS[c.tag] ? c.tag : ""); c.tag = tord[(ci + 1) % tord.length] || null; bump(); return; }
-      if (a === "cshue") { var hv2 = el.getAttribute("data-hue"); if (hv2 === "") delete c.hue; else c.hue = +hv2; bump(); return; }
-      if (a === "csdel") { if (!confirm("Delete \u201c" + (c.t || "this chat") + "\u201d?")) return; meta.cchats = chatsArr().filter(function (x) { return x.id !== c.id; }); saveChats(); closeChatSheet(); renderChats(); return; }
     });
 
     /* home-screen actions (separate namespace from the board's data-act) */
