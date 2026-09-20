@@ -175,10 +175,17 @@
      stale copy instead of being resurrected. Legacy subtasks (no id) get a stable
      id derived from their text so the same legacy item dedupes across devices. */
   function subLegacyId(t) { var s = String(t || ""), h = 5381; for (var i = 0; i < s.length; i++) { h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; } return "l_" + h.toString(36); }
+  /* ---- v63 (phase 5a): task contexts — the 7-item vocabulary shared with Roadmap (roadmap_contexts_map).
+     Stored per subtask as ctx: ['@train', …]; mirrors the WF tasks.contexts text[] column for the V2-D bridge. */
+  var CTX = [["@train", "On the train", "train"], ["@home", "At home", "home"], ["@office", "At the office", "office"], ["@needs-claude-code", "Needs Claude Code", "CC"], ["@claude-chat-only", "Claude chat is enough", "chat"], ["@phone-only", "Phone only", "phone"], ["@deep-work", "Deep work block", "deep"]];
+  function ctxRow(id) { for (var i = 0; i < CTX.length; i++) if (CTX[i][0] === id) return CTX[i]; return null; }
+  function ctxLabel(id) { var r = ctxRow(id); return r ? r[1] : id; }
+  function ctxShort(id) { var r = ctxRow(id); return r ? r[2] : String(id).replace(/^@/, ""); }
+  function ctxNorm(a) { if (!Array.isArray(a)) return []; var out = []; a.forEach(function (c) { c = String(c || "").trim(); if (ctxRow(c) && out.indexOf(c) < 0) out.push(c); }); return out; }
   function normSubs(arr) {
     return (Array.isArray(arr) ? arr : []).map(function (s) {
       if (!s) return null;
-      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl, loc: s.loc || "", tag: s.tag || "" };
+      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl, loc: s.loc || "", tag: s.tag || "", ctx: ctxNorm(s.ctx), lat: !!s.lat, latAt: s.latAt || 0, rv: s.rv || "" };
     }).filter(Boolean);
   }
   function mergeSubs(a, b) {
@@ -187,13 +194,25 @@
       var ex = by[s.id];
       if (!ex) { by[s.id] = s; order.push(s.id); return; }
       if ((s.u || 0) > (ex.u || 0)) by[s.id] = s;
-      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when, md: ex.md !== "b" ? ex.md : s.md, urg: ex.urg || s.urg, dl: ex.dl || s.dl, loc: ex.loc || s.loc || "", tag: ex.tag || s.tag || "" };
+      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when, md: ex.md !== "b" ? ex.md : s.md, urg: ex.urg || s.urg, dl: ex.dl || s.dl, loc: ex.loc || s.loc || "", tag: ex.tag || s.tag || "", ctx: (ex.ctx && ex.ctx.length) ? ex.ctx : (s.ctx || []), lat: ex.lat || s.lat, latAt: ex.latAt || s.latAt || 0, rv: ex.rv || s.rv || "" };
     }
     normSubs(a).forEach(take); normSubs(b).forEach(take);
     return order.map(function (id) { return by[id]; });
   }
   function visibleSubs(arr) { return normSubs(arr).filter(function (s) { return !s.del; }); }
-  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0, s.when || "", s.md || "b", s.urg ? 1 : 0, s.dl ? 1 : 0, s.loc || ""]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
+  /* v64 (phase 9): parked tasks — "for later". They stay in the list's count but never nag:
+     no Today row, no overdue banner, no calendar dot, no agenda, no flow. */
+  function activeSubs(arr) { return visibleSubs(arr).filter(function (s) { return !s.lat; }); }
+  function parkedSubs(arr) { return visibleSubs(arr).filter(function (s) { return !!s.lat; }); }
+  function agoLabel(ts) {
+    if (!ts) return "parked";
+    var d = Math.floor((Date.now() - ts) / 86400000);
+    if (d <= 0) return "parked today";
+    if (d === 1) return "parked yesterday";
+    if (d < 30) return "parked " + d + " days ago";
+    var m = Math.round(d / 30); return "parked " + m + (m === 1 ? " month" : " months") + " ago";
+  }
+  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0, s.when || "", s.md || "b", s.urg ? 1 : 0, s.dl ? 1 : 0, s.loc || "", (s.ctx || []).join("|"), s.lat ? 1 : 0, s.rv || ""]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
   function subsDiffer(a, b) { return subsKey(a) !== subsKey(b); }
 
   /* ---------------- targets (The Five) ---------------- */
@@ -389,6 +408,27 @@
     var tg = x.tag && SUB_TAGS[x.tag] ? x.tag : "";
     return '<button class="sub-tag ' + (tg || "none") + '" data-act="tagcycle" title="' + (tg ? SUB_TAGS[tg] + " \u2014 tap to change / clear" : "Tag this task: " + TAG_KEYS.map(function (k) { return SUB_TAGS[k]; }).join(" / ")) + '">' + (tg ? SUB_TAGS[tg] : "+ tag") + "</button>";
   }
+  function subCtxBtn(x) {
+    var c = x.ctx || [];
+    return '<button class="sub-ctx' + (c.length ? "" : " none") + '" data-act="ctxedit" title="' + esc(c.length ? c.map(ctxLabel).join(", ") + " \u2014 tap to change" : "Where can this be done? Tap to add a context") + '">' + (c.length ? c.map(function (id) { return '<span>@' + esc(ctxShort(id)) + '</span>'; }).join("") : "@") + '</button>';
+  }
+  function subCtxChips(x) { return (x.ctx || []).map(function (id) { return '<span class="hchip ctx" title="' + esc(ctxLabel(id)) + '">@' + esc(ctxShort(id)) + '</span>'; }).join(""); }
+  var LAT_OPEN = {};
+  function latBtn(x) { return '<button class="sub-lat" data-act="latpark" title="Park this for later \u2014 it leaves the list but stays in the count">\u23f8</button>'; }
+  function latStripHtml(id) {
+    var pk = parkedSubs(subs(id)); if (!pk.length) return "";
+    var open = !!LAT_OPEN[id];
+    pk.sort(function (a, b) { return (b.latAt || 0) - (a.latAt || 0); });
+    return '<div class="lat-strip' + (open ? " open" : "") + '"><button type="button" class="lat-head" data-act="latstrip">' + (open ? "\u25be" : "\u25b8") + ' For later <b>(' + pk.length + ')</b></button>' +
+      (open ? '<ul class="lat-list">' + pk.map(function (x) {
+        return '<li data-sid="' + esc(x.id) + '"><span class="lat-t">' + esc(x.t || "task") + '</span>' +
+          '<span class="lat-when">' + esc(agoLabel(x.latAt)) + (x.when ? " \u00b7 " + esc(hFmt(String(x.when).slice(0, 10))) : "") + '</span>' +
+          (x.ctx && x.ctx.length ? subCtxChips(x) : "") +
+          '<label class="lat-rvw' + (x.rv ? " on" : "") + '" title="Revisit on \u2014 set a date to come back to this">' + (x.rv ? "\u21bb " + esc(hFmt(x.rv)) : "\u21bb revisit") + '<input type="date" data-latrv="1" value="' + esc(x.rv || "") + '"></label>' +
+          '<button class="lat-act" data-act="latback" title="Put it back in the list">Bring back</button>' +
+          '<button class="lat-act done" data-act="latdone" title="Mark it done without bringing it back">Done</button></li>';
+      }).join("") + '</ul>' : "") + '</div>';
+  }
   function subFlagBtn(x) {
     return '<button class="sub-flag' + (x.urg ? " on" : "") + '" data-act="urgtoggle" title="' + (x.urg ? "Urgent \u2014 tap to clear" : "Mark urgent \u2014 pins it on top in red") + '">' + IC.flag + "</button>";
   }
@@ -444,7 +484,7 @@
   function openTaskSheet(key, sid) {
     var x = null; normSubs(subs(key)).forEach(function (s) { if (s.id === sid) x = s; });
     if (!x) return;
-    TSK = { key: key, sid: sid, date: (x.when || "").slice(0, 10), time: (x.when || "").length > 10 ? x.when.slice(11, 16) : "", md: x.md || "b", urg: !!x.urg, dl: !!x.dl, loc: x.loc || "" };
+    TSK = { key: key, sid: sid, date: (x.when || "").slice(0, 10), time: (x.when || "").length > 10 ? x.when.slice(11, 16) : "", md: x.md || "b", urg: !!x.urg, dl: !!x.dl, loc: x.loc || "", ctx: (x.ctx || []).slice() };
     $("tkName").textContent = x.t || "task";
     renderTaskSheet();
     $("taskModal").classList.add("open");
@@ -479,6 +519,8 @@
         lsg.map(function (l) { return '<button type="button" class="chip' + (l.toLowerCase() === TSK.loc.toLowerCase() ? " on" : "") + '" data-tkloc="' + esc(l) + '">' + esc(l) + "</button>"; }).join("") +
         '<button type="button" class="chip" data-tklocnew="1">+ New…</button>';
     }
+    var cel = $("tkCtx");
+    if (cel) cel.innerHTML = CTX.map(function (c) { var on = (TSK.ctx || []).indexOf(c[0]) >= 0; return '<button type="button" class="chip ctxchip' + (on ? " on" : "") + '" data-tkctx="' + c[0] + '" title="' + esc(c[1]) + '">' + esc(c[0]) + "</button>"; }).join("");
     var ub = $("tkUrg");
     ub.classList.toggle("on", TSK.urg);
     ub.innerHTML = IC.flag + "<span>" + (TSK.urg ? "Urgent \u2014 pinned on top in red" : "Mark as urgent") + "</span>";
@@ -494,7 +536,7 @@
   }
   function saveTaskSheet() {
     var when = TSK.date ? TSK.date + (TSK.time ? "T" + TSK.time : "") : "";
-    patch(TSK.key, { subtasks: normSubs(subs(TSK.key)).map(function (x) { return x.id === TSK.sid ? Object.assign({}, x, { when: when, md: TSK.md, urg: TSK.urg, dl: !!(TSK.dl && TSK.date), loc: TSK.loc || "", u: Date.now() }) : x; }) });
+    patch(TSK.key, { subtasks: normSubs(subs(TSK.key)).map(function (x) { return x.id === TSK.sid ? Object.assign({}, x, { when: when, md: TSK.md, urg: TSK.urg, dl: !!(TSK.dl && TSK.date), loc: TSK.loc || "", ctx: ctxNorm(TSK.ctx), u: Date.now() }) : x; }) });
     $("taskModal").classList.remove("open");
     renderCols(); renderHome();
     toast("Task updated.");
@@ -503,9 +545,10 @@
     var tm = $("taskModal"); if (!tm) return;
     tm.addEventListener("click", function (e) {
       if (e.target === tm) { tm.classList.remove("open"); return; }
-      var b = e.target.closest("[data-tkdate],[data-tktime],[data-tkmd],[data-tkloc],[data-tklocnew]");
+      var b = e.target.closest("[data-tkdate],[data-tktime],[data-tkmd],[data-tkloc],[data-tklocnew],[data-tkctx]");
       if (!b) return;
-      if (b.hasAttribute("data-tklocnew")) { var nl = (prompt("Place name (e.g. Home, Shin-\u014ckubo):") || "").trim(); if (nl) TSK.loc = addMetaLoc(nl); }
+      if (b.hasAttribute("data-tkctx")) { var cid = b.getAttribute("data-tkctx"); TSK.ctx = TSK.ctx || []; var ci2 = TSK.ctx.indexOf(cid); if (ci2 >= 0) TSK.ctx.splice(ci2, 1); else TSK.ctx.push(cid); }
+      else if (b.hasAttribute("data-tklocnew")) { var nl = (prompt("Place name (e.g. Home, Shin-\u014ckubo):") || "").trim(); if (nl) TSK.loc = addMetaLoc(nl); }
       else if (b.hasAttribute("data-tkloc")) TSK.loc = b.getAttribute("data-tkloc");
       else if (b.hasAttribute("data-tkdate")) { TSK.date = b.getAttribute("data-tkdate"); if (!TSK.date) TSK.time = ""; }
       else if (b.hasAttribute("data-tktime")) TSK.time = b.getAttribute("data-tktime");
@@ -523,19 +566,39 @@
   /* ---- v41: tag filter (All / Claude AI / Claude Design / Cowork) ---- */
   var TAG_FILTER = "";
   try { TAG_FILTER = localStorage.getItem("wf-tagfilter") || ""; } catch (e) {}
+  /* v63: context filter — "Show: @train" on Week + Today. One situation at a time, remembered per device. */
+  var CTX_FILTER = ""; try { CTX_FILTER = localStorage.getItem("wf-ctxfilter") || ""; } catch (e) {}
+  if (CTX_FILTER && !ctxRow(CTX_FILTER)) CTX_FILTER = "";
+  var CTXPOP = false;
+  function ctxBarHtml() {
+    var on = !!CTX_FILTER;
+    return '<button type="button" class="ctxshow' + (on ? " on" : "") + '" data-ctxpick="1" title="Show only tasks doable in this context">Show: <b>' + (on ? esc(CTX_FILTER) : "everything") + '</b><span class="cfb-car">\u25be</span></button>' +
+      (CTXPOP ? '<div class="ctxpop"><button type="button" class="ctxopt' + (on ? "" : " on") + '" data-ctxset="">Everything<small>no context filter</small></button>' +
+        CTX.map(function (c) { return '<button type="button" class="ctxopt' + (c[0] === CTX_FILTER ? " on" : "") + '" data-ctxset="' + c[0] + '">' + esc(c[0]) + '<small>' + esc(c[1]) + '</small></button>'; }).join("") + '</div>' : "");
+  }
+  function renderCtxBars() { ["ctxBarWeek", "ctxBarToday"].forEach(function (id) { var el = $(id); if (el) el.innerHTML = ctxBarHtml(); }); }
+  function ctxOk(x) { return !CTX_FILTER || (x.ctx || []).indexOf(CTX_FILTER) >= 0; }
+  document.addEventListener("click", function (e) {
+    var st = e.target.closest("[data-ctxset]");
+    if (st) { CTX_FILTER = st.getAttribute("data-ctxset") || ""; try { localStorage.setItem("wf-ctxfilter", CTX_FILTER); } catch (x) {} CTXPOP = false; renderCtxBars(); applyTagFilter(); renderHome(); return; }
+    if (e.target.closest("[data-ctxpick]")) { CTXPOP = !CTXPOP; renderCtxBars(); return; }
+    if (CTXPOP && !e.target.closest(".ctxbar")) { CTXPOP = false; renderCtxBars(); }
+  });
   function applyTagFilter() {
+    renderCtxBars();
     var tfBar = $("tagFilter");
     if (tfBar) tfBar.querySelectorAll("[data-tf]").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-tf") === TAG_FILTER); });
     var scr = $("scrWeek"); if (!scr) return;
-    scr.classList.toggle("tag-filtered", !!TAG_FILTER);
-    if (!TAG_FILTER) {
+    var active = !!(TAG_FILTER || CTX_FILTER);
+    scr.classList.toggle("tag-filtered", active);
+    if (!active) {
       scr.querySelectorAll(".tf-hide").forEach(function (el) { el.classList.remove("tf-hide"); });
       return;
     }
     scr.querySelectorAll("[data-key]").forEach(function (card) {
       if (!card.classList.contains("item") && !card.classList.contains("sp-card")) return;
       var key = card.getAttribute("data-key"), match = {}, any = false;
-      normSubs(subs(key)).forEach(function (x) { if (!x.del && x.tag === TAG_FILTER) { match[x.id] = 1; any = true; } });
+      normSubs(subs(key)).forEach(function (x) { if (!x.del && (!TAG_FILTER || x.tag === TAG_FILTER) && ctxOk(x)) { match[x.id] = 1; any = true; } });
       card.classList.toggle("tf-hide", !any);
       if (any) card.querySelectorAll("li[data-sid]").forEach(function (li) { li.classList.toggle("tf-hide", !match[li.getAttribute("data-sid")]); });
     });
@@ -580,7 +643,7 @@
     placeList().forEach(function (p) { add(p.name); });
     tlNotes().forEach(function (n) { add(n.loc); });
     ibItems().forEach(function (n) { add(n.loc); });
-    specialSorted().forEach(function (it) { normSubs(subs(it.id)).forEach(function (x) { add(x.loc); }); });
+    specialSorted().forEach(function (it) { activeSubs(subs(it.id)).forEach(function (x) { add(x.loc); }); });
     return out;
   }
   function metaLocs() { return Array.isArray(meta.locs) ? meta.locs : []; }
@@ -836,7 +899,7 @@
   }
   function renderFlow(items, host) {
     var rows = [];
-    items.forEach(function (it) { visibleSubs(subs(it.id)).forEach(function (x) { rows.push({ it: it, x: x }); }); });
+    items.forEach(function (it) { activeSubs(subs(it.id)).forEach(function (x) { rows.push({ it: it, x: x }); }); });
     var saved = Array.isArray(meta.seq) ? meta.seq : [];
     var by = {}; rows.forEach(function (r) { by[r.x.id] = r; });
     var ordered = [], seen = {};
@@ -901,6 +964,7 @@
   function renderSpecial() {
     var sec = $("specialSec"), host = $("specialHost"); if (!sec || !host) return;
     host.classList.toggle("fullview", SP_VIEW !== "cards");
+    host.classList.toggle("tiles", SP_VIEW === "cards");
     var items = specialSorted();
     sec.style.display = "";
     paintTlSeg();
@@ -924,62 +988,128 @@
       return;
     }
     renderAgenda(items);
-    host.innerHTML = "";
-    var totDone = 0, tot = 0;
+    /* v62: special lists as tiles (monogram · count pill · progress bar) + one Archive tile; editor opens as the Life sheet */
+    var totDone = 0, tot = 0, th = "";
     items.forEach(function (it) {
       var id = it.id, sv = visibleSubs(subs(id)), done = sv.filter(function (x) { return x.done; }).length;
       totDone += done; tot += sv.length;
-      var open = !!detailOpen[id];
-      var card = document.createElement("div");
-      card.className = "sp-card" + (open ? " open" : "");
-      card.setAttribute("data-key", id); card.setAttribute("data-kind", kindOf(id));
-      card.style.setProperty("--sp-h", hueFor(it.name));
-      var mode = getMode();
-      var svMatch = sv.filter(function (x) { return subModeOk(x.md, mode); });
-      var hiddenN = sv.length - svMatch.length;
-      var svShown = (spReveal[id] ? sv : svMatch).slice().sort(function (a, b) { return subRank(a) - subRank(b); });
-      var rows = svShown.map(function (x) {
-        var v = !x.done ? whenView(x) : null;
-        var od = !!(v && v.w.pastDue);
-        var liCls = x.done ? "" : od ? " od" : x.urg ? " urg" : (v && v.asap ? " asap" : "");
-        var metaBits = subModeTag(x) + (x.when ? whenChipHtml(x) : "");
-        return '<li data-sid="' + esc(x.id) + '" class="spli' + liCls + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-          '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' + subTagBtn(x) +
-          (x.when ? "" : whenChipHtml(x)) + subFlagBtn(x) +
-          '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button>' +
-          (metaBits ? '<span class="sub-meta">' + metaBits + "</span>" : "") + "</li>";
-      }).join("");
-      if (hiddenN > 0) rows += '<li class="sub-hidden-note"><button data-act="spreveal">' + (spReveal[id] ? "Hide" : "Show") + " " + hiddenN + " " + (mode === "office" ? "personal" : "office") + " task" + (hiddenN === 1 ? "" : "s") + "</button></li>";
-      card.innerHTML =
-        '<div class="sp-head">' +
-          '<span class="sp-grip" title="Drag to reorder">\u22ee\u22ee</span>' +
-          '<span class="sp-name" data-act="open">' + esc(it.name) + '</span>' +
-          (sv.length ? '<span class="sp-count' + (done === sv.length ? " all" : "") + '">' + done + "/" + sv.length + '</span>' : '') +
-          (sv.length && done === sv.length ? '<button class="sp-arch-btn" data-act="sparch" title="Archive — hides this list but keeps it in the cloud">Archive</button>' : '') +
-          '<button class="caret-btn" data-act="open">' + IC.chev + '</button>' +
-        '</div>' +
-        (open
-          ? detailHtml(id)
-          : '<ul class="subs sp-subs">' + rows + '</ul>' +
-            '<div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a task\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>');
-      host.appendChild(card);
+      var pk = sv.filter(function (x) { return x.lat; }).length;
+      var od = sv.filter(function (x) { if (x.done || x.lat) return false; var v = whenView(x); return !!(v && v.w && v.w.pastDue); }).length;
+      var pct = sv.length ? Math.round(done / sv.length * 100) : 0;
+      th += '<button type="button" class="sp-tile' + (sv.length && done === sv.length ? " all" : "") + '" data-key="' + esc(id) + '" data-kind="' + kindOf(id) + '" data-act="spopen" style="--h:' + hueFor(it.name) + ';--p:' + pct + '%">' +
+        '<span class="sp-grip" data-act="spgrip" title="Drag to reorder">\u22ee\u22ee</span>' +
+        '<span class="spt-mono">' + spMono(it.name) + '</span>' +
+        '<span class="spt-name">' + esc(it.name) + '</span>' +
+        '<span class="spt-foot">' + (sv.length ? '<span class="spt-count' + (done === sv.length ? " all" : "") + '">' + done + '/' + sv.length + '</span>' : '<span class="spt-count empty">empty</span>') +
+        (od ? '<span class="spt-flag">' + od + ' overdue</span>' : '') +
+        (pk ? '<span class="spt-park">\u23f8 ' + pk + '</span>' : '') + '</span>' +
+        '<span class="spt-fill"><i></i></span></button>';
     });
     var arch = archivedSpecial();
-    if (arch.length) {
-      var ab = document.createElement("button");
-      ab.type = "button"; ab.id = "spArchToggle"; ab.className = "sp-archtoggle";
-      ab.textContent = SP_SHOW_ARCH ? "Hide archived" : "Archived (" + arch.length + ")";
-      host.appendChild(ab);
-      if (SP_SHOW_ARCH) arch.forEach(function (it2) {
-        var sv2 = visibleSubs(subs(it2.id)), dn2 = sv2.filter(function (x) { return x.done; }).length;
-        var c2 = document.createElement("div");
-        c2.className = "sp-card archived"; c2.setAttribute("data-key", it2.id);
-        c2.style.setProperty("--sp-h", hueFor(it2.name));
-        c2.innerHTML = '<div class="sp-head"><span class="sp-name">' + esc(it2.name) + '</span>' + (sv2.length ? '<span class="sp-count all">' + dn2 + "/" + sv2.length + '</span>' : '') + '<button class="sp-arch-btn" data-act="spunarch" title="Bring it back to the board">Unarchive</button></div>';
-        host.appendChild(c2);
-      });
-    }
+    var parkTot = 0; items.forEach(function (it) { parkTot += parkedSubs(subs(it.id)).length; });
+    th += '<button type="button" class="sp-tile arch" data-act="sparchopen" title="Archived lists and parked tasks"><span class="spt-mono">\u25a4</span><span class="spt-name">Archive</span><span class="spt-foot"><span class="spt-count">' + arch.length + (arch.length === 1 ? ' list' : ' lists') + '</span>' + (parkTot ? '<span class="spt-park">\u23f8 ' + parkTot + ' parked</span>' : '') + '</span></button>';
+    th += '<button type="button" class="sp-tile medit" data-act="meditopen" title="Meditation notes"><span class="spt-mono">\u25cc</span><span class="spt-name">Meditation</span><span class="spt-foot"><span class="spt-count">' + meditArr().length + (meditArr().length === 1 ? ' note' : ' notes') + '</span>' + (meditIn("later").length ? '<span class="spt-park">\u23f8 ' + meditIn("later").length + ' later</span>' : '') + '</span></button>';
+    host.innerHTML = th;
     var cnt = $("specialCount"); if (cnt) cnt.textContent = tot ? totDone + "/" + tot : "";
+    refreshLifeSheet();
+  }
+
+  /* ---- v64 (phase 4): meditation notes — meta.medit, synced with the board like Vault.
+     { id, ts, t, mood, rv (revisit-on), g: "later"|"recent"|"arch" } ---- */
+  var MOODS = ["calm", "restless", "heavy", "clear", "tired", "light"];
+  function meditArr() { if (!Array.isArray(meta.medit)) meta.medit = []; return meta.medit; }
+  function meditGrp(n) { var g = n && n.g; return g === "later" || g === "arch" ? g : "recent"; }
+  function meditIn(g) { return meditArr().filter(function (n) { return meditGrp(n) === g; }); }
+  function meditSave() { save(); cloudPushBoard(); }
+  var MED_MOOD = "", MED_RV = "";
+  function meditSheetHtml() {
+    var groups = [["later", "For later", "things to come back to"], ["recent", "Recent", "the running log"], ["arch", "Archive", "kept, out of the way"]];
+    var h = '<div class="med-add"><textarea id="medNew" rows="2" placeholder="What came up? \u2014 a line is enough"></textarea>' +
+      '<div class="med-moods">' + MOODS.map(function (m) { return '<button type="button" class="chip' + (MED_MOOD === m ? " on" : "") + '" data-medmood="' + m + '">' + m + '</button>'; }).join("") +
+      '<input id="medMoodOther" class="med-other" placeholder="other\u2026" value="' + esc(MOODS.indexOf(MED_MOOD) < 0 ? MED_MOOD : "") + '"></div>' +
+      '<div class="med-addrow"><label class="med-rv">Revisit on <input type="date" id="medRv" value="' + esc(MED_RV) + '"></label><button type="button" class="sub-addbtn" data-act="medadd">Add note</button></div></div>';
+    groups.forEach(function (g) {
+      var rows = meditIn(g[0]).slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+      if (!rows.length && g[0] === "arch") return;
+      h += '<div class="ls-sec">' + g[1] + ' <small>' + g[2] + '</small><span class="ls-secn">' + rows.length + '</span></div>';
+      h += rows.length ? '<div class="med-list">' + rows.map(function (n) {
+        return '<div class="med-note" data-medid="' + esc(n.id) + '"><div class="med-top"><span class="med-date">' + esc(medDate(n.ts)) + '</span>' +
+          (n.mood ? '<span class="med-mood">' + esc(n.mood) + '</span>' : '') +
+          (n.rv ? '<span class="med-rvchip">revisit ' + esc(hFmt(n.rv)) + '</span>' : '') +
+          '<button class="sub-del" data-act="meddel" title="Delete">\u00d7</button></div>' +
+          '<div class="med-t">' + esc(n.t || "") + '</div>' +
+          '<div class="med-acts">' + (g[0] !== "later" ? '<button type="button" class="lat-act" data-act="medmove" data-medg="later">For later</button>' : '') +
+          (g[0] !== "recent" ? '<button type="button" class="lat-act" data-act="medmove" data-medg="recent">Recent</button>' : '') +
+          (g[0] !== "arch" ? '<button type="button" class="lat-act" data-act="medmove" data-medg="arch">Archive</button>' : '') + '</div></div>';
+      }).join("") + '</div>' : '<div class="med-none">Nothing here.</div>';
+    });
+    return h;
+  }
+  function medDate(ts) { var d = new Date(ts || Date.now()); return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
+
+  /* ---- v62: Life sheet — the special-list editor, opened from a tile ---- */
+  var SP_OPEN = null;
+  function spMono(n) { var w = String(n || "").replace(/[^A-Za-z0-9\u3040-\u30ff\u4e00-\u9faf ]/g, " ").split(/\s+/).filter(Boolean); var m = w.length > 1 ? (w[0][0] + w[1][0]) : (w[0] || "").slice(0, 2); return esc(m.toUpperCase() || "\u2022"); }
+  function spRowsHtml(it) {
+    var id = it.id, sv = visibleSubs(subs(id)), mode = getMode();
+    sv = sv.filter(function (x) { return !x.lat; });
+    var svMatch = sv.filter(function (x) { return subModeOk(x.md, mode); });
+    var hiddenN = sv.length - svMatch.length;
+    var svShown = (spReveal[id] ? sv : svMatch).slice().sort(function (a, b) { return subRank(a) - subRank(b); });
+    var rows = svShown.map(function (x) {
+      var v = !x.done ? whenView(x) : null;
+      var od = !!(v && v.w.pastDue);
+      var liCls = x.done ? "" : od ? " od" : x.urg ? " urg" : (v && v.asap ? " asap" : "");
+      var metaBits = subModeTag(x) + (x.when ? whenChipHtml(x) : "");
+      return '<li data-sid="' + esc(x.id) + '" class="spli' + liCls + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
+        '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' + subTagBtn(x) + subCtxBtn(x) +
+        (x.when ? "" : whenChipHtml(x)) + subFlagBtn(x) + latBtn(x) +
+        '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button>' +
+        (metaBits ? '<span class="sub-meta">' + metaBits + "</span>" : "") + "</li>";
+    }).join("");
+    if (hiddenN > 0) rows += '<li class="sub-hidden-note"><button data-act="spreveal">' + (spReveal[id] ? "Hide" : "Show") + " " + hiddenN + " " + (mode === "office" ? "personal" : "office") + " task" + (hiddenN === 1 ? "" : "s") + "</button></li>";
+    return rows;
+  }
+  function openLifeSheet(id) { SP_OPEN = id; paintLifeSheet(); var s = $("lifeSheet"); if (s) s.classList.add("open"); }
+  function closeLifeSheet() { SP_OPEN = null; var s = $("lifeSheet"); if (s) s.classList.remove("open"); }
+  function refreshLifeSheet() {
+    if (!SP_OPEN) return;
+    var box = $("lsBody"); if (!box) return;
+    if (box.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    paintLifeSheet();
+  }
+  function paintLifeSheet() {
+    var head = $("lsHead"), body = $("lsBody"), box = $("lsBox"); if (!head || !body || !box) return;
+    if (SP_OPEN === "@med") {
+      box.style.setProperty("--h", 265);
+      head.innerHTML = '<span class="spt-mono" style="background:oklch(0.55 0.12 265)">\u25cc</span><div class="bs-t"><div class="bs-cr">Life</div><div class="bs-nm">Meditation</div></div><span class="bs-n">' + meditArr().length + '</span><button class="bs-x" data-act="lsclose" title="Close">\u00d7</button>';
+      body.innerHTML = meditSheetHtml();
+      return;
+    }
+    if (SP_OPEN === "@arch") {
+      var arch = archivedSpecial();
+      box.style.setProperty("--h", 0);
+      head.innerHTML = '<span class="spt-mono grey">\u25a4</span><div class="bs-t"><div class="bs-cr">Life</div><div class="bs-nm">Archive</div></div><span class="bs-n">' + arch.length + '</span><button class="bs-x" data-act="lsclose" title="Close">\u00d7</button>';
+      body.innerHTML = arch.length ? '<div class="ls-arch">' + arch.map(function (it2) {
+        var sv2 = visibleSubs(subs(it2.id)), dn2 = sv2.filter(function (x) { return x.done; }).length;
+        return '<div class="ls-archrow" data-key="' + esc(it2.id) + '" style="--h:' + hueFor(it2.name) + '"><span class="spt-mono">' + spMono(it2.name) + '</span><span class="ls-an">' + esc(it2.name) + '</span>' + (sv2.length ? '<span class="ls-ac">' + dn2 + '/' + sv2.length + '</span>' : '') + '<button type="button" class="sp-arch-btn" data-act="spunarch" title="Bring it back to the grid">Unarchive</button></div>';
+      }).join("") + '</div>'
+        : '<div class="tl-empty">Nothing archived yet \u2014 open a list and tap \u201cArchive list\u201d.</div>';
+      var pkRows = specialSorted().map(function (it3) { var n = parkedSubs(subs(it3.id)).length; return n ? { it: it3, n: n } : null; }).filter(Boolean);
+      if (pkRows.length) body.innerHTML += '<div class="ls-sec">Parked tasks</div><div class="ls-arch">' + pkRows.map(function (p) {
+        return '<div class="ls-archrow" style="--h:' + hueFor(p.it.name) + '"><span class="spt-mono">' + spMono(p.it.name) + '</span><span class="ls-an">' + esc(p.it.name) + '</span><span class="ls-ac">\u23f8 ' + p.n + '</span><button type="button" class="sp-arch-btn" data-act="spopen" data-spid="' + esc(p.it.id) + '">Open list</button></div>';
+      }).join("") + '</div>';
+      body.innerHTML += '<div class="ls-note">Archived lists and parked tasks stay in the cloud. Parked tasks live in their own list\u2019s \u201cFor later\u201d strip \u2014 open the list to bring one back.</div>';
+      return;
+    }
+    var it = itemById(SP_OPEN); if (!it) { closeLifeSheet(); return; }
+    var id = it.id, sv = visibleSubs(subs(id)), done = sv.filter(function (x) { return x.done; }).length, open = !!detailOpen[id];
+    box.style.setProperty("--h", hueFor(it.name));
+    head.innerHTML = '<span class="spt-mono">' + spMono(it.name) + '</span><div class="bs-t"><div class="bs-cr">Special list</div><div class="bs-nm">' + esc(it.name) + '</div></div>' +
+      (sv.length ? '<span class="bs-n">' + done + '/' + sv.length + '</span>' : '<span></span>') + '<button class="bs-x" data-act="lsclose" title="Close">\u00d7</button>';
+    body.innerHTML = '<div class="ls-card' + (open ? " open" : "") + '" data-key="' + esc(id) + '" data-kind="' + kindOf(id) + '" style="--sp-h:' + hueFor(it.name) + '">' +
+      (open ? detailHtml(id) : '<ul class="subs sp-subs">' + spRowsHtml(it) + '</ul><div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a task\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>' + latStripHtml(id)) +
+      '<div class="ls-acts"><button type="button" class="sp-arch-btn" data-act="sparch" title="Hides this list but keeps it in the cloud">Archive list</button><button type="button" class="sp-arch-btn" data-act="open">' + (open ? "Back to tasks" : "Details & notes") + '</button></div></div>';
   }
 
   /* ---- Coming up: grouped by source list (topic cards) ---- */
@@ -987,7 +1117,7 @@
     var ag = $("spAgenda"); if (!ag) return;
     var mode = getMode(), rows = [];
     items.forEach(function (it) {
-      visibleSubs(subs(it.id)).forEach(function (x) {
+      activeSubs(subs(it.id)).forEach(function (x) {
         if (x.done || !subModeOk(x.md, mode)) return;
         var v = whenView(x);
         if (!v && !x.urg) return;
@@ -1167,15 +1297,15 @@
       detailHtml(id);
     return li;
   }
-  function nextSub(id) { var a = visibleSubs(subs(id)).filter(function (x) { return !x.done; }); return a.length ? (a[0].t || "") : ""; }
+  function nextSub(id) { var a = activeSubs(subs(id)).filter(function (x) { return !x.done; }); return a.length ? (a[0].t || "") : ""; }
   function priName(p) { return p === "H" ? "High" : p === "M" ? "Medium" : "Low"; }
   function detailHtml(id) {
     var e = getEntry(id), it = itemById(id), pri = priOf(id);
-    var rows = visibleSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
+    var rows = activeSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
       var t = x.t || "";
       return '<li data-sid="' + esc(x.id) + '"><span class="sub-grip" title="Drag to reorder">\u22ee\u22ee</span><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-        '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' + subTagBtn(x) +
-        (isSpecialItem(it) ? whenChipHtml(x) : '') +
+        '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' + subTagBtn(x) + subCtxBtn(x) +
+        (isSpecialItem(it) ? whenChipHtml(x) : '') + latBtn(x) +
         '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button></li>';
     }).join("");
     var priCtl = '<div class="pri-row"><span class="pri-lbl">Priority</span>' +
@@ -1208,6 +1338,7 @@
       '<input class="obj" data-act="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
       '<ul class="subs">' + rows + '</ul>' +
       '<div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a checklist subtask\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
+      latStripHtml(id) +
       '<div class="notes-block"><span class="notes-lbl">\u270e Notes</span>' +
       '<textarea class="notes" data-act="notes" placeholder="Longer notes \u2014 thinking, blockers, links\u2026">' + esc(e.notes || "") + '</textarea></div>' +
       linksRow +
@@ -1332,7 +1463,47 @@
     }
     if (a === "linkedit") { startLinkEdit(act.closest(".lrow"), key); return; }
     if (a === "linkadd") { addLinkFrom(act, key); return; }
-    if (a === "sparch") { patch(key, { arch: true }); toast("Archived — it stays in the cloud under \u201cArchived\u201d."); renderAll(); return; }
+    if (a === "spopen") { openLifeSheet(act.getAttribute("data-spid") || key); return; }
+    if (a === "meditopen") { openLifeSheet("@med"); return; }
+    if (a === "latstrip") { LAT_OPEN[key] = !LAT_OPEN[key]; renderCols(); return; }
+    if (a === "latpark" || a === "latback" || a === "latdone") {
+      var lli = act.closest("[data-sid]"); if (!lli) return;
+      var lsid = lli.getAttribute("data-sid"), cur = null;
+      normSubs(subs(key)).forEach(function (x) { if (x.id === lsid) cur = x; });
+      if (!cur) return;
+      var pat = {};
+      if (a === "latpark") { pat = { lat: true, latAt: Date.now() }; LAT_OPEN[key] = true; }
+      else if (a === "latback") { pat = { lat: false, latAt: 0, rv: "" }; }
+      else { pat = { done: true }; }
+      patch(key, { subtasks: normSubs(subs(key)).map(function (x) { return x.id === lsid ? Object.assign({}, x, pat, { u: Date.now() }) : x; }) });
+      renderAll();
+      if (a === "latpark") toast("Parked \u2014 in \u201cFor later\u201d, out of Today and the calendar.");
+      if (a === "latback") toast("Back in the list.");
+      return;
+    }
+    if (a === "medadd") {
+      var ta = $("medNew"); if (!ta) return;
+      var mt = ta.value.trim(); if (!mt) { ta.focus(); return; }
+      var oth = $("medMoodOther"), mo = MED_MOOD || (oth ? oth.value.trim() : "");
+      var rvel = $("medRv");
+      meditArr().push({ id: uid(), ts: Date.now(), t: mt, mood: mo, rv: rvel && rvel.value ? rvel.value : "", g: (rvel && rvel.value) ? "later" : "recent" });
+      MED_MOOD = ""; MED_RV = "";
+      meditSave(); paintLifeSheet(); renderSpecial();
+      toast("Noted.");
+      return;
+    }
+    if (a === "meddel" || a === "medmove") {
+      var mrow = act.closest("[data-medid]"); if (!mrow) return;
+      var mid = mrow.getAttribute("data-medid");
+      if (a === "meddel") { meta.medit = meditArr().filter(function (n) { return n.id !== mid; }); }
+      else { var mg = act.getAttribute("data-medg"); meditArr().forEach(function (n) { if (n.id === mid) { n.g = mg; n.u = Date.now(); } }); }
+      meditSave(); paintLifeSheet(); renderSpecial();
+      return;
+    }
+    if (a === "sparchopen") { openLifeSheet("@arch"); return; }
+    if (a === "lsclose") { closeLifeSheet(); return; }
+    if (a === "spgrip") return;
+    if (a === "sparch") { patch(key, { arch: true }); if (SP_OPEN === key) closeLifeSheet(); toast("Archived \u2014 it\u2019s in the Archive tile, still in the cloud."); renderAll(); return; }
     if (a === "spunarch") { patch(key, { arch: false }); renderAll(); return; }
     if (a === "flagupd") { var wasUpd = !!getEntry(key).upd; patch(key, { upd: !wasUpd }); toast(wasUpd ? "Update flag cleared." : "Flagged \u2014 pending update for Claude."); renderAll(); return; }
     if (a === "star") {
@@ -1356,7 +1527,7 @@
       patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderCols(); renderPulse(); renderFive(); return;
     }
     if (a === "subedit-start") { startSubEdit(act, key); return; }
-    if (a === "whenedit") { var wli = act.closest("[data-sid]"); if (wli) openTaskSheet(key, wli.getAttribute("data-sid")); return; }
+    if (a === "whenedit" || a === "ctxedit") { var wli = act.closest("[data-sid]"); if (wli) openTaskSheet(key, wli.getAttribute("data-sid")); return; }
     if (a === "urgtoggle") {
       var uli = act.closest("[data-sid]");
       if (uli) {
@@ -1514,7 +1685,25 @@
 
   document.addEventListener("click", function (e) { if (e.target.closest("#wishAdd")) wishAddFromInput(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey && e.target && e.target.id === "wishInp") { e.preventDefault(); wishAddFromInput(); } });
-  document.addEventListener("click", function (e) { if (e.target.id === "buildSheet") closeBuildSheet(); if (e.target.id === "wishSheet") closeWishSheet(); });
+  document.addEventListener("click", function (e) { if (e.target.id === "buildSheet") closeBuildSheet(); if (e.target.id === "wishSheet") closeWishSheet(); if (e.target.id === "lifeSheet") closeLifeSheet(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && SP_OPEN) closeLifeSheet(); });
+  document.addEventListener("change", function (e) {
+    var rvi = e.target.closest ? e.target.closest("[data-latrv]") : null; if (!rvi) return;
+    var li = rvi.closest("[data-sid]"), card = rvi.closest("[data-key]");
+    if (!li || !card) return;
+    var k2 = card.getAttribute("data-key"), s2 = li.getAttribute("data-sid"), v2 = rvi.value || "";
+    patch(k2, { subtasks: normSubs(subs(k2)).map(function (x) { return x.id === s2 ? Object.assign({}, x, { rv: v2, u: Date.now() }) : x; }) });
+    renderAll();
+    toast(v2 ? "Revisit " + hFmt(v2) + "." : "Revisit date cleared.");
+  });
+  document.addEventListener("click", function (e) {
+    var mb = e.target.closest("[data-medmood]"); if (!mb) return;
+    var mv = mb.getAttribute("data-medmood");
+    var ta = $("medNew"), keep = ta ? ta.value : "", rvel = $("medRv");
+    MED_MOOD = MED_MOOD === mv ? "" : mv; MED_RV = rvel ? rvel.value : "";
+    paintLifeSheet();
+    var ta2 = $("medNew"); if (ta2) { ta2.value = keep; ta2.focus(); }
+  });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && WS_SHOP) closeWishSheet(); if (e.key === "Enter" && e.target && e.target.id === "wsMoveNew") { e.preventDefault(); var g = e.target.parentNode.querySelector("[data-hact=wmovenew]"); if (g) g.click(); } if (e.key === "Enter" && e.target && e.target.id === "wsInp") { e.preventDefault(); var b = e.target.parentNode.querySelector("[data-hact=wsadd]"); if (b) b.click(); } });
   document.addEventListener("dragstart", function (e) { var c = e.target.closest && e.target.closest("[data-wid]"); if (!c) return; e.dataTransfer.setData("text/plain", c.getAttribute("data-wid")); WISH_SEL = null; });
   document.addEventListener("dragover", function (e) { var t = e.target.closest && e.target.closest("[data-wshop]"); if (!t) return; e.preventDefault(); t.classList.add("drop"); });
@@ -1897,7 +2086,7 @@
     var dragEl = null;
     host.addEventListener("pointerdown", function (e) {
       var g = e.target.closest(".sp-grip"); if (!g) return;
-      dragEl = g.closest(".sp-card"); if (!dragEl) return;
+      dragEl = g.closest(".sp-tile"); if (!dragEl) return;
       dragEl.classList.add("dragging");
       try { g.setPointerCapture(e.pointerId); } catch (x) {}
       e.preventDefault();
@@ -1905,7 +2094,7 @@
     host.addEventListener("pointermove", function (e) {
       if (!dragEl) return;
       var over = document.elementFromPoint(e.clientX, e.clientY);
-      var card = over && over.closest ? over.closest(".sp-card") : null;
+      var card = over && over.closest ? over.closest(".sp-tile[data-key]") : null;
       if (!card || card === dragEl || card.parentNode !== host) return;
       var r = card.getBoundingClientRect();
       var before = (e.clientY < r.top + r.height / 2) || (e.clientY < r.bottom && e.clientX < r.left + r.width / 2);
@@ -1914,7 +2103,7 @@
     function endSpDrag() {
       if (!dragEl) return;
       dragEl.classList.remove("dragging"); dragEl = null;
-      var ids = Array.prototype.map.call(host.querySelectorAll(".sp-card[data-key]"), function (n) { return n.getAttribute("data-key"); });
+      var ids = Array.prototype.map.call(host.querySelectorAll(".sp-tile[data-key]"), function (n) { return n.getAttribute("data-key"); });
       ids.forEach(function (id, i) { entries[id] = Object.assign({}, entries[id], { spord: i }); cloudPushEntry(id, entries[id]); });
       save(); renderSpecial();
     }
@@ -2123,7 +2312,7 @@
   function datedSubs(dateIso, mode) {
     var out = [];
     activeItems("app").concat(activeItems("study")).filter(isSpecialItem).forEach(function (it) {
-      visibleSubs(subs(it.id)).forEach(function (x) {
+      activeSubs(subs(it.id)).forEach(function (x) {
         if (!x.when || String(x.when).slice(0, 10) !== dateIso) return;
         if (mode && !subModeOk(x.md, mode)) return;
         var v = whenView(x), w = v && v.w;
@@ -2365,7 +2554,7 @@
   function todaySpecialRows(mode) {
     var out = [];
     activeItems("app").concat(activeItems("study")).filter(isSpecialItem).forEach(function (it) {
-      visibleSubs(subs(it.id)).forEach(function (x) {
+      activeSubs(subs(it.id)).forEach(function (x) {
         if (!subModeOk(x.md, mode)) return;
         var v = whenView(x), w = v && v.w;
         var overdue = !!(w && w.pastDue && !x.done);
@@ -2393,7 +2582,7 @@
       '<div class="tmain"><div class="hname">' + esc(r.x.t || "task") + "</div>" +
       '<div class="hsub">' +
       (r.od ? '<span class="hchip odflag">OVERDUE' + (odDays > 0 ? " \u00b7 " + odDays + (odDays === 1 ? " day" : " days") : " \u00b7 today") + "</span>" : r.asap ? '<span class="hchip asapflag">' + IC.flag + "ASAP</span>" : "") +
-      '<span class="hsrc">' + esc(r.it.name) + "</span>" + chip + subModeTag(r.x) + "</div></div></div>";
+      '<span class="hsrc">' + esc(r.it.name) + "</span>" + chip + subModeTag(r.x) + subCtxChips(r.x) + "</div></div></div>";
   }
   /* ---- Build band (v52): ranked apps at the top of Today. Must + Can x4 + Will ---- */
   function bandOn() { return getMode() !== "office"; }
@@ -2481,7 +2670,9 @@
     placeNudges(t).forEach(function (p) { rows.push(nudgeCard(p)); });
     /* 1 \u2014 urgent / due / overdue Special tasks (window-suppressed unless ASAP) */
     var live = [], tray = [];
-    todaySpecialRows(mode).forEach(function (r) { (!r.asap && !r.od && !inWindow(r.x.md) ? tray : live).push(r); });
+    var ctxHidden = 0;
+    todaySpecialRows(mode).forEach(function (r) { if (!ctxOk(r.x)) { ctxHidden++; return; } (!r.asap && !r.od && !inWindow(r.x.md) ? tray : live).push(r); });
+    if (CTX_FILTER) rows.push('<div class="ctxnote">Showing <b>' + esc(CTX_FILTER) + '</b> \u2014 ' + esc(ctxLabel(CTX_FILTER).toLowerCase()) + (ctxHidden ? ' \u00b7 ' + ctxHidden + ' task' + (ctxHidden === 1 ? "" : "s") + ' hidden' : '') + '</div>');
     /* overdue banner \u2014 the guilt trip is the point */
     var odRows = live.filter(function (r) { return r.od; });
     if (odRows.length) {
@@ -3065,7 +3256,8 @@
     { k: "addr", l: "Addresses", one: "address", emo: "\ud83c\udfe0", hue: 145, fs: [{ k: "t", l: "Label (Home, Office\u2026)" }, { k: "name", l: "Name" }, { k: "a1", l: "Street / building", tp: "ta" }, { k: "city", l: "City & PIN" }, { k: "ph", l: "Phone" }, { k: "note", l: "Notes", tp: "ta" }] },
     { k: "link", l: "Links", one: "link", emo: "\ud83d\udd17", hue: 210, fs: [{ k: "t", l: "Label" }, { k: "url", l: "URL", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
     { k: "login", l: "Logins & passwords", one: "login", emo: "\ud83d\udd11", hue: 45, sb: "Password", sl: "Copy the password only", fs: [{ k: "t", l: "Site / app" }, { k: "user", l: "Username / email", cl: "User" }, { k: "pw", l: "Password", tp: "pass" }, { k: "url", l: "Login page", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "keys", l: "Keys", one: "key", emo: "\ud83d\udddd\ufe0f", hue: 285, sb: "Key", sl: "Copy the key only", fs: [{ k: "t", l: "Label (what this key is for)" }, { k: "kind", l: "Type", tp: "sel", opts: ["API key", "License / product key", "Recovery codes", "SSH key", "Wi\u2011Fi password", "Access token", "Other"], cl: "Type" }, { k: "val", l: "Key", tp: "pass" }, { k: "acct", l: "Account / service", cl: "Account" }, { k: "exp", l: "Expires (optional)", cl: "Expires" }, { k: "note", l: "Notes", tp: "ta" }] },
+    /* v61: Keys is shape-switched by its own Type field — same mechanism Bank uses for country. */
+    { k: "keys", l: "Keys", one: "key", emo: "\ud83d\udddd\ufe0f", hue: 285, sb: "Key", sl: "Copy the key only", shape: "kind", fs: [{ k: "t", l: "Label (what this key is for)" }, { k: "kind", l: "Type", tp: "sel", opts: ["API key", "API / integration (multi\u2011field)", "License / product key", "Recovery codes", "SSH key", "Wi\u2011Fi password", "Access token", "Other"], cl: "Type" }, { k: "val", l: "Key", tp: "pass" }, { k: "acct", l: "Account / service", cl: "Account" }, { k: "exp", l: "Expires (optional)", cl: "Expires" }, { k: "note", l: "Notes", tp: "ta" }], fsBy: { _: [{ k: "t", l: "Label (what this key is for)" }, { k: "kind", l: "Type", tp: "sel", opts: ["API key", "API / integration (multi\u2011field)", "License / product key", "Recovery codes", "SSH key", "Wi\u2011Fi password", "Access token", "Other"], cl: "Type" }, { k: "val", l: "Key", tp: "pass" }, { k: "acct", l: "Account / service", cl: "Account" }, { k: "exp", l: "Expires (optional)", cl: "Expires" }, { k: "note", l: "Notes", tp: "ta" }], "API / integration (multi\u2011field)": [{ k: "t", l: "Label (what this key is for)" }, { k: "kind", l: "Type", tp: "sel", opts: ["API key", "API / integration (multi\u2011field)", "License / product key", "Recovery codes", "SSH key", "Wi\u2011Fi password", "Access token", "Other"], cl: "Type" }, { k: "url", l: "Application URL", tp: "url", cl: "Application URL" }, { k: "appid", l: "Application ID", cl: "Application ID" }, { k: "akey", l: "Access key", tp: "pass", cl: "Access key" }, { k: "affid", l: "Affiliate ID", cl: "Affiliate ID" }, { k: "acct", l: "Account / service", cl: "Account" }, { k: "exp", l: "Expires (optional)", cl: "Expires" }, { k: "note", l: "Notes", tp: "ta" }] } },
     { k: "bank", l: "Bank details", one: "account", emo: "\ud83c\udfe6", hue: 160, sb: "Account no", sl: "Copy the account number only", ctry: true, fs: [{ k: "t", l: "Label (bank & account)" }, { k: "holder", l: "Account holder", cl: "Account holder" }, { k: "acc", l: "Account number", tp: "pass" }, { k: "ifsc", l: "IFSC / SWIFT", cl: "IFSC" }, { k: "branch", l: "Branch", cl: "Branch" }, { k: "note", l: "Notes", tp: "ta" }], fsBy: {
       IN: [{ k: "t", l: "Label (bank & account)" }, { k: "holder", l: "Account holder", cl: "Account holder" }, { k: "acc", l: "Account number", tp: "pass" }, { k: "ifsc", l: "IFSC / SWIFT", cl: "IFSC" }, { k: "branch", l: "Branch", cl: "Branch" }, { k: "note", l: "Notes", tp: "ta" }],
       JP: [{ k: "t", l: "Label (bank & account)" }, { k: "bank", l: "Bank name \u9280\u884c\u540d", cl: "Bank" }, { k: "bcode", l: "Bank code \u91d1\u878d\u6a5f\u95a2\u30b3\u30fc\u30c9 (4 digits)", cl: "Bank code" }, { k: "branch", l: "Branch name \u652f\u5e97\u540d", cl: "Branch" }, { k: "brcode", l: "Branch code \u652f\u5e97\u30b3\u30fc\u30c9 (3 digits)", cl: "Branch code" }, { k: "type", l: "Account type \u53e3\u5ea7\u7a2e\u76ee", tp: "sel", opts: ["\u666e\u901a Futsu (ordinary)", "\u5f53\u5ea7 Toza (checking)", "\u8caf\u84c4 Chochiku (savings)"], cl: "Type" }, { k: "acc", l: "Account number \u53e3\u5ea7\u756a\u53f7 (7 digits)", tp: "pass" }, { k: "holder", l: "Account holder \u53e3\u5ea7\u540d\u7fa9 (katakana)", cl: "Holder" }, { k: "note", l: "Notes", tp: "ta" }]
@@ -3080,7 +3272,10 @@
   var VCTRY = [{ k: "IN", l: "India" }, { k: "JP", l: "Japan" }];
   function vctryL(k) { for (var i = 0; i < VCTRY.length; i++) if (VCTRY[i].k === k) return VCTRY[i].l; return "India"; }
   function vctryOf(it) { var v = it && it.f && it.f.ctry; return v === "JP" ? "JP" : "IN"; }
-  function vfs(c, it) { if (!c || !c.fsBy) return (c && c.fs) || []; return c.fsBy[vctryOf(it)] || c.fsBy.IN; }
+  function vShapeOf(c, it) { if (!c) return ""; if (c.ctry) return vctryOf(it); if (c.shape) return String(((it && it.f) || {})[c.shape] || ""); return ""; }
+  function vfs(c, it) { if (!c) return []; if (!c.fsBy) return c.fs || []; return c.fsBy[vShapeOf(c, it)] || c.fsBy._ || c.fsBy.IN || c.fs || []; }
+  /* v61: free-form extra fields on any record — f.x = [{l,v,s}] */
+  function vXs(it) { var a = ((it && it.f) || {}).x; return Array.isArray(a) ? a : []; }
   function vMigrate() {
     var ch = false;
     vaultArr().forEach(function (x) { if (x.cat === "bankjp") { x.cat = "bank"; x.f = x.f || {}; x.f.ctry = "JP"; x.u = Date.now(); ch = true; } });
@@ -3123,6 +3318,7 @@
     var hasSec = false;
     var FS = vfs(c, it);
     FS.forEach(function (fd) { if (fd.tp === "pass" && String(f[fd.k] || "").trim()) hasSec = true; });
+    vXs(it).forEach(function (r) { if (r.s && String(r.v || "").trim()) hasSec = true; });
     var body = FS.filter(function (fd) { return fd.k !== "t" && String(f[fd.k] || "").trim(); }).map(function (fd) {
       var raw = f[fd.k], sec = fd.tp === "pass", open = VREVEAL[it.id + "|" + fd.k];
       var val = sec && !open ? vMask(raw) : esc(raw);
@@ -3131,6 +3327,12 @@
       acts += '<button class="v-ico" data-vact="copy" data-vf="' + fd.k + '" title="Copy this field">Copy</button>';
       if (fd.tp === "url") acts += '<a class="tbtn chat-open v-open" href="' + esc(/^https?:\/\//i.test(raw) ? raw : "https://" + raw) + '" target="_blank" rel="noopener">Open \u2197</a>';
       return '<div class="v-f' + (fd.tp === "ta" ? " ta" : "") + '"><span class="v-k">' + esc(fd.l) + '</span><span class="v-v' + (sec ? " sec" : "") + '">' + val + '</span><span class="v-acts">' + acts + '</span></div>';
+    }).join("");
+    body += vXs(it).map(function (r, i) {
+      if (!String(r.v || "").trim()) return "";
+      var op = VREVEAL[it.id + "|x" + i], sc = !!r.s, vv = sc && !op ? vMask(r.v) : esc(r.v);
+      var ac = (sc ? '<button class="v-ico" data-vact="reveal" data-vf="x' + i + '" title="' + (op ? "Hide again" : "Show the real value") + '">' + (op ? "Hide" : "Show") + '</button>' : "") + '<button class="v-ico" data-vact="copy" data-vf="x' + i + '" title="Copy this field">Copy</button>';
+      return '<div class="v-f"><span class="v-k">' + esc(r.l || "Field") + '</span><span class="v-v' + (sc ? " sec" : "") + '">' + vv + '</span><span class="v-acts">' + ac + '</span></div>';
     }).join("");
     var vfo = vfoldOf(it), vfh = foldHue(vfo);
     var head = '<div class="v-head"><span class="v-emo">' + c.emo + '</span><span class="v-title">' + esc(f.t || "Untitled") + '</span>' +
@@ -3141,7 +3343,16 @@
       '<button class="v-ico" data-vact="edit" title="Edit this item">Edit</button><button class="sub-del" data-vact="vdel" title="Delete">\u00d7</button></div>';
     return '<li class="vault-item" data-vid="' + esc(it.id) + '" style="border-color:oklch(0.9 0.04 ' + c.hue + ')">' + head + (body ? '<div class="v-fields">' + body + '</div>' : "") + '</li>';
   }
-  var VM_CAT = null, VM_ID = null, VM_CTRY = null, VM_FOLD = "", VM_RET = "";
+  var VM_CAT = null, VM_ID = null, VM_CTRY = null, VM_FOLD = "", VM_RET = "", VM_SHAPE = "", VM_X = [];
+  function vmRef() { var c = vcat(VM_CAT), o = { ctry: VM_CTRY }; if (c && c.shape) o[c.shape] = VM_SHAPE; return { f: o }; }
+  function vmXHtml() {
+    return '<div class="vm-xhead"><span>Extra fields</span><button type="button" class="tbtn" id="vmXAdd">+ Add field</button></div>' +
+      (VM_X.length ? VM_X.map(function (r, i) {
+        return '<div class="vm-xrow"><input class="vm-xl" id="vmX_l' + i + '" type="text" autocomplete="off" placeholder="Field name" value="' + esc(r.l || "") + '"><input class="vm-xv" id="vmX_v' + i + '" type="text" autocomplete="off" placeholder="Value" value="' + esc(r.v || "") + '"><button type="button" class="vm-xs' + (r.s ? " on" : "") + '" data-xsec="' + i + '" title="' + (r.s ? "Secret \u2014 masked until you tap Show" : "Plain \u2014 tap to mask this value") + '">' + (r.s ? "\ud83d\udd12" : "\ud83d\udd13") + '</button><button type="button" class="sub-del" data-xdel="' + i + '" title="Remove this field">\u00d7</button></div>';
+      }).join("") : '<div class="vm-xnone">Nothing extra \u2014 add a field for anything the template above doesn\u2019t cover.</div>');
+  }
+  function vmXRead() { VM_X = VM_X.map(function (r, i) { var l = $("vmX_l" + i), v = $("vmX_v" + i); return { l: l ? l.value : r.l, v: v ? v.value : r.v, s: r.s ? 1 : 0 }; }); }
+  function vmXPaint() { var w = $("vmXWrap"); if (w) w.innerHTML = vmXHtml(); }
   function vmFoldBtnHtml() {
     var fh = VM_FOLD ? foldHue(VM_FOLD) : 0, fe = VM_FOLD ? foldEmo(VM_FOLD) : "";
     return '<button type="button" class="vm-fold' + (VM_FOLD ? " on" : "") + '" id="vmFold"' + (VM_FOLD ? ' style="color:oklch(0.45 0.16 ' + fh + ');border-color:oklch(0.8 0.08 ' + fh + ');background:oklch(0.97 0.02 ' + fh + ')"' : '') + '>' + (VM_FOLD ? (fe ? fe + " " : "") + esc(VM_FOLD) : "Not filed \u2014 central Vault only") + ' <span class="cfb-car">\u25be</span></button>';
@@ -3155,17 +3366,19 @@
     $("vmTitle").textContent = ((it && it.id) ? "Edit " : "Add ") + c.one;
     var f = (it && it.f) || {};
     VM_CTRY = c.ctry ? vctryOf(it) : null;
+    VM_SHAPE = c.shape ? String(f[c.shape] || "") : "";
+    VM_X = vXs(it).map(function (r) { return { l: r.l, v: r.v, s: r.s ? 1 : 0 }; });
     var ctrySeg = c.ctry ? '<div class="cfield"><label>Country</label><div class="v-ctryseg">' + VCTRY.map(function (x) {
       return '<button type="button" class="vcseg' + (x.k === VM_CTRY ? " on" : "") + '" data-vctry="' + x.k + '">' + esc(x.l) + '</button>';
     }).join("") + '</div><span class="cf-hint">picks the fields below \u2014 shown as a tag on the saved record</span></div>' : '';
     var foldRow = '<div class="cfield"><label>Folder</label>' + vmFoldBtnHtml() + '<span class="cf-hint">also appears on that folder\u2019s Vault strip</span></div>';
-    $("vmBody").innerHTML = foldRow + ctrySeg + vfs(c, { f: { ctry: VM_CTRY } }).map(function (fd) {
+    $("vmBody").innerHTML = foldRow + ctrySeg + vfs(c, vmRef()).map(function (fd) {
       var v = esc(f[fd.k] || "");
       var inp = fd.tp === "ta" ? '<textarea id="vmF_' + fd.k + '" rows="2">' + v + '</textarea>' :
         fd.tp === "sel" ? '<select id="vmF_' + fd.k + '"><option value="">\u2014</option>' + (fd.opts || []).map(function (o) { return '<option value="' + esc(o) + '"' + (o === (f[fd.k] || "") ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' :
         '<input id="vmF_' + fd.k + '" type="text" autocomplete="off" value="' + v + '">';
-      return '<div class="cfield"><label>' + esc(fd.l) + '</label>' + inp + '</div>';
-    }).join("");
+      return '<div class="cfield"><label>' + esc(fd.l) + '</label>' + inp + (c.shape === fd.k ? '<span class="cf-hint">picks the fields below</span>' : "") + '</div>';
+    }).join("") + '<div id="vmXWrap" class="vm-x">' + vmXHtml() + '</div>';
     $("vmDelete").style.display = it ? "" : "none";
     m.classList.add("open");
     setTimeout(function () { var fi = $("vmF_t"); if (fi) fi.focus(); }, 50);
@@ -3180,6 +3393,11 @@
       var v = String(f[fd.k] || "").trim(); if (!v) return;
       if (secretsOnly !== (fd.tp === "pass")) return;
       lines.push(fd.cl ? fd.cl + ": " + v : v);
+    });
+    vXs(it).forEach(function (r) {
+      var xv = String(r.v || "").trim(); if (!xv) return;
+      if (secretsOnly !== !!r.s) return;
+      lines.push((String(r.l || "").trim() || "Field") + ": " + xv);
     });
     return lines.join("\n");
   }
@@ -3341,16 +3559,26 @@
       if (vcb) {
         var cc = vcat(VM_CAT); if (!cc) return;
         var tmp = {};
-        vfs(cc, { f: { ctry: VM_CTRY } }).forEach(function (fd) { var el3 = $("vmF_" + fd.k); if (el3) tmp[fd.k] = el3.value; });
+        vfs(cc, vmRef()).forEach(function (fd) { var el3 = $("vmF_" + fd.k); if (el3) tmp[fd.k] = el3.value; });
         tmp.ctry = vcb.getAttribute("data-vctry");
+        vmXRead(); tmp.x = VM_X;
         openVaultModal(VM_CAT, { id: VM_ID, f: tmp });
         return;
       }
+      if (e.target.closest("#vmXAdd")) { vmXRead(); VM_X.push({ l: "", v: "", s: 0 }); vmXPaint(); var nf = $("vmX_l" + (VM_X.length - 1)); if (nf) nf.focus(); return; }
+      var xdb = e.target.closest("[data-xdel]");
+      if (xdb) { vmXRead(); VM_X.splice(+xdb.getAttribute("data-xdel"), 1); vmXPaint(); return; }
+      var xsb = e.target.closest("[data-xsec]");
+      if (xsb) { vmXRead(); var xsi = +xsb.getAttribute("data-xsec"); if (VM_X[xsi]) VM_X[xsi].s = VM_X[xsi].s ? 0 : 1; vmXPaint(); return; }
       if (e.target.closest("#vmSave")) {
         var c = vcat(VM_CAT); if (!c) { closeVaultModal(); return; }
-        var f = {}, any = false;
-        vfs(c, { f: { ctry: VM_CTRY } }).forEach(function (fd) { var el2 = $("vmF_" + fd.k); var v = el2 ? el2.value.trim() : ""; if (v) any = true; f[fd.k] = v; });
+        var prevIt = null; if (VM_ID) vaultArr().forEach(function (x) { if (x.id === VM_ID) prevIt = x; });
+        var f = prevIt && prevIt.f ? JSON.parse(JSON.stringify(prevIt.f)) : {}, any = false;
+        vfs(c, vmRef()).forEach(function (fd) { var el2 = $("vmF_" + fd.k); var v = el2 ? el2.value.trim() : ""; if (v) any = true; f[fd.k] = v; });
         if (c.ctry) f.ctry = VM_CTRY || "IN";
+        vmXRead();
+        var xrows = VM_X.filter(function (r) { return String(r.v || "").trim() || String(r.l || "").trim(); }).map(function (r) { return { l: String(r.l || "").trim() || "Field", v: String(r.v || "").trim(), s: r.s ? 1 : 0 }; });
+        if (xrows.length) { f.x = xrows; any = true; } else { delete f.x; }
         if (!any) { closeVaultModal(); return; }
         var fold2 = VM_FOLD || null;
         if (VM_ID) { vaultArr().forEach(function (x) { if (x.id === VM_ID) { x.f = f; x.fold = fold2; x.u = Date.now(); } }); }
@@ -3362,6 +3590,13 @@
         }
         saveChats(); closeVaultModal(); renderChats(); toast("Saved \u2713");
       }
+    });
+    if (vm) vm.addEventListener("change", function (e) {
+      var cs = vcat(VM_CAT); if (!cs || !cs.shape || !cs.fsBy) return;
+      var sel = e.target.closest("#vmF_" + cs.shape); if (!sel) return;
+      var tmp2 = {}; vfs(cs, vmRef()).forEach(function (fd) { var el5 = $("vmF_" + fd.k); if (el5) tmp2[fd.k] = el5.value; });
+      tmp2[cs.shape] = sel.value; vmXRead(); tmp2.x = VM_X;
+      openVaultModal(VM_CAT, { id: VM_ID, f: tmp2 });
     });
     $("chatList").addEventListener("click", function (e) {
       var vb = e.target.closest("[data-vact]");
@@ -3378,7 +3613,11 @@
         if (va === "copysec") { if (vc) vCopy(vCopyText(vc, vit, true), true); return; }
         var vf = vb.getAttribute("data-vf");
         if (va === "reveal") { var vkk = vid + "|" + vf; VREVEAL[vkk] = !VREVEAL[vkk]; renderChats(); return; }
-        if (va === "copy") { var vfd = null; if (vc) vfs(vc, vit).forEach(function (x) { if (x.k === vf) vfd = x; }); vCopy(String((vit.f || {})[vf] || ""), !!(vfd && vfd.tp === "pass")); return; }
+        if (va === "copy") {
+          var mx = /^x(\d+)$/.exec(vf);
+          if (mx) { var xr = vXs(vit)[+mx[1]] || {}; vCopy(String(xr.v || ""), !!xr.s); return; }
+          var vfd = null; if (vc) vfs(vc, vit).forEach(function (x) { if (x.k === vf) vfd = x; }); vCopy(String((vit.f || {})[vf] || ""), !!(vfd && vfd.tp === "pass")); return;
+        }
         return;
       }
       var fh = e.target.closest("[data-cfold]");
@@ -3673,16 +3912,14 @@
       if (e.target.closest("[data-act]")) return;   // done-checkbox keeps its own behavior
       var row = e.target.closest(".ag-item"); if (!row) return;
       var key = row.getAttribute("data-key"), sid = row.getAttribute("data-sid");
-      if (spReveal[key] !== true || !detailOpen[key]) { spReveal[key] = true; detailOpen[key] = true; renderCols(); }
-      var card = document.querySelector('.sp-card[data-key="' + key + '"], [data-key="' + key + '"].item');
-      if (!card) return;
-      var li = card.querySelector('li[data-sid="' + sid + '"]');
-      var target = li || card;
-      var sc = card.closest(".screen") || document.scrollingElement;
-      var r = target.getBoundingClientRect(), sr = sc.getBoundingClientRect ? sc.getBoundingClientRect() : { top: 0 };
-      sc.scrollTop += r.top - sr.top - 120;
-      card.classList.add("sp-hilite"); if (li) li.classList.add("sp-hilite");
-      setTimeout(function () { card.classList.remove("sp-hilite"); if (li) li.classList.remove("sp-hilite"); }, 1600);
+      spReveal[key] = true; detailOpen[key] = false;
+      openLifeSheet(key);
+      var bb = $("lsBody"), li = bb ? bb.querySelector('li[data-sid="' + sid + '"]') : null;
+      if (!li) return;
+      var r = li.getBoundingClientRect(), br = bb.getBoundingClientRect();
+      bb.scrollTop += r.top - br.top - 60;
+      li.classList.add("sp-hilite");
+      setTimeout(function () { li.classList.remove("sp-hilite"); }, 1600);
     });
     var _tf = $("tagFilter");
     if (_tf) {

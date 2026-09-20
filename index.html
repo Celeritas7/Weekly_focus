@@ -99,6 +99,7 @@
         <span class="count" id="todayCount">0/0</span>
         <button class="hrs-btn" id="hoursBtn" title="Set Personal / Office hours"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg></button>
       </div>
+      <div class="ctxbar today" id="ctxBarToday"></div>
       <div class="hrows" id="todayRows"></div>
     </div>
   </section>
@@ -196,6 +197,7 @@
         <input id="weekInput" type="text" placeholder="2026-06-08" data-act="week">
       </label>
       <div class="tagfilter" id="tagFilter" title="Filter tasks by tag"><button type="button" data-tf="" class="on">All</button><button type="button" data-tf="ca">Claude AI</button><button type="button" data-tf="cd">Claude Design</button><button type="button" data-tf="cw">Cowork</button><button type="button" data-tf="td">3D Model</button></div>
+      <div class="ctxbar" id="ctxBarWeek"></div>
     </div>
 
     <!-- ===================== WEEKLY PULSE ===================== -->
@@ -438,6 +440,15 @@
   </div>
 </div>
 
+<!-- ===================== LIFE SHEET (v62): special-list editor over the tile grid ===================== -->
+<div class="modal-bg bsheet-bg" id="lifeSheet">
+  <div class="bsheet lsheet" id="lsBox">
+    <div class="bsheet-grab"></div>
+    <div class="bsheet-head" id="lsHead"></div>
+    <div class="bsheet-body" id="lsBody"></div>
+  </div>
+</div>
+
 <!-- ===================== CHAT DETAIL SHEET (v60) ===================== -->
 <div class="modal-bg bsheet-bg" id="chatSheet">
   <div class="bsheet csheet" id="csBox">
@@ -476,6 +487,7 @@
       <div class="cfield"><label>Date</label><div class="chips" id="tkDates"></div></div>
       <div class="cfield"><label>Time</label><div class="chips" id="tkTimes"></div></div>
       <div class="cfield"><label>Place</label><div class="chips" id="tkLoc"></div></div>
+      <div class="cfield"><label>Context <span class="cf-hint">where / how it can be done — pick any</span></label><div class="chips" id="tkCtx"></div></div>
       <div class="cfield"><label>Mode</label><div class="chips" id="tkMode"></div></div>
       <div class="cfield"><label>Deadline</label><button type="button" class="urgbtn dlbtn" id="tkDl"></button></div>
       <div class="cfield"><label>Priority</label><button type="button" class="urgbtn" id="tkUrg"></button></div>
