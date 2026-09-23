@@ -81,7 +81,7 @@
     if (sb) return sb;
     if (window.__wfSb) { sb = window.__wfSb; return sb; }
     if (typeof window.supabase === 'undefined' || !cfg.url || !cfg.key) return null;
-    sb = window.supabase.createClient(cfg.url, cfg.key, { global: { headers: { 'x-akatsuki-app': 'wf' } } });
+    sb = window.supabase.createClient(cfg.url, cfg.key);
     return sb;
   }
 

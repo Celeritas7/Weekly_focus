@@ -185,7 +185,7 @@
   function normSubs(arr) {
     return (Array.isArray(arr) ? arr : []).map(function (s) {
       if (!s) return null;
-      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl, loc: s.loc || "", tag: s.tag || "", ctx: ctxNorm(s.ctx), lat: !!s.lat, latAt: s.latAt || 0, rv: s.rv || "", src: s.src || null };
+      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl, loc: s.loc || "", tag: s.tag || "", ctx: ctxNorm(s.ctx), lat: !!s.lat, latAt: s.latAt || 0, rv: s.rv || "" };
     }).filter(Boolean);
   }
   function mergeSubs(a, b) {
@@ -1519,13 +1519,12 @@
       var sid = e.target.closest("[data-sid]").getAttribute("data-sid");
       var subs_norm = normSubs(subs(key));   // backfill ids
       patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid ? Object.assign({}, x, { done: !x.done, u: Date.now() }) : x; }) });
-      akReplyFor(key, sid);
       renderCols(); renderPulse(); renderFive(); return;
     }
     if (a === "subdel") {
       var sid2 = e.target.closest("[data-sid]").getAttribute("data-sid");
       var subs_norm = normSubs(subs(key));   // backfill ids
-      patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); akReplyFor(key, sid2); renderCols(); renderPulse(); renderFive(); return;
+      patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderCols(); renderPulse(); renderFive(); return;
     }
     if (a === "subedit-start") { startSubEdit(act, key); return; }
     if (a === "whenedit" || a === "ctxedit") { var wli = act.closest("[data-sid]"); if (wli) openTaskSheet(key, wli.getAttribute("data-sid")); return; }
@@ -1735,8 +1734,7 @@
     if (sb) return sb;
     if (!cloudConfigured() || typeof window.supabase === "undefined") return null;
     sb = window.supabase.createClient(cloud.url, cloud.key, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "wf2_sb_auth" },
-      global: { headers: { "x-akatsuki-app": "wf" } }
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "wf2_sb_auth" }
     });
     window.__wfSb = sb;   // shared with wf-cc-bridge-v2.js so it uses this signed-in session
 
@@ -1744,7 +1742,7 @@
       session = sess || null;
       renderAuthUI(); updateCloudStatus();
       var cm = $("cloudModal"); if (cm && cm.classList.contains("open")) cloudSetStatus(cloudSummary());
-      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) Promise.resolve(initialSync()).then(akStart);
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) initialSync();
       else if (event === "TOKEN_REFRESHED" && syncReady()) flushOutbox();
     });
     authSub = sub && sub.data ? sub.data.subscription : null;
@@ -1867,101 +1865,7 @@
     // CLOUD-FIRST: a fresh device adopts the cloud copy; a device with local
     // data keeps it and seeds the cloud only if the board is empty.
     var fresh = !state.apps.length && !state.study.length && !state.office.length;
-    return cloudPullInventory(fresh).then(cloudPullEntries).then(flushOutbox);
-  }
-  /* ---- Akatsuki R010: Cost -> WF request inbox ------------------------------------
-     One subtask per request on the Life list app:cost-requests; sub.id = 'cost_' + request id.
-     Cost owns t until the user edits it (t !== src.t0). WF owns when/loc/md/... from creation.
-     Replies: tick -> done, un-tick -> open, delete -> cancelled. Never replies to inbound changes. */
-  var AK_KEY = "app:cost-requests", AK_FROM = "cost", AK_KIND = "request.created", AK_REPLY_BOX = "wf_ak_reply_outbox";
-  var akHub = null, akStop = null;
-  function akSid(id) { return "cost_" + String(id); }
-  function akTitle(p) {
-    var t = String(p.item || "").trim() || "(untitled request)";
-    var q = p.quantity != null ? Number(p.quantity) : null;
-    if (q != null && !isNaN(q) && q !== 1) t += " \u00d7" + q + (p.unit ? " " + p.unit : "");
-    else if (p.unit && q === 1) t += " (1 " + p.unit + ")";
-    return t;
-  }
-  function akEnsureList() {
-    if (!state.apps.some(function (a) { return a.id === AK_KEY; })) {
-      state.apps.push({ id: AK_KEY, name: "Requests", group: "Special" }); rebuildIndex(); saveInv();
-    }
-    if (!entries[AK_KEY]) patch(AK_KEY, { active: false, subtasks: [] });
-  }
-  function akNewSub(id, p, clock) {
-    var t = akTitle(p);
-    return { id: akSid(id), t: t, done: false, u: Date.now(), del: false,
-      when: p.needed_by ? String(p.needed_by).slice(0, 16) : "", md: "b", urg: false, dl: false,
-      loc: p.preferred_shop ? String(p.preferred_shop) : "", tag: "", ctx: [], lat: false, latAt: 0, rv: "",
-      src: { app: AK_FROM, id: String(id), t0: t, v: clock || "", meta: {
-        source: p.source || null, budget_cap: p.budget_cap != null ? p.budget_cap : null, currency: p.currency || null,
-        notes: p.notes || null, expense_id: p.expense_id || null } } };
-  }
-  function akAddr(sid) { return { board_id: cloud.board || "my_week", item_key: AK_KEY, sub_id: sid }; }
-  function akOnCreated(r) {
-    var id = r.src_addr && r.src_addr.id; if (id == null) return {};
-    akEnsureList();
-    var list = normSubs(subs(AK_KEY)), sid = akSid(id);
-    if (!list.some(function (x) { return x.id === sid; })) { patch(AK_KEY, { subtasks: list.concat([akNewSub(id, r.payload || {}, r.src_clock)]) }); renderAll(); }
-    return { addr: akAddr(sid) };
-  }
-  function akOnChanged(r) {
-    var id = r.src_addr && r.src_addr.id; if (id == null) return {};
-    var p = r.payload || {}, sid = akSid(id), stamp = p.updated_at ? String(p.updated_at) : (r.src_clock || "");
-    akEnsureList();
-    var list = normSubs(subs(AK_KEY)), found = false, moved = false;
-    var next = list.map(function (x) {
-      if (x.id !== sid) return x;
-      found = true;
-      var src = x.src || { app: AK_FROM, id: String(id), t0: x.t, v: "" };
-      if (src.v && stamp && stamp <= src.v) return x;                       // older or same snapshot
-      var y = Object.assign({}, x, { src: Object.assign({}, src, { v: stamp }) });
-      if (p.item != null) { var nt = akTitle(p); if (x.t === src.t0 && nt !== x.t) y.t = nt; y.src.t0 = nt; }
-      if (p.status === "done") { y.done = true; y.del = false; }
-      else if (p.status === "cancelled") { y.del = true; }
-      else if (p.status === "open") { y.done = false; y.del = false; }
-      if (p.expense_id != null) y.src.meta = Object.assign({}, src.meta || {}, { expense_id: p.expense_id });
-      if (y.t !== x.t || y.done !== x.done || y.del !== x.del) { y.u = Date.now(); moved = true; }
-      else if (JSON.stringify(y.src) !== JSON.stringify(x.src)) moved = true;  // src-only: persist, no u bump
-      return y;
-    });
-    if (!found) {                                                            // changed arrived before created
-      var s = akNewSub(id, p, stamp);
-      if (p.status === "done") s.done = true; else if (p.status === "cancelled") s.del = true;
-      next = list.concat([s]); moved = true;
-    }
-    if (moved) { patch(AK_KEY, { subtasks: next }); renderAll(); }
-    return { addr: akAddr(sid) };
-  }
-  function akSafe(fn) { return function (r) { try { return fn(r); } catch (e) { console.warn("[ak] handler", r && r.kind, e); return {}; } }; }
-  function akReadBox() { try { return JSON.parse(localStorage.getItem(AK_REPLY_BOX) || "[]"); } catch (e) { return []; } }
-  function akWriteBox(a) { try { localStorage.setItem(AK_REPLY_BOX, JSON.stringify(a)); } catch (e) {} }
-  function akSend(msg) {
-    if (!akHub) return Promise.reject(new Error("no hub"));
-    return akHub.reply(AK_FROM, AK_KIND, { id: msg.id }, { status: msg.status, at: msg.at });
-  }
-  function akFlushReplies() {
-    var box = akReadBox(); if (!box.length || !akHub || !navigator.onLine) return;
-    var byId = {}; box.forEach(function (m) { byId[m.id] = m; });          // last status per request wins
-    akWriteBox([]);
-    Object.keys(byId).forEach(function (id) { akSend(byId[id]).catch(function () { akWriteBox(akReadBox().concat([byId[id]])); }); });
-  }
-  function akReplyFor(key, sid) {
-    if (key !== AK_KEY || !sid || String(sid).indexOf("cost_") !== 0) return;
-    var x = normSubs(subs(key)).filter(function (s) { return s.id === sid; })[0]; if (!x) return;
-    var id = (x.src && x.src.id) || String(sid).slice(5);
-    var msg = { id: id, status: x.del ? "cancelled" : x.done ? "done" : "open", at: new Date().toISOString() };
-    akSend(msg).catch(function (e) { akWriteBox(akReadBox().concat([msg])); console.warn("[ak] reply queued", e.message); });
-  }
-  function akStart() {
-    if (akStop || typeof window.Akatsuki !== "function" || !sb) return;
-    akHub = window.Akatsuki(sb, "wf", { log: function () { if (window.WF_DEBUG) console.log.apply(console, ["[ak]"].concat([].slice.call(arguments))); } });
-    window.__wfAk = akHub;
-    akStop = akHub.listen({ "request.created": akSafe(akOnCreated), "request.changed": akSafe(akOnChanged) }, 30000);
-    akFlushReplies();
-    window.addEventListener("online", akFlushReplies);
-    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") akFlushReplies(); });
+    cloudPullInventory(fresh).then(cloudPullEntries).then(flushOutbox);
   }
   function pendingCount() { return Object.keys(outbox).length; }
   function updateCloudStatus() {
@@ -3958,7 +3862,6 @@
       if (a === "sub2") {
         var sid2h = el.getAttribute("data-hsid");
         patch(k, { subtasks: normSubs(subs(k)).map(function (x) { return x.id === sid2h ? Object.assign({}, x, { done: !x.done, u: Date.now() }) : x; }) });
-        akReplyFor(k, sid2h);
         renderTodayScreen(); renderCols(); renderCalScreen(); return;
       }
       if (a === "tray") { trayOpen = !trayOpen; renderTodayScreen(); return; }
