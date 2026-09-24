@@ -1,0 +1,15 @@
+/* v88 — append to css/weekly-focus.css (purchase board) */
+.wpb{display:flex;align-items:center;justify-content:flex-end;gap:8px;font-size:11px;color:var(--faint);margin:0 0 8px}
+.wpb-err{color:oklch(0.5 0.16 25)}
+.wpb-r{border:1px solid var(--hair);background:var(--card);border-radius:99px;min-width:28px;height:28px;cursor:pointer;color:var(--mid);font-size:13px}
+.wpb-r:hover{border-color:var(--brand);color:var(--brand)}
+.wtile.empty{display:none;opacity:.7}
+.wtiles.showall .wtile.empty,body.wdrag .wtile.empty{display:flex}
+#wishTray.drop{outline:2px dashed var(--brand);outline-offset:3px}
+.wak.ext{background:oklch(0.95 0.04 200);border-color:oklch(0.84 0.06 200);color:oklch(0.36 0.1 200)}
+.wak.ext.new{box-shadow:0 0 0 2px oklch(0.8 0.12 200 / .45)}
+.wak.ext.approved{background:oklch(0.95 0.05 250);border-color:oklch(0.82 0.08 250);color:oklch(0.4 0.12 250)}
+.wak.ext.logged{background:var(--on-soft);border-color:oklch(0.85 0.08 152);color:var(--on)}
+.wsit.ext .wsck{opacity:.35;cursor:not-allowed}
+.wsd-items{margin:0;padding-left:18px;font-size:13px;color:var(--ink)}
+.wsd-p{color:var(--faint);font-size:11.5px}

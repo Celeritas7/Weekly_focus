@@ -142,7 +142,7 @@
         <span class="k">Wishlist</span>
         <span class="sub">buy this at that shop</span>
         <span class="count" id="wishCount"></span>
-        <span class="seg wseg" id="wishSeg"><button type="button" class="on" data-hact="wview" data-hkey="boxes">Boxes</button><button type="button" data-hact="wview" data-hkey="flow">Flow</button></span>
+        <button type="button" class="wallbtn" id="wishAllBtn" data-hact="wallshops" title="Show every Cost shop" style="display:none">All shops</button><span class="seg wseg" id="wishSeg"><button type="button" class="on" data-hact="wview" data-hkey="boxes">Boxes</button><button type="button" data-hact="wview" data-hkey="flow">Flow</button></span>
       </div>
       <div class="wish-add">
         <textarea id="wishInp" rows="1" placeholder="Nitori: coffee mug &mdash; or just: batteries (lands in Unsorted)"></textarea>
@@ -356,6 +356,18 @@
     <div class="modal-foot">
       <button class="tbtn" id="cfmClose">Cancel</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="shopPickModal">
+  <div class="modal cfm">
+    <div class="modal-head">
+      <h3>Add a shop box</h3>
+      <p>Pick from Cost’s shop list. Its box shows on the board even while empty.</p>
+      <input id="spSearch" class="sp-search" placeholder="Search shops…" autocomplete="off">
+    </div>
+    <div class="modal-body" id="spBody"></div>
+    <div class="modal-foot"><span class="sp-count" id="spCount"></span><button class="tbtn" id="spClose">Done</button></div>
   </div>
 </div>
 
@@ -630,6 +642,7 @@
 <script src="js/config.js"></script>
 <script src="js/info-feeds.js"></script>
 <script src="js/akatsuki-client.js"></script>
+<script src="js/wf-purchase-adapter.js"></script>
 <script src="js/weekly-focus-app.js"></script>
 <script src="js/wf-cc-bridge-v2.js"></script>
 <script src="js/wf-login.js"></script>

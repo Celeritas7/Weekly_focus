@@ -1727,3 +1727,47 @@ nav.htabbar .htabbar-in { grid-template-columns: repeat(6, minmax(0, 1fr)); grid
 .wak.logged{background:var(--on-soft);border-color:oklch(0.85 0.08 152);color:var(--on)}
 .wak.blocked{border-style:dashed;border-color:oklch(0.7 0.14 25);color:oklch(0.48 0.16 25);background:oklch(0.97 0.02 25)}
 .wak.rejected{color:var(--mid);text-decoration:line-through}
+
+/* v88 — append to css/weekly-focus.css (purchase board) */
+.wpb{display:flex;align-items:center;justify-content:flex-end;gap:8px;font-size:11px;color:var(--faint);margin:0 0 8px}
+.wpb-err{color:oklch(0.5 0.16 25)}
+.wpb-r{border:1px solid var(--hair);background:var(--card);border-radius:99px;min-width:28px;height:28px;cursor:pointer;color:var(--mid);font-size:13px}
+.wpb-r:hover{border-color:var(--brand);color:var(--brand)}
+/* v88a — Cost's empty shops always show as faint boxes; full strength while you drag or have an item selected */
+.wtile.empty{opacity:.55;border-style:dashed;--fill:0%;filter:saturate(.6)}
+.wtile.empty .wcnt{visibility:hidden}
+.wtile.empty .wtag{color:var(--faint)}
+body.wdrag .wtile.empty{opacity:1;filter:none}
+.wtile.empty:hover{opacity:.85;filter:none}
+#wishTray.drop{outline:2px dashed var(--brand);outline-offset:3px}
+.wak.ext{background:oklch(0.95 0.04 200);border-color:oklch(0.84 0.06 200);color:oklch(0.36 0.1 200)}
+.wak.ext.new{box-shadow:0 0 0 2px oklch(0.8 0.12 200 / .45)}
+.wak.ext.approved{background:oklch(0.95 0.05 250);border-color:oklch(0.82 0.08 250);color:oklch(0.4 0.12 250)}
+.wak.ext.logged{background:var(--on-soft);border-color:oklch(0.85 0.08 152);color:var(--on)}
+.wsit.ext .wsck{opacity:.35;cursor:not-allowed}
+.wsd-items{margin:0;padding-left:18px;font-size:13px;color:var(--ink)}
+.wsd-p{color:var(--faint);font-size:11.5px}
+
+/* v88b — "All shops" toggle next to Boxes/Flow */
+.wallbtn{border:1px solid var(--hair);background:var(--card);border-radius:99px;height:26px;padding:0 10px;font-family:inherit;font-size:11px;font-weight:700;color:var(--mid);cursor:pointer;margin-right:6px}
+.wallbtn:hover{border-color:var(--brand);color:var(--brand)}
+.wallbtn.on{background:var(--brand);border-color:var(--brand);color:#fff}
+
+/* v88c — "+ Add shop" tile, pinned empty boxes, shop picker */
+.wtile.addshop{background:transparent;box-shadow:none;border:1.5px dashed var(--hair);color:var(--faint);align-items:center;justify-content:center;text-align:center;gap:2px}
+.wtile.addshop:hover{border-color:var(--brand);color:var(--brand);transform:none}
+.wtile.addshop .wplus{font-size:26px;line-height:1;font-weight:300}
+.wtile.addshop .wnm{color:inherit}.wtile.addshop .wtag{color:inherit;opacity:.8}
+.wtile.empty.pin{opacity:.8;border-style:solid;filter:none}
+.wunpin{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:99px;background:rgba(255,255,255,.75);color:var(--mid);font-size:13px;line-height:22px;text-align:center;cursor:pointer;opacity:0;transition:opacity .15s}
+.wtile.empty:hover .wunpin{opacity:1}
+.sp-search{width:100%;box-sizing:border-box;margin-top:10px;border:1px solid var(--hair);border-radius:10px;padding:9px 12px;font-family:inherit;font-size:14px;background:var(--card-2);color:var(--ink)}
+.sp-search:focus{outline:none;border-color:var(--brand)}
+.sp-grid{display:flex;flex-wrap:wrap;gap:7px;padding:2px}
+.sp-opt{display:inline-flex;align-items:center;gap:6px;border:1px solid oklch(0.87 0.05 var(--h));background:var(--card);color:oklch(0.4 0.14 var(--h));border-radius:99px;padding:7px 12px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;min-height:36px}
+.sp-opt b{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;opacity:.7;margin-left:2px}
+.sp-opt:hover{border-color:oklch(0.6 0.16 var(--h))}
+.sp-opt.on{background:oklch(0.55 0.16 var(--h));border-color:transparent;color:#fff}
+.sp-opt[disabled]{opacity:.55;cursor:default}
+.sp-count{margin-right:auto;font-size:11px;color:var(--faint)}
+#shopPickModal .modal-foot{display:flex;align-items:center}

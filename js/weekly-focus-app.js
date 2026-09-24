@@ -1706,10 +1706,11 @@
     var ta2 = $("medNew"); if (ta2) { ta2.value = keep; ta2.focus(); }
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && WS_SHOP) closeWishSheet(); if (e.key === "Enter" && e.target && e.target.id === "wsMoveNew") { e.preventDefault(); var g = e.target.parentNode.querySelector("[data-hact=wmovenew]"); if (g) g.click(); } if (e.key === "Enter" && e.target && e.target.id === "wsInp") { e.preventDefault(); var b = e.target.parentNode.querySelector("[data-hact=wsadd]"); if (b) b.click(); } });
-  document.addEventListener("dragstart", function (e) { var c = e.target.closest && e.target.closest("[data-wid]"); if (!c) return; e.dataTransfer.setData("text/plain", c.getAttribute("data-wid")); WISH_SEL = null; });
-  document.addEventListener("dragover", function (e) { var t = e.target.closest && e.target.closest("[data-wshop]"); if (!t) return; e.preventDefault(); t.classList.add("drop"); });
-  document.addEventListener("dragleave", function (e) { var t = e.target.closest && e.target.closest("[data-wshop]"); if (t) t.classList.remove("drop"); });
-  document.addEventListener("drop", function (e) { var t = e.target.closest && e.target.closest("[data-wshop]"); if (!t) return; e.preventDefault(); t.classList.remove("drop"); var id = e.dataTransfer.getData("text/plain"); if (id) wAssign(id, t.getAttribute("data-wshop")); });
+  document.addEventListener("dragstart", function (e) { var c = e.target.closest && e.target.closest("[data-wid]"); if (!c) return; e.dataTransfer.setData("text/plain", c.getAttribute("data-wid")); WISH_SEL = null; document.body.classList.add("wdrag"); });
+  document.addEventListener("dragend", function () { document.body.classList.remove("wdrag"); });
+  document.addEventListener("dragover", function (e) { var t = e.target.closest && e.target.closest("[data-wshop],#wishTray"); if (!t) return; e.preventDefault(); t.classList.add("drop"); });
+  document.addEventListener("dragleave", function (e) { var t = e.target.closest && e.target.closest("[data-wshop],#wishTray"); if (t) t.classList.remove("drop"); });
+  document.addEventListener("drop", function (e) { var t = e.target.closest && e.target.closest("[data-wshop],#wishTray"); if (!t) return; e.preventDefault(); t.classList.remove("drop"); document.body.classList.remove("wdrag"); var id = e.dataTransfer.getData("text/plain"); if (id) wAssign(id, t.id === "wishTray" ? "" : t.getAttribute("data-wshop")); });
   window.addEventListener("resize", function () { if (WISH_VIEW === "flow") wPlaceWalker(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && BS_ID) closeBuildSheet(); if ((e.key === "Enter" || e.key === " ") && e.target && e.target.classList && e.target.classList.contains("bhero")) { e.preventDefault(); openBuildSheet(e.target.getAttribute("data-hkey")); } });
 
@@ -2039,6 +2040,7 @@
   function akRemoved(w) { if (w && w.ak && w.ak.dir === "in") akReplyIn(w, "cancelled"); }
   function akRetry() { wishArr().forEach(function (w) { if (w.ak && w.ak.dir === "out" && w.ak.on && !w.ak.pub && w.ak.pend) akPush(w, true); }); }
   function akYen(id) {
+    var pv = pById(id); if (pv) { toast("From " + pSender(pv.pr) + " \u2014 Cost buys it (" + pStatus(pv.pr) + ")"); return; }
     var w = akWish(id); if (!w) return;
     if (w.ak && w.ak.dir === "in") { toast("Requested by " + akSrcLabel(w) + " \u2014 Cost is buying it"); return; }
     if (w.done) { toast("Already bought"); return; }
@@ -2086,7 +2088,12 @@
   }
   var AK_LBL = { off: "\u00a5", sent: "\u00a5 sent", approved: "\u00a5 approved", logged: "\u00a5 logged", pending: "\u00a5 waiting", blocked: "\u00a5 blocked", rejected: "\u00a5 rejected" };
   var AK_TIP = { off: "Send to Cost", sent: "Sent to Cost \u2014 waiting for a decision \u00b7 tap to withdraw", approved: "Cost approved it \u2014 tap to withdraw", logged: "Cost logged the purchase", pending: "Sending to Cost\u2026 retrying", blocked: "WF \u2192 Cost route not open in Akatsuki \u2014 tap to retry", rejected: "Cost rejected it \u2014 tap to send again as a new request" };
+  var P_ST = { pending: "", approved: " \u00b7 approved", logged: " \u00b7 logged", rejected: " \u00b7 rejected" };
   function akBadge(w) {
+    if (w && w.ext) {
+      var st = pStatus(w.pr), fresh = st === "pending" && !w.pr.plan_shop;
+      return '<span class="wak ext ' + st + (fresh ? " new" : "") + '" role="button" data-hact="wyen" data-hkey="' + esc(w.id) + '" title="From ' + esc(pSender(w.pr)) + ' \u00b7 Cost buys it">' + esc(pSender(w.pr)) + (fresh ? " \u00b7 new" : P_ST[st] || "") + '</span>';
+    }
     var s = akState(w);
     if (s === "in") return '<span class="wak in" role="button" data-hact="wyen" data-hkey="' + esc(w.id) + '" title="Requested via Cost">' + esc(akSrcLabel(w)) + '</span>';
     return '<span class="wak ' + s + '" role="button" data-hact="wyen" data-hkey="' + esc(w.id) + '" title="' + AK_TIP[s] + '">' + AK_LBL[s] + '</span>';
@@ -2105,6 +2112,9 @@
     if (akStop || typeof window.Akatsuki !== "function" || !sb) return;
     akPurgeOutbox();
     akHub = window.Akatsuki(sb, "wf", { log: akLog });
+    window.wf = window.wf || {}; window.wf.hub = akHub;
+    if (typeof window.WfPurchases === "function") window.wf.purchases = window.WfPurchases(sb, window.wf.hub);
+    else console.warn("[ak] wf-purchase-adapter.js not loaded \u2014 Wishlist shows WF items only");
     akLog("listening as wf on board " + cloud.board);
     window.__wfAk = akHub;
     akStop = akHub.listen({ "request.created": akSafe(akOnCreated), "request.changed": akSafe(akOnChanged) }, 30000);
@@ -2112,6 +2122,7 @@
       if (akNotReady()) return;
       akMigrateLife(); akFlushReplies(); akRetry();
       akPollReplies().catch(function (e) { console.warn("[ak] reply poll failed", e.message); });
+      if (!PB.at || (document.visibilityState === "visible" && pWishlistOpen())) pRefresh();   // on load, then every 30 s while the Wishlist is open
     };
     tick(); akPoll = setInterval(tick, 30000);
     window.addEventListener("online", tick);
@@ -3310,6 +3321,82 @@
      the __board row, synced like the Vault. One line per item.
      ============================================================ */
   function wishArr() { if (!Array.isArray(meta.wish)) meta.wish = []; return meta.wish; }
+  /* ---- v88 · R016 purchase board (wf-purchase-adapter.js) ----------------------------------
+     The Wishlist also shows wf.purchases.board(): every open purchase_request to Cost, all senders,
+     plus ones logged in the last 30 days. WF's own ¥ items (from_app 'wf') merge with the local item by
+     payload.id. Box = boxOf(row): Cost's real shop once logged (display only), else plan_shop, else Unsorted.
+     Boxes come from wf.purchases.shops() (Cost's list); a drop calls planShop / clearPlan.
+     Other senders' items: read-only except the shop; delete = hide() on this device. */
+  var PB = { rows: [], shops: null, shAt: 0, at: 0, busy: false, err: "", views: {} };
+  function pApi() { return window.wf && window.wf.purchases; }
+  function pShopNames() { return Array.isArray(PB.shops) && PB.shops.length ? PB.shops.map(function (x) { return String(x.name || "").trim(); }).filter(Boolean) : null; }
+  /* Cost's spelling of a shop name; "" when Cost's list is loaded and the name isn't on it. */
+  function pCanon(name) {
+    var n = String(name || "").trim(), L = pShopNames(); if (!n || !L) return n;
+    var low = n.toLowerCase(); for (var i = 0; i < L.length; i++) if (L[i].toLowerCase() === low) return L[i];
+    return "";
+  }
+  var P_SENDER = { wf: "Weekly Focus", sukkiri: "Sukkiri", exercise: "Exercise", cost: "Cost" };
+  function pSender(r) { var a = String((r && r.from_app) || ""); return P_SENDER[a] || (a ? a.charAt(0).toUpperCase() + a.slice(1) : "Other"); }
+  function pStatus(r) { return (r && r.reply && r.reply.status) || "pending"; }
+  function pItems(r) { var p = (r && r.payload) || {}; return Array.isArray(p.items) ? p.items : (p.item ? [{ name: p.item, qty: p.quantity }] : []); }
+  function pTitle(r) {
+    var t = pItems(r).map(function (x) { var n = String(x.name || x.item || "").trim(), q = x.qty != null ? x.qty : x.quantity; return n && q != null && Number(q) !== 1 ? n + " \u00d7" + q : n; }).filter(Boolean).join(", ");
+    return t || "(request)";
+  }
+  function pView(r) {
+    var api = pApi(), st = pStatus(r), logged = st === "logged";
+    return { id: "p:" + api.keyOf(r), t: pTitle(r), shop: api.boxOf(r) || "", done: logged,
+      doneAt: logged ? (Date.parse((r.reply && r.reply.at) || r.created_at) || Date.now()) : null, at: Date.parse(r.created_at) || 0, pr: r, ext: true };
+  }
+  function pById(id) { return PB.views[id] || null; }
+  /* Local items + board rows, for rendering only. Handlers look the real item up again by id. */
+  function wishAll() {
+    var api = pApi(), rows = api ? PB.rows : [], own = {}, used = {}, out = [];
+    rows.forEach(function (r) { if (r.from_app === "wf" && r.payload && r.payload.id != null) own[String(r.payload.id)] = r; });
+    wishArr().forEach(function (w) {
+      var r = w.ak && w.ak.dir === "out" ? own[akReqId(w)] : null;
+      if (!r) { out.push(w); return; }
+      used[api.keyOf(r)] = 1;
+      var v = Object.assign({}, w, { pr: r });
+      if (pStatus(r) === "logged") { var b = api.boxOf(r); if (b) v.shop = b; if (!v.done) { v.done = true; v.doneAt = Date.parse((r.reply && r.reply.at) || "") || Date.now(); } }
+      out.push(v);
+    });
+    PB.views = {};
+    rows.forEach(function (r) { if (used[api.keyOf(r)]) return; var v = pView(r); PB.views[v.id] = v; out.push(v); });
+    return out;
+  }
+  function pWishlistOpen() { var h = $("wishRows"); return !!(h && h.offsetParent !== null); }
+  async function pRefresh(force) {
+    var api = pApi(); if (!api || akNotReady() || PB.busy) return;
+    PB.busy = true;
+    try {
+      var needShops = force || !PB.shops || Date.now() - PB.shAt > 10 * 60e3;
+      var res = await Promise.all([api.board(), needShops ? api.shops() : Promise.resolve(PB.shops)]);
+      var hid = api.hidden();
+      PB.rows = (res[0] || []).filter(function (r) { return !hid.has(api.keyOf(r)); });
+      if (needShops) { PB.shops = res[1] || []; PB.shAt = Date.now(); }
+      PB.at = Date.now(); PB.err = "";
+      akLog("purchase board: " + PB.rows.length + " rows, " + (PB.shops || []).length + " Cost shops");
+    } catch (e) { PB.err = e.message; console.warn("[ak] purchase board failed", e.message); }
+    PB.busy = false;
+    try { renderWish(); renderHome(); } catch (e) {}
+  }
+  /* Box change for a board row (drop on a tile, Move to…, drag back to Unsorted). */
+  async function pPlan(row, shop) {
+    var api = pApi(); if (!api || !row) return;
+    var prev = row.plan_shop || null;
+    row.plan_shop = shop || null; renderWish(); renderHome();
+    try {
+      var r = shop ? await api.planShop(row, shop) : await api.clearPlan(row);
+      if (r && r.status === "closed") { row.plan_shop = prev; toast("Cost already decided on this \u2014 shop not changed"); pRefresh(); return; }
+      if (row.from_app !== "wf") toast(pTitle(row) + " \u2192 " + (shop || "Unsorted"));
+    } catch (e) {
+      row.plan_shop = prev; console.warn("[ak] planShop failed", e.message); toast("Couldn\u2019t save the shop \u2014 try again");
+    }
+    renderWish(); renderHome();
+  }
+  function pRowOf(w) { return w ? (w.ext ? w.pr : (wishAll().filter(function (v) { return v.id === w.id; })[0] || {}).pr || null) : null; }
   function saveWish() { save(); cloudPushBoard(); }
   function wishParse(text) {
     var out = [];
@@ -3326,6 +3413,7 @@
   }
   /* keep one casing per shop: reuse an existing name, a Place name, else as typed */
   function wishShopName(s) {
+    var cn = pShopNames() ? pCanon(s) : ""; if (cn) return cn;
     var low = s.toLowerCase(), hit = null;
     wishArr().forEach(function (w) { if (!hit && String(w.shop || "").toLowerCase() === low) hit = w.shop; });
     if (!hit) placeList().forEach(function (p) { if (!hit && String(p.name || "").toLowerCase() === low) hit = p.name; });
@@ -3337,6 +3425,8 @@
     if (!items.length) { el.focus(); return; }
     wishArr().push.apply(wishArr(), items);
     el.value = ""; saveWish(); renderWish(); renderHome();
+    var offList = pShopNames() ? items.filter(function (w) { return w.shop && !pCanon(w.shop); }) : [];
+    if (offList.length) { toast("“" + offList[0].shop + "” isn’t one of Cost’s shops — added to Unsorted"); return; }
     toast(items.length === 1 ? (items[0].shop ? "Added to " + items[0].shop : "Added to Unsorted \u2014 drag it onto a box") : items.length + " items added");
   }
   function wishPrune() {
@@ -3347,12 +3437,45 @@
   }
   function wishFor(shopName) {
     var low = String(shopName || "").toLowerCase();
-    return wishArr().filter(function (w) { return !w.done && String(w.shop || "").toLowerCase() === low; });
+    return wishAll().filter(function (w) { return !w.done && pCanon(w.shop).toLowerCase() === low && !!low; });
   }
   /* ---- v54: boxes · journey · unsorted tray · shop sheet ---- */
+  var WISH_ALL = (function () { try { return localStorage.getItem("wf_wish_allshops") === "1"; } catch (e) { return false; } })();
+  /* v88c: shops you pinned from Cost's list so their box shows even while empty (board data, synced) */
+  function wishPins() { if (!Array.isArray(meta.wishPins)) meta.wishPins = []; return meta.wishPins; }
+  function wIsPinned(n) { var low = String(n || "").toLowerCase(); return wishPins().some(function (p) { return String(p).toLowerCase() === low; }); }
+  var SP_Q = "";
+  function openShopPick() { SP_Q = ""; paintShopPick(); var m = $("shopPickModal"); if (m) m.classList.add("open"); var i = $("spSearch"); if (i) { i.value = ""; setTimeout(function () { i.focus(); }, 50); } }
+  function closeShopPick() { var m = $("shopPickModal"); if (m) m.classList.remove("open"); }
+  function paintShopPick() {
+    var bd = $("spBody"); if (!bd) return;
+    var L = pShopNames() || [], q = SP_Q.trim().toLowerCase(), shown = {};
+    wShops().forEach(function (x) { shown[x.name.toLowerCase()] = 1; });
+    var list = L.filter(function (n) { return !q || n.toLowerCase().indexOf(q) >= 0; });
+    var cnt = $("spCount"); if (cnt) cnt.textContent = list.length + " of " + L.length + " shops";
+    if (!L.length) { bd.innerHTML = '<div class="bb-none">Cost\u2019s shop list hasn\u2019t loaded yet \u2014 tap \u21bb in the Wishlist and try again.</div>'; return; }
+    bd.innerHTML = list.length ? '<div class="sp-grid">' + list.map(function (n) {
+      var on = wIsPinned(n) || shown[n.toLowerCase()], has = shown[n.toLowerCase()];
+      return '<button type="button" class="sp-opt' + (on ? " on" : "") + '" style="--h:' + wHue(n) + '" data-sp="' + esc(n) + '"' + (has ? ' disabled title="Already on the board"' : '') + '>' + wEmo(n) + ' <span>' + esc(n) + '</span>' + (has ? '<b>has items</b>' : on ? '<b>\u2713 shown</b>' : '') + '</button>';
+    }).join("") + '</div>' : '<div class="bb-none">No Cost shop matches \u201c' + esc(SP_Q.trim()) + '\u201d. Shops are added in Cost; tap \u21bb here afterwards.</div>';
+  }
   var WISH_VIEW = "boxes", WISH_SEL = null, WS_SHOP = null, WISH_BOUGHT_OPEN = false, WS_MOVE = null, WS_DET = null;
   /* v86: item detail (needed-by, notes, request source/budget) — hidden until the item is tapped in its shop sheet */
   function wDetHtml(w) {
+    if (w.ext) {
+      var r = w.pr, p = r.payload || {}, st = pStatus(r);
+      var lines = pItems(r).map(function (x) {
+        var q = x.qty != null ? x.qty : x.quantity, pr = x.price != null ? x.price : x.est_price;
+        return '<li>' + esc(String(x.name || x.item || "")) + (q != null ? ' \u00d7' + esc(String(q)) : '') + (pr != null ? ' <span class="wsd-p">\u00a5' + esc(String(pr)) + '</span>' : '') + '</li>';
+      }).join("");
+      var box = pApi().boxOf(r);
+      return '<div class="wsdet"><div class="wsd-src">From ' + esc(pSender(r)) + ' \u00b7 Cost buys it \u00b7 ' + esc(st) +
+        (st === "logged" && r.reply && r.reply.shop ? ' at ' + esc(r.reply.shop) : '') + '</div>' +
+        (lines ? '<ul class="wsd-items">' + lines + '</ul>' : '') +
+        (p.note || p.notes ? '<div class="wsd-src">' + esc(String(p.note || p.notes)) + '</div>' : '') +
+        '<div class="wsd-src">' + (st === "logged" ? "Shown at the shop Cost used." : "You can change the shop; everything else belongs to " + esc(pSender(r)) + ".") + (box ? "" : " Not in a shop yet.") + '</div>' +
+        '<div class="wsd-act"><button type="button" class="tbtn" data-hact="wdet" data-hkey="' + esc(w.id) + '">Close</button></div></div>';
+    }
     var a = w.ak || null, m = (a && a.meta) || {}, s = akState(w);
     var src = s === "in" ? "Requested by " + akSrcLabel(w) + " \u00b7 Cost buys it" : s === "off" ? "WF only \u2014 tap \u00a5 to send to Cost" : AK_TIP[s];
     var bud = m.budget_cap != null ? " \u00b7 budget " + (!m.currency || m.currency === "JPY" ? "\u00a5" : m.currency + " ") + m.budget_cap : "";
@@ -3365,27 +3488,28 @@
   function wEmo(n) { return WEMO[String(n || "").toLowerCase()] || "\ud83d\udecd\ufe0f"; }
   function wHue(n) { var h = 0; n = String(n || ""); for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0; return h % 360; }
   function wishFlow() { if (!meta.wishFlow || !Array.isArray(meta.wishFlow.stops)) meta.wishFlow = { name: "Next run", stops: [] }; return meta.wishFlow; }
-  function wShops() {
-    var m = {}, order = [];
-    wishArr().forEach(function (w) {
-      var n = String(w.shop || "").trim(); if (!n) return;
+  function wShops(withEmpty) {
+    var m = {}, order = [], L = pShopNames();
+    if (L && withEmpty) L.forEach(function (n) { var k = n.toLowerCase(); if (!m[k]) { m[k] = { name: n, open: 0, all: 0, items: [] }; order.push(k); } });
+    wishAll().forEach(function (w) {
+      var n = pCanon(w.shop); if (!n) return;
       var k = n.toLowerCase(); if (!m[k]) { m[k] = { name: n, open: 0, all: 0, items: [] }; order.push(k); }
       m[k].all++; if (!w.done) m[k].open++; m[k].items.push(w);
     });
     return order.map(function (k) { return m[k]; });
   }
-  function wShop(name) { var low = String(name || "").toLowerCase(), hit = null; wShops().forEach(function (s) { if (s.name.toLowerCase() === low) hit = s; }); return hit; }
+  function wShop(name) { var low = String(name || "").toLowerCase(), hit = null; wShops(true).forEach(function (s) { if (s.name.toLowerCase() === low) hit = s; }); return hit; }
   function wOpenOf(name) { var s = wShop(name); return s ? s.open : 0; }
   function wTileHtml(s, stopState) {
     var near = wishNear(s.name), full = s.open === 0, fill = s.all ? Math.round((s.all - s.open) / s.all * 100) : 0;
-    var tag = near ? "nearby" : full ? "all bought" : (s.all - s.open) ? (s.all - s.open) + " of " + s.all + " bought" : "to buy";
+    var tag = near ? "nearby" : !s.all ? "empty" : full ? "all bought" : (s.all - s.open) ? (s.all - s.open) + " of " + s.all + " bought" : "to buy";
     return '<button type="button" class="wtile' + (full ? " full" : "") + (near ? " near" : "") + (WISH_SEL ? " target" : "") + '" style="--h:' + wHue(s.name) + ';--fill:' + fill + '%" data-hact="wtile" data-hkey="' + esc(s.name) + '" data-wshop="' + esc(s.name) + '">' +
-      '<span class="wcnt">' + (full ? "\u2713 " : "") + s.open + '</span><span class="wem">' + wEmo(s.name) + '</span><span class="wnm">' + esc(s.name) + '</span><span class="wtag">' + tag + '</span></button>';
+      (!s.all && wIsPinned(s.name) ? '<span class="wunpin" role="button" data-hact="wunpin" data-hkey="' + esc(s.name) + '" title="Hide this empty box">\u00d7</span>' : '') + '<span class="wcnt">' + (full ? "\u2713 " : "") + s.open + '</span><span class="wem">' + wEmo(s.name) + '</span><span class="wnm">' + esc(s.name) + '</span><span class="wtag">' + tag + '</span></button>';
   }
   function wChipHtml(w) { return '<button type="button" class="wchip' + (WISH_SEL === w.id ? " sel" : "") + '"' + (w.notes || w.need ? ' title="' + esc([w.need ? "by " + w.need : "", w.notes || ""].filter(Boolean).join(" \u00b7 ")) + '"' : '') + ' draggable="true" data-hact="wchip" data-hkey="' + esc(w.id) + '" data-wid="' + esc(w.id) + '"><span class="g">\u283f</span>' + esc(w.t) + akBadge(w) + '</button>'; }
   function renderWishTray() {
     var host = $("wishTray"); if (!host) return;
-    var un = wishArr().filter(function (w) { return !w.done && !String(w.shop || "").trim(); });
+    var un = wishAll().filter(function (w) { return !w.done && !pCanon(w.shop); });
     if (!un.length) { host.style.display = "none"; host.innerHTML = ""; return; }
     host.style.display = "";
     host.innerHTML = '<div class="wtk">Unsorted <b>' + un.length + '</b><span class="wth">' + (WISH_SEL ? "now tap a box to file it" : "drag onto a box, or tap then tap the box") + '</span></div><div class="wchips">' + un.map(wChipHtml).join("") + '</div>';
@@ -3393,21 +3517,25 @@
   function renderWish() {
     var host = $("wishRows"); if (!host) return;
     if (wishPrune()) saveWish();
-    var S = wShops(), open = wishArr().filter(function (w) { return !w.done; });
+    var S = wShops(), open = wishAll().filter(function (w) { return !w.done; });
+    var Sx = pShopNames() ? wShops(true).filter(function (x) { return !x.all && (WISH_ALL || WISH_SEL || wIsPinned(x.name)); }) : [];
+    var at = $("wishAllBtn"); if (at) { at.classList.toggle("on", WISH_ALL); at.style.display = pShopNames() ? "" : "none"; at.title = WISH_ALL ? "Showing every Cost shop \u2014 tap to show only shops with items" : "Show every Cost shop"; }
     if ($("wishCount")) $("wishCount").textContent = open.length ? open.length + " to buy" : "";
     var seg = $("wishSeg"); if (seg) Array.prototype.forEach.call(seg.children, function (b) { b.classList.toggle("on", b.getAttribute("data-hkey") === WISH_VIEW); });
     renderWishTray();
     var h = "";
     if (WISH_VIEW === "boxes") {
       S.sort(function (a, b) { return (wishNear(b.name) - wishNear(a.name)) || ((a.open === 0) - (b.open === 0)) || (b.open - a.open) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
-      h = S.length ? '<div class="wtiles">' + S.map(function (s) { return wTileHtml(s); }).join("") + '</div>'
+      h = (S.length || Sx.length) ? '<div class="wtiles' + (WISH_SEL || WISH_ALL ? " showall" : "") + '">' + S.map(function (s) { return wTileHtml(s); }).join("") +
+          Sx.map(function (s) { return wTileHtml(s).replace('class="wtile', 'class="wtile empty' + (!WISH_ALL && !WISH_SEL && wIsPinned(s.name) ? " pin" : "")); }).join("") +
+          (pShopNames() ? '<button type="button" class="wtile addshop" data-hact="wshopadd" title="Show another of Cost\u2019s shops"><span class="wplus">+</span><span class="wnm">Add shop</span><span class="wtag">from Cost\u2019s list</span></button>' : '') + '</div>'
         : '<div class="bb-none">No shops yet \u2014 type <b>Medical: facewash</b> above and press Add.</div>';
     } else {
       var fl = wishFlow();
       fl.stops = fl.stops.filter(function (n) { return !!wShop(n); });
       var stops = fl.stops, cur = -1;
       for (var i = 0; i < stops.length; i++) if (wOpenOf(stops[i]) > 0) { cur = i; break; }
-      var tot = 0, done = 0; wishArr().forEach(function (w) { if (stops.some(function (n) { return n.toLowerCase() === String(w.shop || "").toLowerCase(); })) { tot++; if (w.done) done++; } });
+      var tot = 0, done = 0; wishAll().forEach(function (w) { if (stops.some(function (n) { return n.toLowerCase() === pCanon(w.shop).toLowerCase(); })) { tot++; if (w.done) done++; } });
       h += '<div class="wfl-h"><span class="wfl-n">' + esc(fl.name || "Next run") + '</span><span class="wfl-s">' + (stops.length ? stops.length + " stop" + (stops.length > 1 ? "s" : "") + " \u00b7 " + done + " of " + tot + " bought" : "no stops yet \u2014 add from the pool below") + '</span>' +
         (stops.length ? '<button type="button" class="tbtn" data-hact="wflclear">Clear route</button>' : '') + '</div>';
       h += '<div class="wjscroll"><div class="wjourney" id="wJourney"><div class="wtrack"><div class="wfillbar' + ((cur <= 0 && !stops.some(function (n) { return wOpenOf(n) === 0; })) ? " empty" : "") + '" id="wFillbar"></div><span class="wwalker" id="wWalker">' + (cur < 0 && stops.length ? "\ud83c\udfc1" : "\ud83d\udeb6") + '</span></div>' +
@@ -3422,12 +3550,14 @@
       var pool = S.filter(function (s) { return s.open > 0 && !stops.some(function (n) { return n.toLowerCase() === s.name.toLowerCase(); }); });
       h += '<div class="wpool"><div class="wtk">Shops not on this route \u00b7 tap to add as a stop</div><div class="wchips">' + (pool.length ? pool.map(function (s) { return '<button type="button" class="wshopchip" data-hact="wfladd" data-hkey="' + esc(s.name) + '">' + esc(s.name) + '<b>' + s.open + '</b></button>'; }).join("") : '<span class="wnone">' + (S.length ? "Everything with items is on the route." : "Add some items first.") + '</span>') + '</div></div>';
     }
-    var bought = wishArr().filter(function (w) { return w.done; });
+    var bought = wishAll().filter(function (w) { return w.done; });
     if (bought.length) {
       bought.sort(function (a, b) { return (b.doneAt || 0) - (a.doneAt || 0); });
       h += '<button type="button" class="wbought" data-hact="wbtog">' + (WISH_BOUGHT_OPEN ? "Hide" : "Show") + " bought \u00b7 " + bought.length + " (kept 30 days)</button>";
       if (WISH_BOUGHT_OPEN) h += '<div class="wshop bought"><div class="witems">' + bought.map(wishItemRow).join("") + '</div></div>';
     }
+    if (pApi()) h = '<div class="wpb">' + (PB.err ? '<span class="wpb-err">Cost list didn\u2019t load \u2014 ' + esc(PB.err) + '</span>' : PB.at ? '<span>Cost \u00b7 ' + PB.rows.length + ' request' + (PB.rows.length === 1 ? "" : "s") + ' \u00b7 ' + new Date(PB.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + '</span>' : '<span>Loading Cost\u2019s list\u2026</span>') +
+      '<button type="button" class="wpb-r" data-hact="wpbref" title="Refresh from Cost">\u21bb</button></div>' + h;
     host.innerHTML = h;
     if (WISH_VIEW === "flow") requestAnimationFrame(wPlaceWalker);
     if (WS_SHOP) paintWishSheet();
@@ -3471,14 +3601,14 @@
       '<button type="button" class="bs-x" data-hact="wsclose" title="Close">\u00d7</button>';
     items.sort(function (a, b) { return (a.done - b.done) || ((a.at || 0) - (b.at || 0)); });
     bd.innerHTML = '<div class="wsitems">' + (items.length ? items.map(function (w) {
-      var row = '<div class="wsit' + (w.done ? " done" : "") + (WS_MOVE === w.id || WS_DET === w.id ? " moving" : "") + '"><button type="button" class="wsck" data-hact="wtog" data-hkey="' + esc(w.id) + '" aria-label="Bought"></button><span class="wst" role="button" data-hact="wdet" data-hkey="' + esc(w.id) + '" title="Details">' + esc(w.t) + '</span>' + akBadge(w) +
+      var row = '<div class="wsit' + (w.done ? " done" : "") + (w.ext ? " ext" : "") + (WS_MOVE === w.id || WS_DET === w.id ? " moving" : "") + '"><button type="button" class="wsck" data-hact="wtog" data-hkey="' + esc(w.id) + '" aria-label="Bought"></button><span class="wst" role="button" data-hact="wdet" data-hkey="' + esc(w.id) + '" title="Details">' + esc(w.t) + '</span>' + akBadge(w) +
         '<button type="button" class="wsmv' + (WS_MOVE === w.id ? " on" : "") + '" data-hact="wmove" data-hkey="' + esc(w.id) + '" title="Move to another shop">' + (WS_MOVE === w.id ? "Cancel" : "Move") + '</button><button type="button" class="sub-del" data-hact="wdel" data-hkey="' + esc(w.id) + '">\u00d7</button></div>';
       if (WS_MOVE === w.id) {
-        var others = wShops().filter(function (x) { return x.name.toLowerCase() !== String(name).toLowerCase(); });
+        var others = wShops(true).filter(function (x) { return x.name.toLowerCase() !== String(name).toLowerCase(); });
         row += '<div class="wsmove"><span class="wtk" style="margin:0 6px 0 0">Move to</span>' +
           others.map(function (x) { return '<button type="button" class="wshopchip" style="--h:' + wHue(x.name) + '" data-hact="wmoveto" data-hkey="' + esc(w.id) + '|' + esc(x.name) + '">' + wEmo(x.name) + ' ' + esc(x.name) + '</button>'; }).join("") +
           '<button type="button" class="wshopchip un" data-hact="wmoveto" data-hkey="' + esc(w.id) + '|">\u2b06 Unsorted tray</button>' +
-          '<span class="wsnew"><input id="wsMoveNew" placeholder="new shop\u2026" autocomplete="off"><button type="button" class="tbtn" data-hact="wmovenew" data-hkey="' + esc(w.id) + '">Go</button></span></div>';
+          (pShopNames() ? '' : '<span class="wsnew"><input id="wsMoveNew" placeholder="new shop\u2026" autocomplete="off"><button type="button" class="tbtn" data-hact="wmovenew" data-hkey="' + esc(w.id) + '">Go</button></span>') + '</div>';
       }
       if (WS_DET === w.id) row += wDetHtml(w);
       return row;
@@ -3486,11 +3616,16 @@
       '<div class="wsadd"><input id="wsInp" placeholder="Add an item to ' + esc(name) + '\u2026" autocomplete="off"><button type="button" class="tbtn primary" data-hact="wsadd" data-hkey="' + esc(name) + '">Add</button></div>' +
       '<div class="wsfoot">' + (inFlow
         ? '<button type="button" class="tbtn" data-hact="wflskip" data-hkey="' + fi + '">Skip this stop</button><button type="button" class="tbtn wsdone" data-hact="wsdoneall" data-hkey="' + esc(name) + '">Done here' + (nx ? " \u2192 " + esc(nx) : "") + '</button>'
-        : (pl ? '<span class="hchip planned">Place \u00b7 ' + esc(pl.name) + '</span>' : '<button type="button" class="tbtn" data-hact="wmkplace" data-hkey="' + esc(name) + '">+ Make a Place</button>') + '<button type="button" class="tbtn" data-hact="wrename" data-hkey="' + esc(name) + '">Rename shop</button>') + '</div>';
+        : (pl ? '<span class="hchip planned">Place \u00b7 ' + esc(pl.name) + '</span>' : '<button type="button" class="tbtn" data-hact="wmkplace" data-hkey="' + esc(name) + '">+ Make a Place</button>') + (pShopNames() ? '' : '<button type="button" class="tbtn" data-hact="wrename" data-hkey="' + esc(name) + '">Rename shop</button>')) + '</div>';
   }
   function wAssign(id, shop) {
+    WISH_SEL = null;
+    var pv = pById(id);
+    if (pv) { if (pv.done) { toast("Cost already logged this"); renderWish(); return; } pPlan(pv.pr, shop ? (pCanon(shop) || shop) : null); return; }
     var w = null; wishArr().forEach(function (x) { if (x.id === id) w = x; }); if (!w) return;
-    w.shop = wishShopName(shop); WISH_SEL = null; saveWish(); akEdit(w); renderWish(); renderHome(); toast(w.t + " \u2192 " + w.shop);
+    w.shop = shop ? wishShopName(shop) : ""; saveWish(); akEdit(w);
+    var r = pRowOf(w); if (r && !w.done) pPlan(r, w.shop || null);
+    renderWish(); renderHome(); toast(w.t + " \u2192 " + (w.shop || "Unsorted"));
   }
   function wishPlace(name) { var low = String(name || "").toLowerCase(), hit = null; placeList().forEach(function (p) { if (String(p.name || "").toLowerCase() === low) hit = p; }); return hit; }
   function wishNear(name) { var p = wishPlace(name); return !!(p && (nearIds[p.id] != null || (getEntry("place:" + p.id).plan === hTodayIso()))); }
@@ -3800,6 +3935,22 @@
     if (fpk) fpk.onclick = function () {
       openFoldModal("Save the next chat into\u2026", CHAT_NEWFOLD, function (v) { CHAT_NEWFOLD = v; renderChats(); });
     };
+    var spm = $("shopPickModal");
+    if (spm) {
+      spm.addEventListener("click", function (e) {
+        if (e.target === spm || e.target.closest("#spClose")) { closeShopPick(); return; }
+        var ob = e.target.closest("[data-sp]"); if (!ob || ob.disabled) return;
+        var n = ob.getAttribute("data-sp");
+        if (wIsPinned(n)) { meta.wishPins = wishPins().filter(function (p) { return String(p).toLowerCase() !== n.toLowerCase(); }); toast(n + " hidden"); }
+        else { wishPins().push(n); toast(n + " added to the board"); }
+        saveWish(); renderWish(); paintShopPick();
+      });
+      spm.addEventListener("input", function (e) { if (e.target && e.target.id === "spSearch") { SP_Q = e.target.value; paintShopPick(); } });
+      spm.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") { closeShopPick(); return; }
+        if (e.key === "Enter" && e.target && e.target.id === "spSearch") { e.preventDefault(); var f = spm.querySelector(".sp-opt:not(.on):not([disabled])"); if (f) f.click(); }
+      });
+    }
     var cfm = $("chatFoldModal");
     if (cfm) {
       cfm.addEventListener("click", function (e) {
@@ -4103,12 +4254,18 @@
     document.addEventListener("click", function (e) {
       var el = e.target.closest("[data-hact]"); if (!el) return;
       var a = el.getAttribute("data-hact"), k = el.getAttribute("data-hkey");
+      if (a === "wpbref") { pRefresh(true); toast("Refreshing from Cost\u2026"); return; }
+      if ((a === "wtog" || a === "wdsave") && pById(k)) { toast("Only Cost can close this \u2014 it ticks when Cost logs it"); return; }
+      if (a === "wdel" && pById(k)) { var hv = pById(k); if (!confirm("Hide \u201c" + hv.t + "\u201d on this device? It stays open in Cost.")) return; pApi().hide(hv.pr); var hk = pApi().keyOf(hv.pr); PB.rows = PB.rows.filter(function (r) { return pApi().keyOf(r) !== hk; }); renderWish(); renderHome(); toast("Hidden here \u2014 still open in Cost"); return; }
       if (a === "wtog") { var tw = akWish(k); if (tw) { tw.done = !tw.done; tw.doneAt = tw.done ? Date.now() : null; } saveWish(); akTick(tw); renderWish(); renderHome(); return; }
       if (a === "wyen") { e.stopPropagation(); akYen(k); return; }
       if (a === "wdet") { WS_DET = WS_DET === k ? null : k; WS_MOVE = null; paintWishSheet(); return; }
       if (a === "wdsave") { var dw2 = akWish(k); if (!dw2) return; var dn = $("wdNeed"), dt = $("wdNotes"); dw2.need = dn ? dn.value : (dw2.need || ""); dw2.notes = dt ? dt.value.trim() : (dw2.notes || ""); WS_DET = null; saveWish(); akEdit(dw2); renderWish(); toast("Saved"); return; }
       if (a === "wdel") { var dw = akWish(k); meta.wish = wishArr().filter(function (w) { return w.id !== k; }); saveWish(); akRemoved(dw); renderWish(); renderHome(); return; }
       if (a === "wbtog") { WISH_BOUGHT_OPEN = !WISH_BOUGHT_OPEN; renderWish(); return; }
+      if (a === "wshopadd") { openShopPick(); return; }
+      if (a === "wunpin") { e.stopPropagation(); meta.wishPins = wishPins().filter(function (p) { return String(p).toLowerCase() !== String(k).toLowerCase(); }); saveWish(); renderWish(); toast(k + " hidden \u2014 it\u2019s still in Cost"); return; }
+      if (a === "wallshops") { WISH_ALL = !WISH_ALL; try { localStorage.setItem("wf_wish_allshops", WISH_ALL ? "1" : "0"); } catch (e2) {} renderWish(); toast(WISH_ALL ? "Showing every Cost shop" : "Showing shops with items only"); return; }
       if (a === "wview") { WISH_VIEW = k === "flow" ? "flow" : "boxes"; WISH_SEL = null; renderWish(); return; }
       if (a === "wchip") { WISH_SEL = WISH_SEL === k ? null : k; renderWish(); if (WISH_SEL) toast("Now tap a box to file it"); return; }
       if (a === "wtile") { if (WISH_SEL) { wAssign(WISH_SEL, k); return; } openWishSheet(k); return; }
@@ -4116,7 +4273,8 @@
       if (a === "wsadd") { var wi = $("wsInp"), wt = wi ? wi.value.trim() : ""; if (!wt) return; wishArr().push({ id: uid(), shop: wishShopName(k), t: wt, at: Date.now(), done: false }); saveWish(); renderWish(); renderHome(); return; }
       if (a === "wsdoneall") { var dall = []; wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === k.toLowerCase() && !w.done) { w.done = true; w.doneAt = Date.now(); dall.push(w); } }); saveWish(); dall.forEach(akTick); closeWishSheet(); renderWish(); renderHome(); return; }
       if (a === "wmove") { WS_MOVE = WS_MOVE === k ? null : k; paintWishSheet(); return; }
-      if (a === "wmoveto") { var mp = k.split("|"), mid = mp[0], mto = mp.slice(1).join("|"); var mw2 = null; wishArr().forEach(function (x) { if (x.id === mid) mw2 = x; }); if (!mw2) return; mw2.shop = mto ? wishShopName(mto) : ""; WS_MOVE = null; saveWish(); akEdit(mw2); renderWish(); renderHome(); toast(mw2.t + " \u2192 " + (mto || "Unsorted")); return; }
+      if (a === "wmoveto" && pById(k.split("|")[0])) { var pm = k.split("|"); WS_MOVE = null; wAssign(pm[0], pm.slice(1).join("|")); return; }
+      if (a === "wmoveto") { var mp = k.split("|"), mid = mp[0], mto = mp.slice(1).join("|"); var mw2 = null; wishArr().forEach(function (x) { if (x.id === mid) mw2 = x; }); if (!mw2) return; mw2.shop = mto ? wishShopName(mto) : ""; WS_MOVE = null; saveWish(); akEdit(mw2); var mr = pRowOf(mw2); if (mr && !mw2.done) pPlan(mr, mw2.shop || null); renderWish(); renderHome(); toast(mw2.t + " \u2192 " + (mto || "Unsorted")); return; }
       if (a === "wmovenew") { var ni = $("wsMoveNew"), nv = ni ? ni.value.trim() : ""; if (!nv) { if (ni) ni.focus(); return; } var mw3 = null; wishArr().forEach(function (x) { if (x.id === k) mw3 = x; }); if (!mw3) return; mw3.shop = wishShopName(nv); WS_MOVE = null; saveWish(); akEdit(mw3); renderWish(); renderHome(); toast(mw3.t + " \u2192 " + mw3.shop); return; }
       if (a === "wrename") { var rn = prompt("Rename shop", k); if (!rn || !rn.trim() || rn.trim() === k) return; rn = rn.trim(); var rnw = []; wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === k.toLowerCase()) { w.shop = rn; rnw.push(w); } }); rnw.forEach(akEdit); wishFlow().stops = wishFlow().stops.map(function (n) { return n.toLowerCase() === k.toLowerCase() ? rn : n; }); saveWish(); WS_SHOP = rn; renderWish(); return; }
       if (a === "wfladd") { if (!wishFlow().stops.some(function (n) { return n.toLowerCase() === k.toLowerCase(); })) wishFlow().stops.push(k); saveWish(); renderWish(); toast(k + " added as stop " + wishFlow().stops.length); return; }
