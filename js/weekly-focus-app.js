@@ -41,6 +41,7 @@
   var state = { apps: [], study: [], office: [] };
   var itemIndex = {};               // id -> item (across apps + study)
   var invTs = "";                   // last-applied inventory timestamp (last-write-wins across devices)
+  var invPulled = false;            // inventory query has succeeded at least once for this board (R010 readiness)
   var entries = {};                 // id -> { active, pri, objective, subtasks[], notes, targetDone } — loaded from Supabase
   var meta = {};                    // { weekOf, eowDone, eowCarry, eowNotes } — loaded from Supabase
   var targetOrder = [];             // The Five — loaded from Supabase
@@ -1519,13 +1520,12 @@
       var sid = e.target.closest("[data-sid]").getAttribute("data-sid");
       var subs_norm = normSubs(subs(key));   // backfill ids
       patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid ? Object.assign({}, x, { done: !x.done, u: Date.now() }) : x; }) });
-      akReplyFor(key, sid);
       renderCols(); renderPulse(); renderFive(); return;
     }
     if (a === "subdel") {
       var sid2 = e.target.closest("[data-sid]").getAttribute("data-sid");
       var subs_norm = normSubs(subs(key));   // backfill ids
-      patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); akReplyFor(key, sid2); renderCols(); renderPulse(); renderFive(); return;
+      patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid2 ? Object.assign({}, x, { del: true, u: Date.now() }) : x; }) }); renderCols(); renderPulse(); renderFive(); return;
     }
     if (a === "subedit-start") { startSubEdit(act, key); return; }
     if (a === "whenedit" || a === "ctxedit") { var wli = act.closest("[data-sid]"); if (wli) openTaskSheet(key, wli.getAttribute("data-sid")); return; }
@@ -1851,6 +1851,7 @@
     try {
       var r = await sb.from("weekly_focus_inventory").select("apps,study,office,updated_at").eq("board_id", cloud.board).limit(1);
       if (r.error) throw r.error;
+      invPulled = true;
       var rows = r.data || []; if (!rows.length) return false;
       var remoteTs = rows[0].updated_at || "";
       var hasInvPending = !!outbox["inv"];
@@ -1869,12 +1870,19 @@
     var fresh = !state.apps.length && !state.study.length && !state.office.length;
     return cloudPullInventory(fresh).then(cloudPullEntries).then(flushOutbox);
   }
-  /* ---- Akatsuki R010: Cost -> WF request inbox ------------------------------------
-     One subtask per request on the Life list app:cost-requests; sub.id = 'cost_' + request id.
-     Cost owns t until the user edits it (t !== src.t0). WF owns when/loc/md/... from creation.
-     Replies: tick -> done, un-tick -> open, delete -> cancelled. Never replies to inbound changes. */
-  var AK_KEY = "app:cost-requests", AK_FROM = "cost", AK_KIND = "request.created", AK_REPLY_BOX = "wf_ak_reply_outbox";
-  var akHub = null, akStop = null;
+  /* ---- Akatsuki R010 · v86: requests live on the Wishlist (Routines tab) ----------------------
+     IN  (Cost -> WF): request.created/changed land as wish items, id 'cost_' + request id, shop = preferred_shop
+         (else Unsorted). Replies to Cost: tick -> done, un-tick -> open, delete -> cancelled.
+     OUT (WF -> Cost): the ¥ badge publishes one purchase_request {id, items:[{name}], source:'own', preferred_shop?} (idempotent
+         on the wish id). Cost replies pending | approved | rejected | logged; logged ticks the item.
+         A missing route/kind marks the item 'blocked' (no retry loop); other failures retry every 30s.
+     The v85 Life list app:cost-requests is migrated into the Wishlist once, then removed.
+     Logging: ?akdebug in the URL or localStorage wf_ak_debug = "1". */
+  var AK_KEY = "app:cost-requests", AK_FROM = "cost", AK_KIND = "request.created", AK_CHG = "request.changed";
+  var AK_REPLY_BOX = "wf_ak_reply_outbox", AK_CUR = "wf_ak_reply_cursor";
+  var AK_DEBUG = (function () { try { return /[?&]akdebug\b/.test(location.search) || localStorage.getItem("wf_ak_debug") === "1"; } catch (e) { return false; } })();
+  function akLog() { if (AK_DEBUG) console.info.apply(console, ["[ak]"].concat([].slice.call(arguments))); }
+  var akHub = null, akStop = null, akPoll = null;
   function akSid(id) { return "cost_" + String(id); }
   function akTitle(p) {
     var t = String(p.item || "").trim() || "(untitled request)";
@@ -1883,63 +1891,111 @@
     else if (p.unit && q === 1) t += " (1 " + p.unit + ")";
     return t;
   }
-  function akEnsureList() {
-    if (!state.apps.some(function (a) { return a.id === AK_KEY; })) {
-      state.apps.push({ id: AK_KEY, name: "Requests", group: "Special" }); rebuildIndex(); saveInv();
-    }
-    if (!entries[AK_KEY]) patch(AK_KEY, { active: false, subtasks: [] });
+  function akWish(id) { var hit = null; wishArr().forEach(function (w) { if (w.id === id) hit = w; }); return hit; }
+  function akMeta(m) { m = m || {}; return { source: m.source || null, budget_cap: m.budget_cap != null ? m.budget_cap : null, currency: m.currency || null, expense_id: m.expense_id || null }; }
+  function akNewWish(id, p, clock, addr) {
+    var t = akTitle(p), shop = p.preferred_shop ? wishShopName(String(p.preferred_shop).trim()) : "";
+    return { id: akSid(id), shop: shop, t: t, at: Date.now(), done: false,
+      need: p.needed_by ? String(p.needed_by).slice(0, 10) : "", notes: p.notes ? String(p.notes) : "",
+      ak: { dir: "in", id: String(id), addr: addr || null, t0: t, s0: shop, v: clock || "", meta: akMeta(p) } };
   }
-  function akNewSub(id, p, clock) {
-    var t = akTitle(p);
-    return { id: akSid(id), t: t, done: false, u: Date.now(), del: false,
-      when: p.needed_by ? String(p.needed_by).slice(0, 16) : "", md: "b", urg: false, dl: false,
-      loc: p.preferred_shop ? String(p.preferred_shop) : "", tag: "", ctx: [], lat: false, latAt: 0, rv: "",
-      src: { app: AK_FROM, id: String(id), t0: t, v: clock || "", meta: {
-        source: p.source || null, budget_cap: p.budget_cap != null ? p.budget_cap : null, currency: p.currency || null,
-        notes: p.notes || null, expense_id: p.expense_id || null } } };
+  function akAddr(sid) { return { board_id: cloud.board || "my-week", doc: "wish", wish_id: sid }; }
+  /* Ready = inventory + entries (incl. the __board row that carries meta.wish) pulled for this board. */
+  function akNotReady() {
+    if (!syncReady()) return "not signed in";
+    if (!state || !Array.isArray(state.apps)) return "inventory.apps missing";
+    if (!invPulled) return "inventory not pulled";
+    if (firstPull) return "entries not pulled";
+    return "";
   }
-  function akAddr(sid) { return { board_id: cloud.board || "my_week", item_key: AK_KEY, sub_id: sid }; }
+  function akSrcId(r) { var a = r.src_addr || {}; var id = a.id != null ? a.id : a.request_id; return id == null ? null : id; }
+  function akRender() { try { renderAll(); renderWish(); renderHome(); } catch (e) { console.error("[ak] render after apply failed (data is applied)", e); } }
+  /* v85 -> v86: Life 'Requests' subtasks become Wishlist items; the Life list is removed. */
+  function akMigrateLife() {
+    var e = entries[AK_KEY], inInv = state.apps.some(function (x) { return x.id === AK_KEY; });
+    if (!e && !inInv) return;
+    var n = 0;
+    normSubs((e && e.subtasks) || []).forEach(function (x) {
+      if (x.del || akWish(x.id)) return;
+      var shop = x.loc ? wishShopName(String(x.loc).trim()) : "";
+      var w = { id: x.id, shop: shop, t: x.t, at: x.u || Date.now(), done: !!x.done, doneAt: x.done ? (x.u || Date.now()) : null, need: x.when ? String(x.when).slice(0, 10) : "", notes: "" };
+      if (String(x.id).indexOf("cost_") === 0) {
+        var src = x.src || {}, m = src.meta || {};
+        w.notes = m.notes ? String(m.notes) : "";
+        w.ak = { dir: "in", id: String(src.id || String(x.id).slice(5)), addr: src.addr || null, t0: src.t0 || x.t, s0: shop, v: src.v || "", meta: akMeta(m) };
+      }
+      wishArr().push(w); n++;
+    });
+    saveWish();
+    if (e) { delete entries[AK_KEY]; save(); cloudDeleteEntry(AK_KEY); }
+    if (inInv) { state.apps = state.apps.filter(function (x) { return x.id !== AK_KEY; }); rebuildIndex(); saveInv(); }
+    akLog("migrated " + n + " Life requests into the Wishlist");
+    akRender();
+  }
   function akOnCreated(r) {
-    var id = r.src_addr && r.src_addr.id; if (id == null) return {};
-    akEnsureList();
-    var list = normSubs(subs(AK_KEY)), sid = akSid(id);
-    if (!list.some(function (x) { return x.id === sid; })) { patch(AK_KEY, { subtasks: list.concat([akNewSub(id, r.payload || {}, r.src_clock)]) }); renderAll(); }
+    akLog("request.created in", { seq: r.seq, src_addr: r.src_addr, payload: r.payload });
+    var wait = akNotReady(); if (wait) { akLog("seq " + r.seq + " deferred: " + wait); return { defer: wait }; }
+    var id = akSrcId(r); if (id == null) throw new Error("request.created without src_addr.id");
+    akMigrateLife();
+    var sid = akSid(id);
+    if (!akWish(sid)) { wishArr().push(akNewWish(id, r.payload || {}, r.src_clock, r.src_addr)); saveWish(); akRender(); }
+    akLog("seq " + r.seq + " applied as " + sid);
     return { addr: akAddr(sid) };
   }
   function akOnChanged(r) {
-    var id = r.src_addr && r.src_addr.id; if (id == null) return {};
-    var p = r.payload || {}, sid = akSid(id), stamp = p.updated_at ? String(p.updated_at) : (r.src_clock || "");
-    akEnsureList();
-    var list = normSubs(subs(AK_KEY)), found = false, moved = false;
-    var next = list.map(function (x) {
-      if (x.id !== sid) return x;
-      found = true;
-      var src = x.src || { app: AK_FROM, id: String(id), t0: x.t, v: "" };
-      if (src.v && stamp && stamp <= src.v) return x;                       // older or same snapshot
-      var y = Object.assign({}, x, { src: Object.assign({}, src, { v: stamp }) });
-      if (p.item != null) { var nt = akTitle(p); if (x.t === src.t0 && nt !== x.t) y.t = nt; y.src.t0 = nt; }
-      if (p.status === "done") { y.done = true; y.del = false; }
-      else if (p.status === "cancelled") { y.del = true; }
-      else if (p.status === "open") { y.done = false; y.del = false; }
-      if (p.expense_id != null) y.src.meta = Object.assign({}, src.meta || {}, { expense_id: p.expense_id });
-      if (y.t !== x.t || y.done !== x.done || y.del !== x.del) { y.u = Date.now(); moved = true; }
-      else if (JSON.stringify(y.src) !== JSON.stringify(x.src)) moved = true;  // src-only: persist, no u bump
-      return y;
-    });
-    if (!found) {                                                            // changed arrived before created
-      var s = akNewSub(id, p, stamp);
-      if (p.status === "done") s.done = true; else if (p.status === "cancelled") s.del = true;
-      next = list.concat([s]); moved = true;
+    akLog("request.changed in", { seq: r.seq, src_addr: r.src_addr });
+    var wait = akNotReady(); if (wait) { akLog("seq " + r.seq + " deferred: " + wait); return { defer: wait }; }
+    var id = akSrcId(r); if (id == null) throw new Error("request.changed without src_addr.id");
+    akMigrateLife();
+    var p = r.payload || {}, sid = akSid(id), stamp = p.updated_at ? String(p.updated_at) : (r.src_clock || ""), w = akWish(sid);
+    if (!w) {                                                                // changed arrived before created
+      if (p.status === "cancelled") return { addr: akAddr(sid) };
+      w = akNewWish(id, p, stamp, r.src_addr);
+      if (p.status === "done") { w.done = true; w.doneAt = Date.now(); }
+      wishArr().push(w); saveWish(); akRender(); return { addr: akAddr(sid) };
     }
-    if (moved) { patch(AK_KEY, { subtasks: next }); renderAll(); }
+    var a = w.ak || (w.ak = { dir: "in", id: String(id), t0: w.t, s0: w.shop || "", v: "", meta: {} });
+    if (a.v && stamp && stamp <= a.v) return { addr: akAddr(sid) };        // older or same snapshot
+    a.v = stamp;
+    if (p.item != null) { var nt = akTitle(p); if (w.t === a.t0) w.t = nt; a.t0 = nt; }   // Cost owns the title until WF edits it
+    if (p.preferred_shop !== undefined) { var ns = p.preferred_shop ? wishShopName(String(p.preferred_shop).trim()) : ""; if (String(w.shop || "") === String(a.s0 || "")) w.shop = ns; a.s0 = ns; }
+    if (p.needed_by !== undefined) w.need = p.needed_by ? String(p.needed_by).slice(0, 10) : "";
+    if (p.notes !== undefined) w.notes = p.notes ? String(p.notes) : "";
+    if (p.expense_id != null) a.meta = Object.assign({}, a.meta || {}, { expense_id: p.expense_id });
+    if (p.status === "done" && !w.done) { w.done = true; w.doneAt = Date.now(); }
+    else if (p.status === "open" && w.done) { w.done = false; w.doneAt = null; }
+    if (p.status === "cancelled") meta.wish = wishArr().filter(function (x) { return x.id !== sid; });
+    saveWish(); akRender();
     return { addr: akAddr(sid) };
   }
-  function akSafe(fn) { return function (r) { try { return fn(r); } catch (e) { console.warn("[ak] handler", r && r.kind, e); return {}; } }; }
+  /* Malformed rows (explicit throw) reject; anything else unexpected defers to the next poll. */
+  function akSafe(fn) {
+    return function (r) {
+      try { return fn(r); }
+      catch (e) {
+        if (/without src_addr/.test(e.message)) throw e;
+        console.error("[ak] handler error \u2014 seq " + (r && r.seq) + " left pending", e);
+        return { defer: "handler error: " + e.message };
+      }
+    };
+  }
   function akReadBox() { try { return JSON.parse(localStorage.getItem(AK_REPLY_BOX) || "[]"); } catch (e) { return []; } }
   function akWriteBox(a) { try { localStorage.setItem(AK_REPLY_BOX, JSON.stringify(a)); } catch (e) {} }
-  function akSend(msg) {
-    if (!akHub) return Promise.reject(new Error("no hub"));
-    return akHub.reply(AK_FROM, AK_KIND, { id: msg.id }, { status: msg.status, at: msg.at });
+  /* akatsuki_reply matches src_addr by jsonb equality, so reply with Cost's exact original address. */
+  async function akOrigAddr(msg) {
+    if (msg.addr) return msg.addr;
+    var r = await sb.from("akatsuki_requests").select("seq,src_addr").eq("to_app", "wf").eq("from_app", AK_FROM).eq("kind", AK_KIND).order("seq", { ascending: false }).limit(500);
+    if (r.error) throw r.error;
+    var hit = (r.data || []).filter(function (row) { var a = row.src_addr || {}; var v = a.id != null ? a.id : a.request_id; return v != null && String(v) === String(msg.id); })[0];
+    if (!hit) throw new Error("no hub row for cost id " + msg.id);
+    return hit.src_addr;
+  }
+  async function akSend(msg) {
+    if (!akHub) throw new Error("no hub");
+    var addr = await akOrigAddr(msg);
+    var seq = await akHub.reply(AK_FROM, AK_KIND, addr, { status: msg.status, at: msg.at });
+    akLog("replied " + msg.status + " for cost " + msg.id + " (seq " + seq + ")");
+    return seq;
   }
   function akFlushReplies() {
     var box = akReadBox(); if (!box.length || !akHub || !navigator.onLine) return;
@@ -1947,21 +2003,119 @@
     akWriteBox([]);
     Object.keys(byId).forEach(function (id) { akSend(byId[id]).catch(function () { akWriteBox(akReadBox().concat([byId[id]])); }); });
   }
-  function akReplyFor(key, sid) {
-    if (key !== AK_KEY || !sid || String(sid).indexOf("cost_") !== 0) return;
-    var x = normSubs(subs(key)).filter(function (s) { return s.id === sid; })[0]; if (!x) return;
-    var id = (x.src && x.src.id) || String(sid).slice(5);
-    var msg = { id: id, status: x.del ? "cancelled" : x.done ? "done" : "open", at: new Date().toISOString() };
+  function akReplyIn(w, status) {
+    if (!w || !w.ak || w.ak.dir !== "in") return;
+    var msg = { id: w.ak.id, addr: w.ak.addr || null, status: status, at: new Date().toISOString() };
     akSend(msg).catch(function (e) { akWriteBox(akReadBox().concat([msg])); console.warn("[ak] reply queued", e.message); });
+  }
+  /* ---- OUT: WF -> Cost · purchase_request (same route Sukkiri uses) ----
+     One publish per item, idempotent on the wish id; no request.changed. Cost decides and replies
+     {status: pending | approved | rejected | logged}. logged = bought -> ticks the item.
+     A contract error (route/kind not declared) stops the retry loop; anything else retries every 30s. */
+  var AK_PR = "purchase_request", AK_PR_CUR = "wf_ak_pr_cursor";
+  /* Request id = wish id while a request is open; a re-send after Cost answered (rejected/logged/cancelled)
+     or after a withdraw bumps ak.rev -> '<wish-id>-2', '-3'… so the hub opens a fresh row instead of landing on the old one.
+     Only a manual retry of a 'blocked' send keeps the same id. */
+  var AK_ANSWERED = { rejected: 1, logged: 1, cancelled: 1 };
+  function akReqId(w) { var r = w.ak && w.ak.rev; return r ? w.id + "-" + (r + 1) : w.id; }
+  function akOutAddr(w) { return { board_id: cloud.board || "my-week", item_key: "wish", sub_id: akReqId(w) }; }
+  async function akPush(w, quiet) {
+    var a = w && w.ak; if (!a || a.dir !== "out" || !a.on || a.pub) return;
+    var rid = akReqId(w), p = { id: rid, items: [{ name: w.t }], source: "own" };
+    if (String(w.shop || "").trim()) p.preferred_shop = String(w.shop).trim();
+    if (!akHub) { a.st = "pending"; a.pend = true; saveWish(); akRender(); if (!quiet) toast("Saved \u2014 sends to Cost once you\u2019re signed in"); return; }
+    try {
+      var r = await akHub.publish({ to: AK_FROM, kind: AK_PR, addr: akOutAddr(w), payload: p, key: "wf:" + AK_PR + ":" + rid });
+      if (r && r.status === "queued") { a.st = "pending"; a.pend = true; if (!quiet) toast("Offline \u2014 sends to Cost when back online"); }
+      else { a.pub = true; a.pend = false; a.st = "sent"; akLog("sent " + AK_PR + " " + rid + " \u2192 cost", r && (r.seq || r.status)); if (!quiet) toast("Sent to Cost"); }
+    } catch (e) {
+      if (/does not declare|no route/.test(e.message)) { a.st = "blocked"; a.pend = false; console.warn("[ak] " + AK_PR + " wf \u2192 cost not open:", e.message); if (!quiet) toast("Akatsuki hasn\u2019t opened WF \u2192 Cost yet"); }
+      else { a.st = "pending"; a.pend = true; console.warn("[ak] send to Cost failed \u2014 will retry:", e.message); if (!quiet) toast("Couldn\u2019t reach Cost \u2014 will retry"); }
+    }
+    saveWish(); akRender();
+  }
+  function akEdit(w) { /* purchase_request has no change message; WF edits stay local */ }
+  function akTick(w) { if (w && w.ak && w.ak.dir === "in") akReplyIn(w, w.done ? "done" : "open"); }
+  function akRemoved(w) { if (w && w.ak && w.ak.dir === "in") akReplyIn(w, "cancelled"); }
+  function akRetry() { wishArr().forEach(function (w) { if (w.ak && w.ak.dir === "out" && w.ak.on && !w.ak.pub && w.ak.pend) akPush(w, true); }); }
+  function akYen(id) {
+    var w = akWish(id); if (!w) return;
+    if (w.ak && w.ak.dir === "in") { toast("Requested by " + akSrcLabel(w) + " \u2014 Cost is buying it"); return; }
+    if (w.done) { toast("Already bought"); return; }
+    var a = w.ak;
+    if (a && a.on && a.st === "blocked") { a.pend = true; akPush(w, false); return; }                 // manual retry, same id
+    if (a && a.on && !AK_ANSWERED[a.st]) {                                                          // still open at Cost
+      if (!confirm("Withdraw \u201c" + w.t + "\u201d from Cost? (Cost keeps its copy if already approved.)")) return;
+      a.on = false; a.pub = false; a.pend = false; a.st = ""; saveWish(); akRender(); return;
+    }
+    var rev = a ? (a.rev || 0) + 1 : 0;                                    // any re-send (answered or withdrawn) -> new hub row
+    w.ak = { dir: "out", on: true, pub: false, pend: false, st: "", rev: rev, stAt: new Date().toISOString() };
+    akPush(w, false);
+  }
+  /* Cost's decisions on purchase_requests WF sent. Cursor = max reply_seq seen (per device). */
+  async function akPollReplies() {
+    if (!akHub || akNotReady()) return;
+    var since = 0; try { since = +localStorage.getItem(AK_PR_CUR) || 0; } catch (e) {}
+    var rows = await akHub.replies(AK_PR, since), max = since, dirty = false;
+    (rows || []).forEach(function (r) {
+      if ((r.reply_seq || 0) > max) max = r.reply_seq;
+      var ad = r.src_addr, rp = r.reply;
+      if (typeof ad === "string") { try { ad = JSON.parse(ad); } catch (e) { ad = null; } }
+      if (typeof rp === "string") { try { rp = JSON.parse(rp); } catch (e) { rp = null; } }
+      var wid = ad && (ad.sub_id || ad.wish_id); if (!wid || !rp || !rp.status) return;
+      var w = null; wishArr().forEach(function (x) { if (x.ak && x.ak.dir === "out" && akReqId(x) === String(wid)) w = x; });
+      if (!w) return;                                                           // unknown, or a reply to an older (closed) request id
+      var st = String(rp.status);
+      if (st === "logged") { if (!w.done) { w.done = true; w.doneAt = Date.now(); } w.ak.st = "logged"; }
+      else if (st === "approved") w.ak.st = "approved";
+      else if (st === "rejected") { w.ak.on = false; w.ak.pend = false; w.ak.st = "rejected"; }
+      else if (st === "pending") w.ak.st = "sent";
+      else return;
+      w.ak.rat = rp.at ? String(rp.at) : ""; w.ak.rseq = r.reply_seq; dirty = true; akLog("cost " + st + " for " + w.id);
+    });
+    if (max > since) try { localStorage.setItem(AK_PR_CUR, String(max)); } catch (e) {}
+    if (dirty) { saveWish(); akRender(); }
+  }
+  /* ---- badges ---- */
+  function akSrcLabel(w) { var s = w.ak && w.ak.meta && w.ak.meta.source; s = s ? String(s) : "Cost"; return s.charAt(0).toUpperCase() + s.slice(1); }
+  function akState(w) {
+    var a = w.ak; if (!a) return "off"; if (a.dir === "in") return "in";
+    if (!a.on) return a.st === "rejected" ? "rejected" : "off";
+    if (a.st === "blocked") return "blocked"; if (a.pend || !a.pub) return "pending";
+    return a.st === "logged" ? "logged" : a.st === "approved" ? "approved" : "sent";
+  }
+  var AK_LBL = { off: "\u00a5", sent: "\u00a5 sent", approved: "\u00a5 approved", logged: "\u00a5 logged", pending: "\u00a5 waiting", blocked: "\u00a5 blocked", rejected: "\u00a5 rejected" };
+  var AK_TIP = { off: "Send to Cost", sent: "Sent to Cost \u2014 waiting for a decision \u00b7 tap to withdraw", approved: "Cost approved it \u2014 tap to withdraw", logged: "Cost logged the purchase", pending: "Sending to Cost\u2026 retrying", blocked: "WF \u2192 Cost route not open in Akatsuki \u2014 tap to retry", rejected: "Cost rejected it \u2014 tap to send again as a new request" };
+  function akBadge(w) {
+    var s = akState(w);
+    if (s === "in") return '<span class="wak in" role="button" data-hact="wyen" data-hkey="' + esc(w.id) + '" title="Requested via Cost">' + esc(akSrcLabel(w)) + '</span>';
+    return '<span class="wak ' + s + '" role="button" data-hact="wyen" data-hkey="' + esc(w.id) + '" title="' + AK_TIP[s] + '">' + AK_LBL[s] + '</span>';
+  }
+  /* v86 queued WF-side request.created/changed publishes in the client outbox; the hub rejects them
+     (request.* is Cost -> WF only) and flush() re-sent them on every reconnect. Drop them before the hub starts. */
+  function akPurgeOutbox() {
+    var K = "akatsuki_outbox_wf";
+    try {
+      var box = JSON.parse(localStorage.getItem(K) || "[]"); if (!Array.isArray(box)) return;
+      var keep = box.filter(function (p) { return !(p && (p.kind === AK_KIND || p.kind === AK_CHG)); });
+      if (keep.length !== box.length) { localStorage.setItem(K, JSON.stringify(keep)); console.info("[ak] dropped " + (box.length - keep.length) + " stale request.* publish(es) from the outbox"); }
+    } catch (e) {}
   }
   function akStart() {
     if (akStop || typeof window.Akatsuki !== "function" || !sb) return;
-    akHub = window.Akatsuki(sb, "wf", { log: function () { if (window.WF_DEBUG) console.log.apply(console, ["[ak]"].concat([].slice.call(arguments))); } });
+    akPurgeOutbox();
+    akHub = window.Akatsuki(sb, "wf", { log: akLog });
+    akLog("listening as wf on board " + cloud.board);
     window.__wfAk = akHub;
     akStop = akHub.listen({ "request.created": akSafe(akOnCreated), "request.changed": akSafe(akOnChanged) }, 30000);
-    akFlushReplies();
-    window.addEventListener("online", akFlushReplies);
-    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") akFlushReplies(); });
+    var tick = function () {
+      if (akNotReady()) return;
+      akMigrateLife(); akFlushReplies(); akRetry();
+      akPollReplies().catch(function (e) { console.warn("[ak] reply poll failed", e.message); });
+    };
+    tick(); akPoll = setInterval(tick, 30000);
+    window.addEventListener("online", tick);
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") tick(); });
   }
   function pendingCount() { return Object.keys(outbox).length; }
   function updateCloudStatus() {
@@ -2278,7 +2432,7 @@
     cloud.board = name;
     try { localStorage.setItem("wf2_active_board", name); } catch (e) {}
     state = { apps: [], study: [], office: [] }; itemIndex = {}; rebuildIndex();
-    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = "";
+    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true;
     ENTER = true; updateBoardUI(); refreshGroupLists(); renderAll(); updateCloudStatus(); closeBoardMenu();
     if (syncReady()) initialSync();           // pulls THIS board's inventory + entries
   }
@@ -3196,7 +3350,17 @@
     return wishArr().filter(function (w) { return !w.done && String(w.shop || "").toLowerCase() === low; });
   }
   /* ---- v54: boxes · journey · unsorted tray · shop sheet ---- */
-  var WISH_VIEW = "boxes", WISH_SEL = null, WS_SHOP = null, WISH_BOUGHT_OPEN = false, WS_MOVE = null;
+  var WISH_VIEW = "boxes", WISH_SEL = null, WS_SHOP = null, WISH_BOUGHT_OPEN = false, WS_MOVE = null, WS_DET = null;
+  /* v86: item detail (needed-by, notes, request source/budget) — hidden until the item is tapped in its shop sheet */
+  function wDetHtml(w) {
+    var a = w.ak || null, m = (a && a.meta) || {}, s = akState(w);
+    var src = s === "in" ? "Requested by " + akSrcLabel(w) + " \u00b7 Cost buys it" : s === "off" ? "WF only \u2014 tap \u00a5 to send to Cost" : AK_TIP[s];
+    var bud = m.budget_cap != null ? " \u00b7 budget " + (!m.currency || m.currency === "JPY" ? "\u00a5" : m.currency + " ") + m.budget_cap : "";
+    return '<div class="wsdet"><div class="wsd-src">' + esc(src + bud) + '</div>' +
+      '<label class="wsd-f"><span>Needed by</span><input type="date" id="wdNeed" value="' + esc(w.need || "") + '"></label>' +
+      '<textarea id="wdNotes" rows="2" placeholder="Notes">' + esc(w.notes || "") + '</textarea>' +
+      '<div class="wsd-act"><button type="button" class="tbtn" data-hact="wdet" data-hkey="' + esc(w.id) + '">Close</button><button type="button" class="tbtn primary" data-hact="wdsave" data-hkey="' + esc(w.id) + '">Save</button></div></div>';
+  }
   var WEMO = { medical: "\ud83d\udc8a", pharmacy: "\ud83d\udc8a", nitori: "\ud83d\udecb\ufe0f", daiso: "\ud83e\uddfa", amazon: "\ud83d\udce6", "don quijote": "\ud83d\udc27", uniqlo: "\ud83d\udc55", muji: "\ud83e\uddf4", ikea: "\ud83e\ude91", supermarket: "\ud83d\uded2", konbini: "\ud83c\udfea" };
   function wEmo(n) { return WEMO[String(n || "").toLowerCase()] || "\ud83d\udecd\ufe0f"; }
   function wHue(n) { var h = 0; n = String(n || ""); for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0; return h % 360; }
@@ -3218,7 +3382,7 @@
     return '<button type="button" class="wtile' + (full ? " full" : "") + (near ? " near" : "") + (WISH_SEL ? " target" : "") + '" style="--h:' + wHue(s.name) + ';--fill:' + fill + '%" data-hact="wtile" data-hkey="' + esc(s.name) + '" data-wshop="' + esc(s.name) + '">' +
       '<span class="wcnt">' + (full ? "\u2713 " : "") + s.open + '</span><span class="wem">' + wEmo(s.name) + '</span><span class="wnm">' + esc(s.name) + '</span><span class="wtag">' + tag + '</span></button>';
   }
-  function wChipHtml(w) { return '<button type="button" class="wchip' + (WISH_SEL === w.id ? " sel" : "") + '" draggable="true" data-hact="wchip" data-hkey="' + esc(w.id) + '" data-wid="' + esc(w.id) + '"><span class="g">\u283f</span>' + esc(w.t) + '</button>'; }
+  function wChipHtml(w) { return '<button type="button" class="wchip' + (WISH_SEL === w.id ? " sel" : "") + '"' + (w.notes || w.need ? ' title="' + esc([w.need ? "by " + w.need : "", w.notes || ""].filter(Boolean).join(" \u00b7 ")) + '"' : '') + ' draggable="true" data-hact="wchip" data-hkey="' + esc(w.id) + '" data-wid="' + esc(w.id) + '"><span class="g">\u283f</span>' + esc(w.t) + akBadge(w) + '</button>'; }
   function renderWishTray() {
     var host = $("wishTray"); if (!host) return;
     var un = wishArr().filter(function (w) { return !w.done && !String(w.shop || "").trim(); });
@@ -3285,17 +3449,17 @@
   }
   function wishItemRow(w) {
     return '<label class="witem' + (w.done ? " done" : "") + '"><button class="sub-check' + (w.done ? " on" : "") + '" data-hact="wtog" data-hkey="' + esc(w.id) + '" aria-label="Bought"></button>' +
-      '<span class="wtx">' + esc(w.t) + '</span>' +
+      '<span class="wtx">' + esc(w.t) + '</span>' + (w.ak ? akBadge(w) : '') +
       (w.done && w.doneAt ? '<span class="wdate">' + new Date(w.doneAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + '</span>' : '<span class="wdate">' + esc(w.shop || "Unsorted") + '</span>') +
       '<button class="sub-del" data-hact="wdel" data-hkey="' + esc(w.id) + '" title="Remove">\u00d7</button></label>';
   }
   /* shop sheet */
-  function openWishSheet(name) { WS_SHOP = name; WS_MOVE = null; paintWishSheet(); var m = $("wishSheet"); if (m) m.classList.add("open"); }
+  function openWishSheet(name) { WS_SHOP = name; WS_MOVE = null; WS_DET = null; paintWishSheet(); var m = $("wishSheet"); if (m) m.classList.add("open"); }
   function closeWishSheet() {
     var m = $("wishSheet"); if (m) m.classList.remove("open");
     if (WS_SHOP && WISH_VIEW === "flow") { var st = wishFlow().stops, i = -1; st.forEach(function (n, k) { if (n.toLowerCase() === WS_SHOP.toLowerCase()) i = k; });
       if (i >= 0 && wOpenOf(WS_SHOP) === 0) { var nx = null; for (var k = i + 1; k < st.length; k++) if (wOpenOf(st[k]) > 0) { nx = st[k]; break; } toast(nx ? "Stop cleared \u2192 walking to " + nx : "Route complete \ud83c\udfc1"); } }
-    WS_SHOP = null; WS_MOVE = null;
+    WS_SHOP = null; WS_MOVE = null; WS_DET = null;
   }
   function paintWishSheet() {
     var name = WS_SHOP, s = wShop(name), hd = $("wsHead"), bd = $("wsBody"); if (!hd || !bd) return;
@@ -3307,7 +3471,7 @@
       '<button type="button" class="bs-x" data-hact="wsclose" title="Close">\u00d7</button>';
     items.sort(function (a, b) { return (a.done - b.done) || ((a.at || 0) - (b.at || 0)); });
     bd.innerHTML = '<div class="wsitems">' + (items.length ? items.map(function (w) {
-      var row = '<div class="wsit' + (w.done ? " done" : "") + (WS_MOVE === w.id ? " moving" : "") + '"><button type="button" class="wsck" data-hact="wtog" data-hkey="' + esc(w.id) + '" aria-label="Bought"></button><span class="wst">' + esc(w.t) + '</span>' +
+      var row = '<div class="wsit' + (w.done ? " done" : "") + (WS_MOVE === w.id || WS_DET === w.id ? " moving" : "") + '"><button type="button" class="wsck" data-hact="wtog" data-hkey="' + esc(w.id) + '" aria-label="Bought"></button><span class="wst" role="button" data-hact="wdet" data-hkey="' + esc(w.id) + '" title="Details">' + esc(w.t) + '</span>' + akBadge(w) +
         '<button type="button" class="wsmv' + (WS_MOVE === w.id ? " on" : "") + '" data-hact="wmove" data-hkey="' + esc(w.id) + '" title="Move to another shop">' + (WS_MOVE === w.id ? "Cancel" : "Move") + '</button><button type="button" class="sub-del" data-hact="wdel" data-hkey="' + esc(w.id) + '">\u00d7</button></div>';
       if (WS_MOVE === w.id) {
         var others = wShops().filter(function (x) { return x.name.toLowerCase() !== String(name).toLowerCase(); });
@@ -3316,6 +3480,7 @@
           '<button type="button" class="wshopchip un" data-hact="wmoveto" data-hkey="' + esc(w.id) + '|">\u2b06 Unsorted tray</button>' +
           '<span class="wsnew"><input id="wsMoveNew" placeholder="new shop\u2026" autocomplete="off"><button type="button" class="tbtn" data-hact="wmovenew" data-hkey="' + esc(w.id) + '">Go</button></span></div>';
       }
+      if (WS_DET === w.id) row += wDetHtml(w);
       return row;
     }).join("") : '<div class="wnone" style="padding:14px 0;text-align:center">Nothing here \u2014 add below or drag from Unsorted.</div>') + '</div>' +
       '<div class="wsadd"><input id="wsInp" placeholder="Add an item to ' + esc(name) + '\u2026" autocomplete="off"><button type="button" class="tbtn primary" data-hact="wsadd" data-hkey="' + esc(name) + '">Add</button></div>' +
@@ -3325,7 +3490,7 @@
   }
   function wAssign(id, shop) {
     var w = null; wishArr().forEach(function (x) { if (x.id === id) w = x; }); if (!w) return;
-    w.shop = wishShopName(shop); WISH_SEL = null; saveWish(); renderWish(); renderHome(); toast(w.t + " \u2192 " + w.shop);
+    w.shop = wishShopName(shop); WISH_SEL = null; saveWish(); akEdit(w); renderWish(); renderHome(); toast(w.t + " \u2192 " + w.shop);
   }
   function wishPlace(name) { var low = String(name || "").toLowerCase(), hit = null; placeList().forEach(function (p) { if (String(p.name || "").toLowerCase() === low) hit = p; }); return hit; }
   function wishNear(name) { var p = wishPlace(name); return !!(p && (nearIds[p.id] != null || (getEntry("place:" + p.id).plan === hTodayIso()))); }
@@ -3359,6 +3524,8 @@
       JP: [{ k: "t", l: "Label (bank & account)" }, { k: "bank", l: "Bank name \u9280\u884c\u540d", cl: "Bank" }, { k: "bcode", l: "Bank code \u91d1\u878d\u6a5f\u95a2\u30b3\u30fc\u30c9 (4 digits)", cl: "Bank code" }, { k: "branch", l: "Branch name \u652f\u5e97\u540d", cl: "Branch" }, { k: "brcode", l: "Branch code \u652f\u5e97\u30b3\u30fc\u30c9 (3 digits)", cl: "Branch code" }, { k: "type", l: "Account type \u53e3\u5ea7\u7a2e\u76ee", tp: "sel", opts: ["\u666e\u901a Futsu (ordinary)", "\u5f53\u5ea7 Toza (checking)", "\u8caf\u84c4 Chochiku (savings)"], cl: "Type" }, { k: "acc", l: "Account number \u53e3\u5ea7\u756a\u53f7 (7 digits)", tp: "pass" }, { k: "holder", l: "Account holder \u53e3\u5ea7\u540d\u7fa9 (katakana)", cl: "Holder" }, { k: "note", l: "Notes", tp: "ta" }]
     } },
     { k: "implink", l: "Important links", one: "link", emo: "\ud83d\udccc", hue: 20, fs: [{ k: "t", l: "Label (Netbanking, Tax portal\u2026)" }, { k: "url", l: "URL", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
+    /* v87: Prompts — long text for Claude etc. tp:"big" = tall monospace editor, 3-line preview, body-only copy */
+    { k: "prompt", l: "Prompts", one: "prompt", emo: "\ud83d\udcdd", hue: 95, pb: "body", pl: "Copy the prompt only", fs: [{ k: "t", l: "Title" }, { k: "tool", l: "For", tp: "sel", opts: ["Claude Chat", "Claude Code", "Other"], cl: "For" }, { k: "body", l: "Prompt", tp: "big" }, { k: "note", l: "Notes", tp: "ta" }] },
     { k: "card", l: "Cards", one: "card", emo: "\ud83d\udcb3", hue: 305, sb: "Number + CVV", sl: "Copy the card number and CVV only", fs: [{ k: "t", l: "Card label (HDFC Visa\u2026)" }, { k: "num", l: "Card number", tp: "pass" }, { k: "nm", l: "Name on card" }, { k: "exp", l: "Expiry (MM/YY)", cl: "Exp" }, { k: "cvv", l: "CVV", tp: "pass", cl: "CVV" }, { k: "note", l: "Notes", tp: "ta" }] }
   ];
   function vcat(k) { for (var i = 0; i < VCATS.length; i++) if (VCATS[i].k === k) return VCATS[i]; return null; }
@@ -3419,6 +3586,11 @@
       var raw = f[fd.k], sec = fd.tp === "pass", open = VREVEAL[it.id + "|" + fd.k];
       var val = sec && !open ? vMask(raw) : esc(raw);
       var acts = "";
+      if (fd.tp === "big") {
+        var big = String(raw), wc = big.trim() ? big.trim().split(/\s+/).length : 0, more = big.split("\n").length > 3 || big.length > 240;
+        return '<div class="v-f big' + (open ? " open" : "") + '"><span class="v-k">' + esc(fd.l) + ' <i>' + wc + ' words</i></span><pre class="v-big">' + esc(big) + '</pre>' +
+          (more ? '<button class="v-ico v-more" data-vact="reveal" data-vf="' + fd.k + '">' + (open ? "Show less" : "Show all") + '</button>' : '') + '</div>';
+      }
       if (sec) acts += '<button class="v-ico" data-vact="reveal" data-vf="' + fd.k + '" title="' + (open ? "Hide again" : "Show the real value") + '">' + (open ? "Hide" : "Show") + '</button>';
       acts += '<button class="v-ico" data-vact="copy" data-vf="' + fd.k + '" title="Copy this field">Copy</button>';
       if (fd.tp === "url") acts += '<a class="tbtn chat-open v-open" href="' + esc(/^https?:\/\//i.test(raw) ? raw : "https://" + raw) + '" target="_blank" rel="noopener">Open \u2197</a>';
@@ -3434,6 +3606,7 @@
     var head = '<div class="v-head"><span class="v-emo">' + c.emo + '</span><span class="v-title">' + esc(f.t || "Untitled") + '</span>' +
       (vfo ? '<span class="v-fold" style="color:oklch(0.45 0.16 ' + vfh + ');background:oklch(0.96 0.03 ' + vfh + ')">' + esc(vfo) + '</span>' : '') +
       (c.ctry ? '<span class="v-ctry ctry-' + vctryOf(it).toLowerCase() + '">' + esc(vctryL(vctryOf(it))) + '</span>' : '') +
+      (c.pb && String(f[c.pb] || "").trim() ? '<button class="v-cta pri" data-vact="copybody" title="' + esc(c.pl || "Copy the text only") + '">Copy ' + esc(c.one) + '</button>' : '') +
       '<button class="v-cta" data-vact="copyall" title="Copy the whole record' + (hasSec ? " \u2014 without secrets" : "") + '">Copy all</button>' +
       (hasSec ? '<button class="v-cta sec" data-vact="copysec" title="' + esc(c.sl || "Copy the secret only") + ' \u2014 clipboard clears after 60s">' + esc(c.sb || "Secret") + '</button>' : '') +
       '<button class="v-ico" data-vact="edit" title="Edit this item">Edit</button><button class="sub-del" data-vact="vdel" title="Delete">\u00d7</button></div>';
@@ -3470,7 +3643,8 @@
     var foldRow = '<div class="cfield"><label>Folder</label>' + vmFoldBtnHtml() + '<span class="cf-hint">also appears on that folder\u2019s Vault strip</span></div>';
     $("vmBody").innerHTML = foldRow + ctrySeg + vfs(c, vmRef()).map(function (fd) {
       var v = esc(f[fd.k] || "");
-      var inp = fd.tp === "ta" ? '<textarea id="vmF_' + fd.k + '" rows="2">' + v + '</textarea>' :
+      var inp = fd.tp === "big" ? '<textarea id="vmF_' + fd.k + '" class="vm-big" rows="12" spellcheck="false" placeholder="Paste the whole prompt here">' + v + '</textarea><span class="cf-hint vm-wc" data-wc-for="vmF_' + fd.k + '">' + (String(f[fd.k] || "").trim() ? String(f[fd.k]).trim().split(/\s+/).length : 0) + ' words</span>' :
+        fd.tp === "ta" ? '<textarea id="vmF_' + fd.k + '" rows="2">' + v + '</textarea>' :
         fd.tp === "sel" ? '<select id="vmF_' + fd.k + '"><option value="">\u2014</option>' + (fd.opts || []).map(function (o) { return '<option value="' + esc(o) + '"' + (o === (f[fd.k] || "") ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' :
         '<input id="vmF_' + fd.k + '" type="text" autocomplete="off" value="' + v + '">';
       return '<div class="cfield"><label>' + esc(fd.l) + '</label>' + inp + (c.shape === fd.k ? '<span class="cf-hint">picks the fields below</span>' : "") + '</div>';
@@ -3488,6 +3662,7 @@
       if (fd.k === "t") return;
       var v = String(f[fd.k] || "").trim(); if (!v) return;
       if (secretsOnly !== (fd.tp === "pass")) return;
+      if (fd.tp === "big") { lines.push("", String(f[fd.k]).replace(/\s+$/, ""), ""); return; }
       lines.push(fd.cl ? fd.cl + ": " + v : v);
     });
     vXs(it).forEach(function (r) {
@@ -3670,7 +3845,7 @@
         var c = vcat(VM_CAT); if (!c) { closeVaultModal(); return; }
         var prevIt = null; if (VM_ID) vaultArr().forEach(function (x) { if (x.id === VM_ID) prevIt = x; });
         var f = prevIt && prevIt.f ? JSON.parse(JSON.stringify(prevIt.f)) : {}, any = false;
-        vfs(c, vmRef()).forEach(function (fd) { var el2 = $("vmF_" + fd.k); var v = el2 ? el2.value.trim() : ""; if (v) any = true; f[fd.k] = v; });
+        vfs(c, vmRef()).forEach(function (fd) { var el2 = $("vmF_" + fd.k); var v = el2 ? (fd.tp === "big" ? el2.value.replace(/\s+$/, "") : el2.value.trim()) : ""; if (v.trim()) any = true; f[fd.k] = v; });
         if (c.ctry) f.ctry = VM_CTRY || "IN";
         vmXRead();
         var xrows = VM_X.filter(function (r) { return String(r.v || "").trim() || String(r.l || "").trim(); }).map(function (r) { return { l: String(r.l || "").trim() || "Field", v: String(r.v || "").trim(), s: r.s ? 1 : 0 }; });
@@ -3686,6 +3861,10 @@
         }
         saveChats(); closeVaultModal(); renderChats(); toast("Saved \u2713");
       }
+    });
+    if (vm) vm.addEventListener("input", function (e) {
+      var ta = e.target.closest("textarea.vm-big"); if (!ta) return;
+      var wc = vm.querySelector('[data-wc-for="' + ta.id + '"]'); if (wc) wc.textContent = (ta.value.trim() ? ta.value.trim().split(/\s+/).length : 0) + " words";
     });
     if (vm) vm.addEventListener("change", function (e) {
       var cs = vcat(VM_CAT); if (!cs || !cs.shape || !cs.fsBy) return;
@@ -3706,6 +3885,7 @@
         if (va === "vdel") { if (confirm("Delete \u201c" + ((vit.f || {}).t || "this item") + "\u201d?")) { meta.cvault = vaultArr().filter(function (x) { return x.id !== vid; }); saveChats(); renderChats(); } return; }
         var vc = vcat(vit.cat);
         if (va === "copyall") { if (vc) vCopy(vCopyText(vc, vit, false), false); return; }
+        if (va === "copybody") { if (vc && vc.pb) vCopy(String((vit.f || {})[vc.pb] || ""), false); return; }
         if (va === "copysec") { if (vc) vCopy(vCopyText(vc, vit, true), true); return; }
         var vf = vb.getAttribute("data-vf");
         if (va === "reveal") { var vkk = vid + "|" + vf; VREVEAL[vkk] = !VREVEAL[vkk]; renderChats(); return; }
@@ -3923,19 +4103,22 @@
     document.addEventListener("click", function (e) {
       var el = e.target.closest("[data-hact]"); if (!el) return;
       var a = el.getAttribute("data-hact"), k = el.getAttribute("data-hkey");
-      if (a === "wtog") { wishArr().forEach(function (w) { if (w.id === k) { w.done = !w.done; w.doneAt = w.done ? Date.now() : null; } }); saveWish(); renderWish(); renderHome(); return; }
-      if (a === "wdel") { meta.wish = wishArr().filter(function (w) { return w.id !== k; }); saveWish(); renderWish(); renderHome(); return; }
+      if (a === "wtog") { var tw = akWish(k); if (tw) { tw.done = !tw.done; tw.doneAt = tw.done ? Date.now() : null; } saveWish(); akTick(tw); renderWish(); renderHome(); return; }
+      if (a === "wyen") { e.stopPropagation(); akYen(k); return; }
+      if (a === "wdet") { WS_DET = WS_DET === k ? null : k; WS_MOVE = null; paintWishSheet(); return; }
+      if (a === "wdsave") { var dw2 = akWish(k); if (!dw2) return; var dn = $("wdNeed"), dt = $("wdNotes"); dw2.need = dn ? dn.value : (dw2.need || ""); dw2.notes = dt ? dt.value.trim() : (dw2.notes || ""); WS_DET = null; saveWish(); akEdit(dw2); renderWish(); toast("Saved"); return; }
+      if (a === "wdel") { var dw = akWish(k); meta.wish = wishArr().filter(function (w) { return w.id !== k; }); saveWish(); akRemoved(dw); renderWish(); renderHome(); return; }
       if (a === "wbtog") { WISH_BOUGHT_OPEN = !WISH_BOUGHT_OPEN; renderWish(); return; }
       if (a === "wview") { WISH_VIEW = k === "flow" ? "flow" : "boxes"; WISH_SEL = null; renderWish(); return; }
       if (a === "wchip") { WISH_SEL = WISH_SEL === k ? null : k; renderWish(); if (WISH_SEL) toast("Now tap a box to file it"); return; }
       if (a === "wtile") { if (WISH_SEL) { wAssign(WISH_SEL, k); return; } openWishSheet(k); return; }
       if (a === "wsclose") { closeWishSheet(); return; }
       if (a === "wsadd") { var wi = $("wsInp"), wt = wi ? wi.value.trim() : ""; if (!wt) return; wishArr().push({ id: uid(), shop: wishShopName(k), t: wt, at: Date.now(), done: false }); saveWish(); renderWish(); renderHome(); return; }
-      if (a === "wsdoneall") { wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === k.toLowerCase() && !w.done) { w.done = true; w.doneAt = Date.now(); } }); saveWish(); closeWishSheet(); renderWish(); renderHome(); return; }
+      if (a === "wsdoneall") { var dall = []; wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === k.toLowerCase() && !w.done) { w.done = true; w.doneAt = Date.now(); dall.push(w); } }); saveWish(); dall.forEach(akTick); closeWishSheet(); renderWish(); renderHome(); return; }
       if (a === "wmove") { WS_MOVE = WS_MOVE === k ? null : k; paintWishSheet(); return; }
-      if (a === "wmoveto") { var mp = k.split("|"), mid = mp[0], mto = mp.slice(1).join("|"); var mw2 = null; wishArr().forEach(function (x) { if (x.id === mid) mw2 = x; }); if (!mw2) return; mw2.shop = mto ? wishShopName(mto) : ""; WS_MOVE = null; saveWish(); renderWish(); renderHome(); toast(mw2.t + " \u2192 " + (mto || "Unsorted")); return; }
-      if (a === "wmovenew") { var ni = $("wsMoveNew"), nv = ni ? ni.value.trim() : ""; if (!nv) { if (ni) ni.focus(); return; } var mw3 = null; wishArr().forEach(function (x) { if (x.id === k) mw3 = x; }); if (!mw3) return; mw3.shop = wishShopName(nv); WS_MOVE = null; saveWish(); renderWish(); renderHome(); toast(mw3.t + " \u2192 " + mw3.shop); return; }
-      if (a === "wrename") { var rn = prompt("Rename shop", k); if (!rn || !rn.trim() || rn.trim() === k) return; rn = rn.trim(); wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === k.toLowerCase()) w.shop = rn; }); wishFlow().stops = wishFlow().stops.map(function (n) { return n.toLowerCase() === k.toLowerCase() ? rn : n; }); saveWish(); WS_SHOP = rn; renderWish(); return; }
+      if (a === "wmoveto") { var mp = k.split("|"), mid = mp[0], mto = mp.slice(1).join("|"); var mw2 = null; wishArr().forEach(function (x) { if (x.id === mid) mw2 = x; }); if (!mw2) return; mw2.shop = mto ? wishShopName(mto) : ""; WS_MOVE = null; saveWish(); akEdit(mw2); renderWish(); renderHome(); toast(mw2.t + " \u2192 " + (mto || "Unsorted")); return; }
+      if (a === "wmovenew") { var ni = $("wsMoveNew"), nv = ni ? ni.value.trim() : ""; if (!nv) { if (ni) ni.focus(); return; } var mw3 = null; wishArr().forEach(function (x) { if (x.id === k) mw3 = x; }); if (!mw3) return; mw3.shop = wishShopName(nv); WS_MOVE = null; saveWish(); akEdit(mw3); renderWish(); renderHome(); toast(mw3.t + " \u2192 " + mw3.shop); return; }
+      if (a === "wrename") { var rn = prompt("Rename shop", k); if (!rn || !rn.trim() || rn.trim() === k) return; rn = rn.trim(); var rnw = []; wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === k.toLowerCase()) { w.shop = rn; rnw.push(w); } }); rnw.forEach(akEdit); wishFlow().stops = wishFlow().stops.map(function (n) { return n.toLowerCase() === k.toLowerCase() ? rn : n; }); saveWish(); WS_SHOP = rn; renderWish(); return; }
       if (a === "wfladd") { if (!wishFlow().stops.some(function (n) { return n.toLowerCase() === k.toLowerCase(); })) wishFlow().stops.push(k); saveWish(); renderWish(); toast(k + " added as stop " + wishFlow().stops.length); return; }
       if (a === "wflclear") { wishFlow().stops = []; saveWish(); renderWish(); return; }
       if (a === "wflskip") { wishFlow().stops.splice(+k, 1); saveWish(); closeWishSheet(); renderWish(); return; }
@@ -3958,7 +4141,6 @@
       if (a === "sub2") {
         var sid2h = el.getAttribute("data-hsid");
         patch(k, { subtasks: normSubs(subs(k)).map(function (x) { return x.id === sid2h ? Object.assign({}, x, { done: !x.done, u: Date.now() }) : x; }) });
-        akReplyFor(k, sid2h);
         renderTodayScreen(); renderCols(); renderCalScreen(); return;
       }
       if (a === "tray") { trayOpen = !trayOpen; renderTodayScreen(); return; }

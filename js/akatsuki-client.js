@@ -12,6 +12,21 @@
 (function () {
   const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
   const stable = (o) => JSON.stringify(o, o && typeof o === 'object' && !Array.isArray(o) ? Object.keys(o).sort() : undefined);
+  const parse = (v) => { if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch { return v; } };
+  /* akatsuki_consume may come back as setof rows, a jsonb array, a jsonb {rows:[…]} envelope,
+     a single composite, or rows wrapped as {akatsuki_consume:{…}}. A bare object used to hit
+     for…of and throw "rows is not iterable" inside listen(), which swallowed it — no ack ever sent. */
+  function normRows(d) {
+    d = parse(d);
+    if (d == null) return [];
+    if (!Array.isArray(d)) d = Array.isArray(d.rows) ? d.rows : Array.isArray(d.items) ? d.items : Array.isArray(d.data) ? d.data : [d];
+    return d.map((x) => {
+      x = parse(x);
+      if (x && typeof x === 'object' && x.seq == null && x.kind == null) { const ks = Object.keys(x); if (ks.length === 1) x = parse(x[ks[0]]); }
+      return x;
+    }).filter((x) => x && typeof x === 'object' && x.seq != null)
+      .map((x) => Object.assign({}, x, { kind: String(x.kind == null ? '' : x.kind).trim(), src_addr: parse(x.src_addr), payload: parse(x.payload) }));
+  }
 
   function Akatsuki(supabase, app, opts = {}) {
     if (!supabase || !app) throw new Error('Akatsuki(supabase, appId) — both required');
@@ -53,15 +68,23 @@
       },
 
       /** Read everything addressed to me past my cursor and hand each row to a handler by kind.
-       *  Handler may return { addr } (the id it created, to record the pair) and/or { reply }. */
+       *  Handler may return { addr } (the id it created, to record the pair) and/or { reply }.
+       *  Handler may return { defer: reason } to leave the row pending for the next poll (no ack).
+       *  A throwing handler acks 'rejected'. A failed ack is logged and the row stays pending. */
       async consume(handlers, limit = 100) {
-        const rows = await rpc('akatsuki_consume', { p_app: app, p_limit: limit });
+        const raw = await rpc('akatsuki_consume', { p_app: app, p_limit: limit });
+        const rows = normRows(raw);
+        if (rows.length) log('consume', rows.length, rows.map((r) => r.seq + ':' + r.kind).join(', '));
+        else if (raw != null && !(Array.isArray(raw) && !raw.length)) log('consume: unrecognised response shape', raw);
         let n = 0;
-        for (const r of rows || []) {
+        for (const r of rows) {
           const h = handlers[r.kind];
-          if (!h) { await hub.ack(r.seq, { status: 'skipped' }); continue; }
-          try { const res = (await h(r)) || {}; await hub.ack(r.seq, { addr: res.addr, reply: res.reply }); n++; }
-          catch (e) { await hub.ack(r.seq, { status: 'rejected' }); log('rejected', r.seq, e.message); }
+          if (!h) { log('no handler', r.seq, JSON.stringify(r.kind)); await safeAck(r.seq, { status: 'skipped' }); continue; }
+          let res;
+          try { res = (await h(r)) || {}; }
+          catch (e) { console.error('[akatsuki] handler threw', r.seq, r.kind, e); await safeAck(r.seq, { status: 'rejected' }); continue; }
+          if (res.defer) { log('deferred', r.seq, r.kind, res.defer); continue; }
+          if (await safeAck(r.seq, { addr: res.addr, reply: res.reply })) { log('acked', r.seq, r.kind, res.addr || null); n++; }
         }
         return n;
       },
@@ -114,7 +137,7 @@
 
       /** Poll helper: consume on an interval, on focus, and on reconnect. Returns stop(). */
       listen(handlers, ms = 15000) {
-        let t = null; const run = () => hub.consume(handlers).catch(e => log('consume failed', e.message));
+        let t = null; const run = () => hub.consume(handlers).catch(e => console.error('[akatsuki] consume failed', e.message, e.code || ''));
         const onl = () => { hub.flush().then(run); };
         const vis = () => { if (document.visibilityState === 'visible') run(); };
         window.addEventListener('online', onl); document.addEventListener('visibilitychange', vis);
@@ -122,6 +145,11 @@
         return () => { clearInterval(t); window.removeEventListener('online', onl); document.removeEventListener('visibilitychange', vis); };
       }
     };
+
+    async function safeAck(seq, o) {
+      try { await hub.ack(seq, o); return true; }
+      catch (e) { console.error('[akatsuki] ack failed — row stays pending', seq, e.message, e.code || ''); return false; }
+    }
 
     window.addEventListener('online', () => hub.flush().catch(() => {}));
     return hub;
