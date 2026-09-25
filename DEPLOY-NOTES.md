@@ -1,21 +1,36 @@
-# Deploy v51 — Ranked Five: Must · Can ×4 · Will (includes v49 + v50)
+# v91 — Focus groups (replaces v89 Triage) · includes v88d
 
-Copy into `Weekly_focus`, overwrite, push, reload twice:
+## v91 (26 Sep) — apps in several groups
+- An app can now be in more than one group. In Focus view it shows under each; its chip reads "⇄ 2 groups".
+- Archiving hides an app only when every group it is in is archived.
+- Chip popover and Assign window toggle membership per group; "No group" leaves all of them. The Assign list shows an app's other groups on the right.
+- **Re-run `docs/focus-groups.sql`** — it migrates the membership table's key and updates the view and functions. Existing groups and memberships are kept.
+- `wf_group_remove(apps, group)` now takes an optional group; without it, the app leaves every group.
+- Cache: `weekly-focus-v91`.
 
-- `js/weekly-focus-app.js`
-- `css/weekly-focus.css`
-- `css/home-screens.css`  (only if you skipped v48)
-- `sw.js`  (cache v68)
+## v90b — Remove all shown · v90a — Assign window
 
-## What changes
+## Install
+1. **Supabase → SQL Editor:** run `docs/focus-groups.sql`. It's safe to run again.
+2. Optional: run `docs/focus-groups-seed.sql` to create three starter groups: Akatsuki links (in focus), Language study, and Commonplace & coding.
+3. Copy these into `Weekly_focus/`, overwriting: `index.html`, `css/weekly-focus.css`, `js/weekly-focus-app.js`, `sw.js` (cache `weekly-focus-v90`), and `docs/`.
 
-**Rank = position.** Every active app in the Apps column shows a rank badge. The Five are #1–#5 in their drag order; the rest of the column continues #6, #7… (existing sort: flagged first, then priority, name, manual order). Drag to re-rank, same as today.
+## Removed
+Everything from v89 Triage: the button, the sheet, the Active/Later/Parked tiers, the Parked row and the tier-only ranking. Any `tier` values already saved on items are ignored.
 
-**Roles.** #1 = **Must** (red frame + label on its Five card and Today row). #2–#5 = **Can**. #6 = **Will**: a dashed sixth card at the end of The Five and a dashed row on Today — visible, not tickable. Study/Office targets are unaffected (no rank badge).
+## What you'll see (Week tab)
+- The View switch gains a third option: **Flat · Groups · Focus**.
+- **Focus view:** the Apps column is split into your groups.
+  - Starred groups come first, marked FOCUS. Then the other groups, then "No group".
+  - Each group header has a collapse caret, a count, ★ (focus), ✎ (rename) and **Archive**.
+  - Each app card has a small group chip. Tap it to move the app to another group, to "No group", or to "+ New group…".
+  - **+ New group** sits under the list.
+- **Archived groups** row at the bottom of Apps, in every view: "Archived groups · 2 · 9 apps hidden". Open it to **Restore** or delete (×) a group.
+- Archiving hides the group's apps from Week, Today, the Build band and The Five. Their data isn't touched.
 
-**Hold remembers rank.** Toggling a starred app off still parks it 24 h, but now stores its rank. Backlog chip reads `⏸ 17h · #2`. When it returns (auto at expiry, or manual toggle) it re-enters The Five at that rank; the last Can drops back to Will. Toast on hold: "On hold — back in 24 hours at #1. Roadmap is Must now."
+## Claude
+Claude manages groups through the `wf_group_*` functions. See `docs/FOCUS-GROUPS.md`, which includes the rules for Claude and example requests. WF picks up changes on its 15 s poll.
 
-**Data.** One new field on held entries: `holdRank` (number). Nothing else in the schema moves; old holds without it fall back to appending, as before.
-
-## Not in this build
-Review phase / comments lock (needs its own prototype), Wishlist (Phase 7), Study/Office ranking.
+## Notes
+- If the SQL hasn't been run, groups still work on this device (cached locally), and the console warns once. Pending writes wait in the outbox until the tables exist.
+- Restore doesn't put apps back into The Five. Star them again.

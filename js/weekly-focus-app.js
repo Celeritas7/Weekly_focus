@@ -149,8 +149,8 @@
   function isActive(item) { var e = entries[item.id]; return !!(e && e.active === true); }
   function priOf(id) { var e = entries[id]; return (e && e.pri) || null; }
   function priRankOf(id) { var e = entries[id]; return (e && e.pri) ? PRI_RANK[e.pri] : 3; }
-  function activeItems(kind) { return arrFor(kind).filter(isActive); }
-  function backlogItems(kind) { return arrFor(kind).filter(function (x) { return !isActive(x); }); }
+  function activeItems(kind) { return arrFor(kind).filter(function (x) { return isActive(x) && !fgArchived(x.id); }); }
+  function backlogItems(kind) { return arrFor(kind).filter(function (x) { return !isActive(x) && !fgArchived(x.id); }); }
 
   var APP_CATS = ["General Purpose", "Mechanical", "Language Study", "Other"];
   /* build-tool tag on apps: which generator made it */
@@ -164,6 +164,41 @@
            true  = classic category sections. Persisted UI preference. */
   var VIEW_GROUPED = false;
   try { VIEW_GROUPED = localStorage.getItem("wf2_view_grouped") === "1"; } catch (e) {}
+  /* ---- v90 · Focus groups ------------------------------------------------------------------------
+     Temporary groups of apps, stored in Supabase so Claude can manage them too (docs/FOCUS-GROUPS.md):
+     weekly_focus_groups (one row per group) + weekly_focus_group_apps (one row per app; one group per app).
+     Archiving a group hides its apps everywhere (Week, Today, The Five) without touching their entries.
+     Restore brings them back; they leave The Five on archive, so star again after restoring. */
+  var FG = { groups: [], map: {}, warned: false }, FG_OPEN = null, FG_ARCH_OPEN = false, VIEW_FOCUS = false, FG_COLL = {};
+  try {
+    VIEW_FOCUS = localStorage.getItem("wf2_view_focus") === "1";
+    var fgc = JSON.parse(localStorage.getItem("wf_fg_cache") || "null"); if (fgc && Array.isArray(fgc.groups)) { FG.groups = fgc.groups; FG.map = fgNormMap(fgc.map); }
+    FG_COLL = JSON.parse(localStorage.getItem("wf_fg_collapsed") || "{}") || {};
+  } catch (e) {}
+  function fgSaveLocal() { try { localStorage.setItem("wf_fg_cache", JSON.stringify({ groups: FG.groups, map: FG.map })); localStorage.setItem("wf_fg_collapsed", JSON.stringify(FG_COLL)); } catch (e) {} }
+  function fgById(id) { for (var i = 0; i < FG.groups.length; i++) if (FG.groups[i].id === id) return FG.groups[i]; return null; }
+  /* v91: an app can sit in several groups. FG.map[k] = [groupId, …]. It hides only when EVERY group it is in is archived. */
+  function fgNormMap(m) { var o = {}; Object.keys(m || {}).forEach(function (k) { var v = m[k]; v = Array.isArray(v) ? v : v ? [v] : []; if (v.length) o[k] = v; }); return o; }
+  function fgIds(k) { return FG.map[k] || []; }
+  function fgHas(k, gid) { return fgIds(k).indexOf(gid) >= 0; }
+  function fgGroupsOf(k) { return fgIds(k).map(fgById).filter(Boolean); }
+  function fgLiveOf(k) { return fgGroupsOf(k).filter(function (g) { return !g.archived_at; }).sort(fgSort); }
+  function fgOf(k) { return fgLiveOf(k)[0] || null; }
+  function fgArchived(k) { var gs = fgGroupsOf(k); return gs.length > 0 && gs.every(function (g) { return !!g.archived_at; }); }
+  function fgSet(k, gid, on) {
+    var ids = fgIds(k).slice(), i = ids.indexOf(gid);
+    if (on && i < 0) ids.push(gid); else if (!on && i >= 0) ids.splice(i, 1); else return false;
+    if (ids.length) FG.map[k] = ids; else delete FG.map[k];
+    fgPushMember(k, gid, on); return true;
+  }
+  function fgSort(a, b) { return (b.focus ? 1 : 0) - (a.focus ? 1 : 0) || (a.ord || 0) - (b.ord || 0) || String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()); }
+  function fgLive() { return FG.groups.filter(function (g) { return !g.archived_at; }).sort(fgSort); }
+  function fgHue(g) { return typeof g.hue === "number" ? g.hue : hueFor(String(g.name || "")); }
+  function fgMembers(gid) { return Object.keys(FG.map).filter(function (k) { return fgHas(k, gid) && itemById(k); }); }
+  function fgSigOf(groups, map) {
+    return JSON.stringify([groups.slice().sort(function (a, b) { return a.id < b.id ? -1 : 1; }).map(function (g) { return [g.id, g.name, g.note || "", g.hue == null ? null : g.hue, g.ord || 0, !!g.focus, g.archived_at || null]; }),
+      Object.keys(map).sort().map(function (k) { return [k, (map[k] || []).slice().sort()]; })]);
+  }
 
   /* ---------------- subtask progress ---------------- */
   function subs(k) { var a = getEntry(k).subtasks; return Array.isArray(a) ? a : []; }
@@ -228,7 +263,7 @@
   }
   function removeTarget(k) { var i = targetOrder.indexOf(k); if (i >= 0) { targetOrder.splice(i, 1); if (entries[k]) patch(k, { targetDone: false }); save(); cloudPushBoard(); } }
   function targetDone(k) { return getEntry(k).targetDone === true; }
-  function pruneTargets() { targetOrder = targetOrder.filter(function (k) { var it = itemById(k); return it && isActive(it); }); }
+  function pruneTargets() { targetOrder = targetOrder.filter(function (k) { var it = itemById(k); return it && isActive(it) && !fgArchived(k); }); }
   function labelFor(k) { var it = itemById(k); return it ? { name: it.name, crumb: it.group } : { name: k, crumb: "" }; }
   /* ---- Ranked Five (v51): rank = position. 1 = Must, 2-5 = Can, 6 = Will ---- */
   function rankedApps() {
@@ -251,6 +286,132 @@
     var role = rankRole(n); toast(labelFor(id).name + " \u2192 #" + n + (role ? " \u00b7 " + role : ""));
   }
   function syncRanks() { rankedApps().forEach(function (k, i) { if (getEntry(k).rank !== i + 1) patch(k, { rank: i + 1 }); }); }
+  function fgCreate(name) {
+    var ord = FG.groups.reduce(function (m, g) { return Math.max(m, g.ord || 0); }, 0) + 1;
+    var g = { id: "g_" + uid(), name: name, note: null, hue: null, ord: ord, focus: false, archived_at: null };
+    FG.groups.push(g); fgPushGroup(g); return g;
+  }
+  function fgAssign(k, gid) {   // chip popover: toggle one group; "" = leave every group
+    if (!gid) { fgIds(k).slice().forEach(function (x) { fgSet(k, x, false); }); renderAll(); toast(labelFor(k).name + " → no group"); return; }
+    var on = !fgHas(k, gid); fgSet(k, gid, on); renderAll();
+    var g = fgById(gid); toast(labelFor(k).name + (on ? " → " : " out of ") + (g ? g.name : "group"));
+  }
+  function fgArchive(g, on) {
+    var n = fgMembers(g.id).length;
+    g.archived_at = on ? nowISO() : null; fgPushGroup(g);
+    if (on) { pruneTargets(); save(); cloudPushBoard(); }
+    renderAll();
+    toast(on ? "“" + g.name + "” archived — " + n + " app" + (n === 1 ? "" : "s") + " hidden. Restore from Archived groups." : "“" + g.name + "” restored — " + n + " app" + (n === 1 ? "" : "s") + " back.");
+  }
+  function fgDelete(g) {
+    Object.keys(FG.map).forEach(function (k) { if (fgHas(k, g.id)) { var ids = fgIds(k).filter(function (x) { return x !== g.id; }); if (ids.length) FG.map[k] = ids; else delete FG.map[k]; } delete outbox["fgm:" + k + "|" + g.id]; });
+    FG.groups = FG.groups.filter(function (x) { return x.id !== g.id; }); fgSaveLocal();
+    if (cloudConfigured()) queue("fg:" + g.id, { method: "delete", table: "weekly_focus_groups", match: { board_id: cloud.board, id: g.id } });   // members cascade
+    renderAll(); toast("Group deleted — its apps are ungrouped.");
+  }
+  /* v90a · Assign sheet: pick a group, tap apps to add/remove. One list, search, "add all shown". */
+  var FGS = { open: false, gid: null, q: "", ung: false };
+  function fgsApps() {
+    var q = FGS.q.trim().toLowerCase();
+    return arrFor("app").filter(function (a) {
+      if (isSpecialItem(a)) return false;
+      if (FGS.ung && fgIds(a.id).length && !fgHas(a.id, FGS.gid)) return false;
+      return !q || a.name.toLowerCase().indexOf(q) >= 0 || String(a.group || "").toLowerCase().indexOf(q) >= 0;
+    }).sort(function (a, b) { var ra = rankOf(a.id) || 999, rb = rankOf(b.id) || 999; return ra - rb || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
+  }
+  function openFgSheet(gid) {
+    var live = fgLive(); if (!live.length) { var nm = prompt("Name your first group"); if (!nm || !nm.trim()) return; gid = fgCreate(nm.trim()).id; }
+    FGS.open = true; FGS.gid = gid || (fgLive()[0] || {}).id; FGS.q = "";
+    paintFgSheet(); var m = $("fgSheet"); if (m) m.classList.add("open");
+    setTimeout(function () { var i = $("fgsQ"); if (i && window.matchMedia("(pointer:fine)").matches) i.focus(); }, 60);
+  }
+  function closeFgSheet() { FGS.open = false; var m = $("fgSheet"); if (m) m.classList.remove("open"); }
+  function paintFgSheet() {
+    if (!FGS.open) return; var hd = $("fgsHead"), bd = $("fgsBody"); if (!hd || !bd) return;
+    hd.innerHTML = '<span class="bs-rk" id="fgsN"></span><div class="bs-t"><div class="bs-cr">Focus groups \u00b7 assign</div><div class="bs-nm">Tap to add \u00b7 tap a ticked app to take it out \u00b7 an app can be in several groups</div></div><span></span><button type="button" class="bs-x" data-act="fgsclose" title="Close">\u00d7</button>';
+    bd.innerHTML = '<div class="fgs-top"><div class="fgp-list" id="fgsTabs"></div><div class="fgs-bar"><input type="search" id="fgsQ" class="fgs-q" placeholder="Search apps or category" autocomplete="off"><button type="button" class="tbtn" id="fgsUng" data-act="fgsung">Hide grouped elsewhere</button><button type="button" class="tbtn primary" id="fgsAll" data-act="fgsall"></button></div></div><div id="fgsList"></div>';
+    var qi = $("fgsQ"); qi.value = FGS.q; qi.oninput = function () { FGS.q = qi.value; paintFgsList(); };
+    paintFgsTabs(); paintFgsList();
+  }
+  function paintFgsTabs() {
+    var t = $("fgsTabs"); if (!t) return; var live = fgLive();
+    if (!fgById(FGS.gid) || fgById(FGS.gid).archived_at) FGS.gid = live.length ? live[0].id : null;
+    t.innerHTML = live.map(function (g) { return '<button type="button" class="fgp-b' + (g.id === FGS.gid ? " on" : "") + '" data-act="fgstab" data-fg="' + esc(g.id) + '" style="--fh:' + fgHue(g) + '">' + esc(g.name) + ' <span class="fgs-c">' + fgMembers(g.id).length + '</span></button>'; }).join("") +
+      '<button type="button" class="fgp-b add" data-act="fgnew">+ New group\u2026</button>';
+  }
+  function paintFgsList() {
+    var host = $("fgsList"); if (!host) return;
+    var g = fgById(FGS.gid), rows = fgsApps(), inN = 0, outN = 0;
+    host.innerHTML = rows.length ? rows.map(function (a) {
+      var on = !!(g && fgHas(a.id, g.id)), others = fgGroupsOf(a.id).filter(function (x) { return !g || x.id !== g.id; }), r = rankOf(a.id);
+      if (on) inN++; else outN++;
+      return '<button type="button" class="fgs-row' + (on ? " on" : "") + (isActive(a) ? "" : " back") + '" data-act="fgstog" data-app="' + esc(a.id) + '"' + (g ? ' style="--fh:' + fgHue(g) + '"' : '') + '>' +
+        '<span class="fgs-ck"></span><span class="fgs-rk">' + (r || "") + '</span>' +
+        '<span class="fgs-t"><span class="fgs-nm">' + esc(a.name) + '</span><span class="fgs-m">' + gtagHtml("app", a.group) + (isActive(a) ? "" : '<span class="fgs-bk">backlog</span>') + '</span></span>' +
+        (others.length ? '<span class="fgs-ins">' + others.map(function (x) { return '<span class="fgs-in' + (x.archived_at ? " arch" : "") + '" style="--fh:' + fgHue(x) + '" title="' + (x.archived_at ? "archived group" : "also in this group") + '">' + esc(x.name) + '</span>'; }).join("") + '</span>' : '<span></span>') + '</button>';
+    }).join("") : '<div class="fg-empty">No apps match.</div>';
+    var n = $("fgsN"); if (n) n.textContent = g ? fgMembers(g.id).length : 0;
+    var all = $("fgsAll"); if (all) { var rm = !!g && !outN && inN > 0; all.textContent = !g ? "Add all" : rm ? "Remove all shown (" + inN + ")" : "Add all shown (" + outN + ")"; all.classList.toggle("rm", rm); all.disabled = !g || (!outN && !inN); }
+    var u = $("fgsUng"); if (u) u.classList.toggle("on", FGS.ung);
+  }
+  function fgsToggle(k) {
+    var g = fgById(FGS.gid); if (!g) return;
+    fgSet(k, g.id, !fgHas(k, g.id)); renderCols(); paintFgsTabs(); paintFgsList();
+  }
+  function fgsAddAll() {
+    var g = fgById(FGS.gid); if (!g) return; var shown = fgsApps(), n = 0;
+    var rm = shown.length && shown.every(function (a) { return fgHas(a.id, g.id); });   // all ticked → button removes
+    shown.forEach(function (a) { if (fgSet(a.id, g.id, !rm)) n++; });
+    renderCols(); paintFgsTabs(); paintFgsList();
+    if (n) toast(rm ? n + " app" + (n === 1 ? "" : "s") + " taken out of " + g.name : n + " app" + (n === 1 ? "" : "s") + " \u2192 " + g.name);
+  }
+  function fgChip(id) {
+    if (!VIEW_FOCUS || kindOf(id) !== "app") return "";
+    var g = fgOf(id);
+    return '<button type="button" class="fgchip' + (g ? "" : " none") + (FG_OPEN === id ? " open" : "") + '" data-act="fgpick"' + (g ? ' style="--fh:' + fgHue(g) + '"' : '') + ' title="' + (g ? "In " + fgLiveOf(id).map(function (x) { return esc(x.name); }).join(", ") + " — tap to change groups" : "Add to a focus group") + '">' + (g ? (fgLiveOf(id).length > 1 ? "⇄ " + fgLiveOf(id).length + " groups" : "⇄ Groups") : "+ group") + '</button>';
+  }
+  function fgPopHtml(id) {
+    var cur = fgIds(id);
+    return '<div class="fgpop"><span class="fgp-l">Groups — tap to add or remove</span><div class="fgp-list">' +
+      fgLive().map(function (g) { return '<button type="button" class="fgp-b' + (fgHas(id, g.id) ? " on" : "") + '" data-act="fgset" data-fg="' + esc(g.id) + '" style="--fh:' + fgHue(g) + '">' + esc(g.name) + '</button>'; }).join("") +
+      '<button type="button" class="fgp-b none' + (cur.length ? "" : " on") + '" data-act="fgset" data-fg="">No group</button>' +
+      '<button type="button" class="fgp-b add" data-act="fgnew">+ New group…</button></div></div>';
+  }
+  function fgHead(g, n) {
+    var d = document.createElement("div");
+    if (!g) { d.className = "fg-head none"; d.innerHTML = '<span class="fg-nm">No group</span><span class="fg-n">' + n + '</span>'; return d; }
+    var coll = !!FG_COLL[g.id];
+    d.className = "fg-head" + (g.focus ? " focus" : "") + (coll ? " coll" : ""); d.style.setProperty("--fh", fgHue(g));
+    d.innerHTML = '<button type="button" class="fg-cv" data-act="fgcoll" data-fg="' + esc(g.id) + '" title="' + (coll ? "Expand" : "Collapse") + '">▾</button>' +
+      '<span class="fg-nm" data-act="fgcoll" data-fg="' + esc(g.id) + '">' + esc(g.name) + '</span><span class="fg-n">' + n + '</span>' + (g.focus ? '<span class="fg-tag">Focus</span>' : '') +
+      '<span class="fg-acts"><button type="button" class="fg-ib add" data-act="fgadd" data-fg="' + esc(g.id) + '" title="Add apps to this group">+ Apps</button><button type="button" class="fg-ib' + (g.focus ? " on" : "") + '" data-act="fgfocus" data-fg="' + esc(g.id) + '" title="' + (g.focus ? "Remove focus" : "Put this group in focus — shows first") + '">★</button>' +
+      '<button type="button" class="fg-ib" data-act="fgren" data-fg="' + esc(g.id) + '" title="Rename">✎</button>' +
+      '<button type="button" class="fg-ib arch" data-act="fgarch" data-fg="' + esc(g.id) + '" title="Archive group — hides its apps everywhere">Archive</button></span>';
+    return d;
+  }
+  function fgRenderActive(host, active) {
+    var by = {};
+    flatSortActive(active).forEach(function (it) { var gs = fgLiveOf(it.id); if (!gs.length) (by[""] = by[""] || []).push(it); gs.forEach(function (g) { (by[g.id] = by[g.id] || []).push(it); }); });
+    fgLive().forEach(function (g) {
+      var items = by[g.id] || [];
+      host.appendChild(fgHead(g, items.length));
+      if (FG_COLL[g.id]) return;
+      if (g.note) { var nt = document.createElement("div"); nt.className = "fg-note"; nt.textContent = g.note; host.appendChild(nt); }
+      if (!items.length) { var em = document.createElement("div"); em.className = "fg-empty"; em.textContent = "No apps on the Week tab in this group."; host.appendChild(em); }
+      items.forEach(function (it) { host.appendChild(itemCard(it.id)); });
+    });
+    var rest = by[""] || [];
+    if (rest.length) { host.appendChild(fgHead(null, rest.length)); rest.forEach(function (it) { host.appendChild(itemCard(it.id)); }); }
+  }
+  function fgTail(host) {
+    if (VIEW_FOCUS) { var bar = document.createElement("div"); bar.className = "fg-tailbar"; bar.innerHTML = '<button type="button" class="fg-new main" data-act="fgassign">Assign apps to groups\u2026</button><button type="button" class="fg-new" data-act="fgnew">+ New group</button>'; host.appendChild(bar); }
+    var arch = FG.groups.filter(function (g) { return g.archived_at; }).sort(fgSort); if (!arch.length) return;
+    var hid = arch.reduce(function (s, g) { return s + fgMembers(g.id).length; }, 0);
+    var w = document.createElement("div"); w.className = "fg-arch" + (FG_ARCH_OPEN ? " open" : "");
+    w.innerHTML = '<button type="button" class="fg-arch-h" data-act="fgarchtog"><span class="fa-l">Archived groups</span><span class="fa-n">' + arch.length + '</span><span class="fa-h">' + hid + ' app' + (hid === 1 ? "" : "s") + ' hidden · ' + (FG_ARCH_OPEN ? "hide" : "show") + '</span></button>' +
+      (FG_ARCH_OPEN ? arch.map(function (g) { var n = fgMembers(g.id).length; return '<div class="fg-arow" style="--fh:' + fgHue(g) + '"><span class="fg-dot"></span><span class="fg-an">' + esc(g.name) + '</span><span class="fg-ac">' + n + ' app' + (n === 1 ? "" : "s") + '</span><button type="button" class="tbtn" data-act="fgrest" data-fg="' + esc(g.id) + '">Restore</button><button type="button" class="fg-x" data-act="fgdel" data-fg="' + esc(g.id) + '" title="Delete group (apps stay, ungrouped)">×</button></div>'; }).join("") : "");
+    host.appendChild(w);
+  }
   var RANK_OPEN = null;
   function rankPopHtml(id) {
     var n = rankedApps().length, cur = rankOf(id), out = '<div class="rankpop" data-rankpop="' + esc(id) + '"><span class="rp-l">Move to rank</span><div class="rp-grid">';
@@ -276,7 +437,7 @@
   var DRAG = { id: null, type: null, kind: null };
 
   function renderAll() {
-    pruneTargets(); renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome();
+    pruneTargets(); renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome(); if (FGS.open) { paintFgsTabs(); paintFgsList(); }
     if (ENTER) { ENTER = false; setTimeout(function () { var ns = document.querySelectorAll(".wf-enter"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("wf-enter"); }, 720); }
     lastCloudSig = boardSig();
   }
@@ -1178,12 +1339,14 @@
 
     if (!arr.length) host.innerHTML = emptyZone("No " + ids.noun + "s yet. Tap <b>+ Add " + ids.noun + "</b> below to create your first one." + (cloudConfigured() ? "" : "<br><span class='ez-dim'>Connect <b>Cloud</b> to sync across your devices.</span>"));
     else if (!active.length) host.innerHTML = emptyZone("Nothing active. Switch a " + ids.noun + " on from the backlog, or add a new one.");
+    else if (kind === "app" && VIEW_FOCUS) fgRenderActive(host, active);
     else if (VIEW_GROUPED) groupItems(active, kind, true).forEach(function (g) {
       host.appendChild(catHead(kind, g.group, g.items.length));
       g.items.forEach(function (it) { host.appendChild(itemCard(it.id)); });
     });
     else flatSortActive(active).forEach(function (it) { host.appendChild(itemCard(it.id)); });
 
+    if (kind === "app") fgTail(host);
     $(ids.wrap).style.display = backlog.length ? "" : "none";
     $(ids.bn).textContent = backlog.length;
     function brow(it) {
@@ -1286,7 +1449,7 @@
     li.innerHTML =
       '<div class="item-row">' +
         '<div class="item-grip" data-act="open">' +
-          (kindOf(id) === "app" ? rankBadge(id) : '') + '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div>' + (!VIEW_GROUPED && it ? gtagHtml(kindOf(id), it.group) : '') + genChip(it) + '</div>' +
+          (kindOf(id) === "app" ? rankBadge(id) : '') + '<div class="iwrap-name"><div class="iname">' + esc(it ? it.name : id) + '</div>' + (!VIEW_GROUPED && it ? gtagHtml(kindOf(id), it.group) : '') + genChip(it) + fgChip(id) + '</div>' +
         '</div>' +
         '<div class="item-actions">' + ring +
           '<button class="updflag' + (updOn ? " on" : "") + '" data-act="flagupd" title="' + (updOn ? "Update pending — click to clear" : "Flag a pending update / prompt for Claude") + '">' + IC.flag + '</button>' +
@@ -1295,7 +1458,7 @@
           '<button class="tgl on" data-act="off" title="Move to backlog"><span class="knob"></span></button>' +
         '</div>' +
       '</div>' +
-      detailHtml(id);
+      (FG_OPEN === id ? fgPopHtml(id) : '') + detailHtml(id);
     return li;
   }
   function nextSub(id) { var a = activeSubs(subs(id)).filter(function (x) { return !x.done; }); return a.length ? (a[0].t || "") : ""; }
@@ -1421,6 +1584,7 @@
     var rp = e.target.closest("[data-rank]");
     if (rp) { var rpid = rp.closest("[data-rankpop]").getAttribute("data-rankpop"); RANK_OPEN = null; setRank(rpid, +rp.getAttribute("data-rank")); return; }
     if (RANK_OPEN && !e.target.closest(".rankpop") && !e.target.closest("[data-act=\"rank\"]")) { RANK_OPEN = null; renderCols(); renderFive(); }
+    if (FG_OPEN && !e.target.closest(".fgpop") && !e.target.closest("[data-act=\"fgpick\"]")) { FG_OPEN = null; renderCols(); }
     var seg = e.target.closest("[data-pri]");
     if (seg) { patch(keyOf(seg), { pri: seg.getAttribute("data-pri") }); renderCols(); return; }
     var act = e.target.closest("[data-act]");
@@ -1442,6 +1606,26 @@
 
     var key = keyOf(act);
     if (a === "rank") { RANK_OPEN = RANK_OPEN === key ? null : key; renderCols(); renderFive(); return; }
+    if (a === "fgpick") { FG_OPEN = FG_OPEN === key ? null : key; renderCols(); return; }
+    if (a === "fgset") { FG_OPEN = null; fgAssign(key, act.getAttribute("data-fg")); return; }
+    if (a === "fgnew") { FG_OPEN = null; var fgn = prompt("New group name"); if (fgn && fgn.trim()) { var ng = fgCreate(fgn.trim()); if (FGS.open) { FGS.gid = ng.id; renderCols(); paintFgsTabs(); paintFgsList(); } else if (key) fgAssign(key, ng.id); else renderAll(); } else renderCols(); return; }
+    if (a === "fgassign") { openFgSheet(null); return; }
+    if (a === "fgsclose") { closeFgSheet(); return; }
+    if (a === "fgstab") { FGS.gid = act.getAttribute("data-fg"); paintFgsTabs(); paintFgsList(); return; }
+    if (a === "fgstog") { fgsToggle(act.getAttribute("data-app")); return; }
+    if (a === "fgsall") { fgsAddAll(); return; }
+    if (a === "fgsung") { FGS.ung = !FGS.ung; paintFgsList(); return; }
+    if (a === "fgarchtog") { FG_ARCH_OPEN = !FG_ARCH_OPEN; renderCols(); return; }
+    if (/^fg(coll|focus|ren|arch|rest|del|add)$/.test(a)) {
+      var fgg = fgById(act.getAttribute("data-fg")); if (!fgg) return;
+      if (a === "fgadd") { openFgSheet(fgg.id); return; }
+      if (a === "fgcoll") { FG_COLL[fgg.id] = !FG_COLL[fgg.id]; fgSaveLocal(); renderCols(); return; }
+      if (a === "fgfocus") { fgg.focus = !fgg.focus; fgPushGroup(fgg); renderCols(); return; }
+      if (a === "fgren") { var rn = prompt("Rename group", fgg.name); if (rn && rn.trim()) { fgg.name = rn.trim(); fgPushGroup(fgg); renderCols(); } return; }
+      if (a === "fgarch") { fgArchive(fgg, true); return; }
+      if (a === "fgrest") { fgArchive(fgg, false); return; }
+      if (a === "fgdel") { if (confirm("Delete the group \u201c" + fgg.name + "\u201d? Its apps stay, ungrouped.")) fgDelete(fgg); return; }
+    }
     if (a === "open") { detailOpen[key] = !detailOpen[key]; OPENING = detailOpen[key] ? key : null; renderCols(); OPENING = null; return; }
     if (a === "off") {
       /* flagged or starred blocks go on a 24h hold: parked in the backlog, auto-return tomorrow */
@@ -1607,7 +1791,7 @@
       if (!en || en.active || !en.holdUntil || en.holdUntil > now) return;
       var wasStar = !!en.holdStar, hr = en.holdRank;
       patch(k, { active: true, holdUntil: null, holdStar: false, holdRank: null });
-      if (wasStar) addTargetAt(k, hr);
+      if (wasStar && !fgArchived(k)) addTargetAt(k, hr);   // v90: never let an archived-group app bump a Can out of The Five
       freed++;
     });
     if (freed) { renderAll(); toast(freed === 1 ? "Hold expired \u2014 back in This Week at its old rank." : freed + " holds expired \u2014 back in This Week at their old ranks."); }
@@ -1686,7 +1870,7 @@
 
   document.addEventListener("click", function (e) { if (e.target.closest("#wishAdd")) wishAddFromInput(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey && e.target && e.target.id === "wishInp") { e.preventDefault(); wishAddFromInput(); } });
-  document.addEventListener("click", function (e) { if (e.target.id === "buildSheet") closeBuildSheet(); if (e.target.id === "wishSheet") closeWishSheet(); if (e.target.id === "lifeSheet") closeLifeSheet(); });
+  document.addEventListener("click", function (e) { if (e.target.id === "buildSheet") closeBuildSheet(); if (e.target.id === "wishSheet") closeWishSheet(); if (e.target.id === "fgSheet") closeFgSheet(); if (e.target.id === "lifeSheet") closeLifeSheet(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && SP_OPEN) closeLifeSheet(); });
   document.addEventListener("change", function (e) {
     var rvi = e.target.closest ? e.target.closest("[data-latrv]") : null; if (!rvi) return;
@@ -1712,7 +1896,7 @@
   document.addEventListener("dragleave", function (e) { var t = e.target.closest && e.target.closest("[data-wshop],#wishTray"); if (t) t.classList.remove("drop"); });
   document.addEventListener("drop", function (e) { var t = e.target.closest && e.target.closest("[data-wshop],#wishTray"); if (!t) return; e.preventDefault(); t.classList.remove("drop"); document.body.classList.remove("wdrag"); var id = e.dataTransfer.getData("text/plain"); if (id) wAssign(id, t.id === "wishTray" ? "" : t.getAttribute("data-wshop")); });
   window.addEventListener("resize", function () { if (WISH_VIEW === "flow") wPlaceWalker(); });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && BS_ID) closeBuildSheet(); if ((e.key === "Enter" || e.key === " ") && e.target && e.target.classList && e.target.classList.contains("bhero")) { e.preventDefault(); openBuildSheet(e.target.getAttribute("data-hkey")); } });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && BS_ID) closeBuildSheet(); if (e.key === "Escape" && FGS.open) closeFgSheet(); if ((e.key === "Enter" || e.key === " ") && e.target && e.target.classList && e.target.classList.contains("bhero")) { e.preventDefault(); openBuildSheet(e.target.getAttribute("data-hkey")); } });
 
   /* ---- toast ---- */
   var toastT;
@@ -1787,6 +1971,32 @@
   }
 
   function boardSig() { return JSON.stringify({ e: entries, t: targetOrder, m: meta }); }
+  function fgPushGroup(g) {
+    g.updated_at = nowISO(); fgSaveLocal(); if (!cloudConfigured()) return;
+    queue("fg:" + g.id, { table: "weekly_focus_groups", onConflict: "user_id,board_id,id", row: { board_id: cloud.board, id: g.id, name: g.name, note: g.note || null, hue: typeof g.hue === "number" ? g.hue : null, ord: g.ord || 0, focus: !!g.focus, archived_at: g.archived_at || null, updated_at: g.updated_at } });
+  }
+  function fgPushMember(k, gid, on) {
+    fgSaveLocal(); if (!cloudConfigured()) return;
+    queue("fgm:" + k + "|" + gid, on ? { table: "weekly_focus_group_apps", onConflict: "user_id,board_id,item_key,group_id", row: { board_id: cloud.board, item_key: k, group_id: gid, updated_at: nowISO() } }
+                                     : { method: "delete", table: "weekly_focus_group_apps", match: { board_id: cloud.board, item_key: k, group_id: gid } });
+  }
+  async function cloudPullGroups() {
+    if (!syncReady()) return;
+    try {
+      var a = await sb.from("weekly_focus_groups").select("id,name,note,hue,ord,focus,archived_at,updated_at").eq("board_id", cloud.board);
+      if (a.error) throw a.error;
+      var b = await sb.from("weekly_focus_group_apps").select("item_key,group_id").eq("board_id", cloud.board);
+      if (b.error) throw b.error;
+      var groups = a.data || [], map = {};
+      (b.data || []).forEach(function (r) { (map[r.item_key] = map[r.item_key] || []).push(r.group_id); });
+      Object.keys(outbox).forEach(function (qk) {                 // pending local writes win
+        var op = outbox[qk];
+        if (qk.indexOf("fg:") === 0) { var gid = qk.slice(3); groups = groups.filter(function (g) { return g.id !== gid; }); if (op.method !== "delete") groups.push(Object.assign({}, op.row)); }
+        if (qk.indexOf("fgm:") === 0) { var pr = qk.slice(4).split("|"), ik = pr[0], gd = pr[1], arr = (map[ik] || []).filter(function (x) { return x !== gd; }); if (op.method !== "delete") arr.push(gd); if (arr.length) map[ik] = arr; else delete map[ik]; }
+      });
+      if (fgSigOf(groups, map) !== fgSigOf(FG.groups, FG.map)) { FG.groups = groups; FG.map = map; fgSaveLocal(); syncRender(); }
+    } catch (e) { if (!FG.warned) { FG.warned = true; console.warn("[fg] focus groups not synced — run docs/focus-groups.sql in Supabase", e && e.message); } }
+  }
   // Preserve in-progress typing across a sync-driven re-render: the never-saved
   // "Add subtask" box, plus whatever field is focused (value + caret).
   function syncRender() {
@@ -1869,7 +2079,7 @@
     // CLOUD-FIRST: a fresh device adopts the cloud copy; a device with local
     // data keeps it and seeds the cloud only if the board is empty.
     var fresh = !state.apps.length && !state.study.length && !state.office.length;
-    return cloudPullInventory(fresh).then(cloudPullEntries).then(flushOutbox);
+    return cloudPullInventory(fresh).then(cloudPullEntries).then(cloudPullGroups).then(flushOutbox);
   }
   /* ---- Akatsuki R010 · v86: requests live on the Wishlist (Routines tab) ----------------------
      IN  (Cost -> WF): request.created/changed land as wish items, id 'cost_' + request id, shop = preferred_shop
@@ -2147,10 +2357,10 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    setInterval(function () { if (document.visibilityState === "visible" && navigator.onLine && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); } }, 15000);
-    window.addEventListener("online", function () { if (syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); } updateCloudStatus(); });
+    setInterval(function () { if (document.visibilityState === "visible" && navigator.onLine && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); } }, 15000);
+    window.addEventListener("online", function () { if (syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); } updateCloudStatus(); });
     window.addEventListener("offline", updateCloudStatus);
-    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); } });
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); } });
   }
   function cloudSetStatus(html, warn) { var el = $("cloudStatus"); if (!el) return; el.innerHTML = html; el.className = "dstatus" + (warn ? " warn" : ""); }
   function cloudSummary() {
@@ -2292,16 +2502,18 @@
 
   /* Flat / Groups view toggle */
   function wireViewToggle() {
-    var f = $("viewFlatBtn"), g = $("viewGroupBtn");
+    var f = $("viewFlatBtn"), g = $("viewGroupBtn"), fo = $("viewFocusBtn");
     if (!f || !g) return;
-    function paint() { f.classList.toggle("on", !VIEW_GROUPED); g.classList.toggle("on", VIEW_GROUPED); }
-    function set(v) {
-      VIEW_GROUPED = v;
-      try { localStorage.setItem("wf2_view_grouped", v ? "1" : "0"); } catch (e) {}
+    if (VIEW_FOCUS) VIEW_GROUPED = false;
+    function paint() { f.classList.toggle("on", !VIEW_GROUPED && !VIEW_FOCUS); g.classList.toggle("on", VIEW_GROUPED); if (fo) fo.classList.toggle("on", VIEW_FOCUS); }
+    function set(v, focus) {
+      VIEW_GROUPED = v; VIEW_FOCUS = !!focus; FG_OPEN = null;
+      try { localStorage.setItem("wf2_view_grouped", v ? "1" : "0"); localStorage.setItem("wf2_view_focus", focus ? "1" : "0"); } catch (e) {}
       paint(); renderColumn("app"); renderColumn("study"); renderColumn("office");
     }
-    f.onclick = function () { set(false); };
-    g.onclick = function () { set(true); };
+    f.onclick = function () { set(false, false); };
+    g.onclick = function () { set(true, false); };
+    if (fo) fo.onclick = function () { set(false, true); };
     paint();
   }
 
@@ -2561,6 +2773,7 @@
       if (k.indexOf(pre) !== 0) return;
       var itemId = k.slice(pre.length);
       if (mode && modeOf(itemId) !== mode) return;
+      if (fgArchived(itemId)) return;   // v90: archived-group apps leave the calendar too
       out.push({ key: k, itemId: itemId, done: !!(entries[k] && entries[k].done) });
     });
     out.sort(function (a, b) { var an = labelFor(a.itemId).name.toLowerCase(), bn = labelFor(b.itemId).name.toLowerCase(); return an < bn ? -1 : an > bn ? 1 : 0; });
@@ -3579,7 +3792,7 @@
   }
   function wishItemRow(w) {
     return '<label class="witem' + (w.done ? " done" : "") + '"><button class="sub-check' + (w.done ? " on" : "") + '" data-hact="wtog" data-hkey="' + esc(w.id) + '" aria-label="Bought"></button>' +
-      '<span class="wtx">' + esc(w.t) + '</span>' + (w.ak ? akBadge(w) : '') +
+      '<span class="wtx">' + esc(w.t) + '</span>' + (w.ak || w.ext ? akBadge(w) : '') +   /* v88d: sender tag on other apps' items too */
       (w.done && w.doneAt ? '<span class="wdate">' + new Date(w.doneAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + '</span>' : '<span class="wdate">' + esc(w.shop || "Unsorted") + '</span>') +
       '<button class="sub-del" data-hact="wdel" data-hkey="' + esc(w.id) + '" title="Remove">\u00d7</button></label>';
   }
