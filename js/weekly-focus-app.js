@@ -171,7 +171,8 @@
      Restore brings them back; they leave The Five on archive, so star again after restoring. */
   var FG = { groups: [], map: {}, warned: false }, FG_OPEN = null, FG_ARCH_OPEN = false, VIEW_FOCUS = false, FG_COLL = {};
   try {
-    VIEW_FOCUS = localStorage.getItem("wf2_view_focus") === "1";
+    var vfSaved = localStorage.getItem("wf2_view_focus");   // v94: no saved choice on this device → open in Focus view
+    VIEW_FOCUS = vfSaved === null ? localStorage.getItem("wf2_view_grouped") !== "1" : vfSaved === "1";
     var fgc = JSON.parse(localStorage.getItem("wf_fg_cache") || "null"); if (fgc && Array.isArray(fgc.groups)) { FG.groups = fgc.groups; FG.map = fgNormMap(fgc.map); }
     FG_COLL = JSON.parse(localStorage.getItem("wf_fg_collapsed") || "{}") || {};
   } catch (e) {}
@@ -3860,9 +3861,15 @@
   }
   function closeFoldModal() { var m = $("chatFoldModal"); if (m) m.classList.remove("open"); FOLD_MODAL_CB = null; }
   /* ---- v46: Vault — personal records inside Chats, one template per category ---- */
+  /* v92 · Addresses: structured + half-width. Country switch picks the shape (same as Bank).
+     Records saved before v92 have no ctry and keep the old one-box shape ("_") until edited and given a country;
+     the old text is then kept in f.old. Every address field is NFKC-normalised on save; "全角" copies full-width. */
+  var V_ADDR_OLD = [{ k: "t", l: "Label (Home, Office\u2026)" }, { k: "name", l: "Name" }, { k: "a1", l: "Street / building", tp: "ta" }, { k: "city", l: "City & PIN" }, { k: "ph", l: "Phone" }, { k: "note", l: "Notes", tp: "ta" }];
+  var V_ADDR_IN = [{ k: "t", l: "Label (Home, Office\u2026)" }, { k: "name", l: "Name" }, { k: "house", l: "House / flat / building" }, { k: "street", l: "Street / area / landmark" }, { k: "city", l: "City / town" }, { k: "district", l: "District" }, { k: "state", l: "State" }, { k: "pin", l: "PIN code (6 digits)", cl: "PIN" }, { k: "ph", l: "Phone" }, { k: "note", l: "Notes", tp: "ta" }];
+  var V_ADDR_JP = [{ k: "t", l: "Label (Home, Office\u2026)" }, { k: "last", l: "\u59d3 Surname", cl: "\u59d3", zk: 1 }, { k: "first", l: "\u540d Given name", cl: "\u540d", zk: 1 }, { k: "last_kana", l: "\u30bb\u30a4 Surname in katakana", cl: "\u30bb\u30a4", kt: 1 }, { k: "first_kana", l: "\u30e1\u30a4 Given name in katakana", cl: "\u30e1\u30a4", kt: 1 }, { k: "name", l: "Name (old, one box)", lg: 1 }, { k: "postal_code", l: "\u90f5\u4fbf\u756a\u53f7 Postal code (336-0027)", cl: "\u3012", zk: 1, pc: 1 }, { k: "prefecture", l: "\u90fd\u9053\u5e9c\u770c Prefecture", zk: 1 }, { k: "city", l: "\u4f4f\u6240(\u5e02\u533a\u753a\u6751) City / ward", zk: 1 }, { k: "street", l: "\u4f4f\u6240(\u756a\u5730) Street & block no.", zk: 1 }, { k: "building", l: "\u5efa\u7269\u540d + \u90e8\u5c4b\u756a\u53f7 Building & room", zk: 1 }, { k: "romaji", l: "Romaji \u2014 full address for non-JP forms", tp: "ta" }, { k: "ph", l: "Phone", zk: 1 }, { k: "note", l: "Notes", tp: "ta" }];
   var VCATS = [
     { k: "vchat", l: "Chats", one: "chat", emo: "\ud83d\udcac", hue: 255, fs: [{ k: "t", l: "Topic" }, { k: "url", l: "Chat link", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
-    { k: "addr", l: "Addresses", one: "address", emo: "\ud83c\udfe0", hue: 145, fs: [{ k: "t", l: "Label (Home, Office\u2026)" }, { k: "name", l: "Name" }, { k: "a1", l: "Street / building", tp: "ta" }, { k: "city", l: "City & PIN" }, { k: "ph", l: "Phone" }, { k: "note", l: "Notes", tp: "ta" }] },
+    { k: "addr", l: "Addresses", one: "address", emo: "\ud83c\udfe0", hue: 145, ctry: true, legacy: true, fs: V_ADDR_OLD, fsBy: { _: V_ADDR_OLD, IN: V_ADDR_IN, JP: V_ADDR_JP } },
     { k: "link", l: "Links", one: "link", emo: "\ud83d\udd17", hue: 210, fs: [{ k: "t", l: "Label" }, { k: "url", l: "URL", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
     { k: "login", l: "Logins & passwords", one: "login", emo: "\ud83d\udd11", hue: 45, sb: "Password", sl: "Copy the password only", fs: [{ k: "t", l: "Site / app" }, { k: "user", l: "Username / email", cl: "User" }, { k: "pw", l: "Password", tp: "pass" }, { k: "url", l: "Login page", tp: "url" }, { k: "note", l: "Notes", tp: "ta" }] },
     /* v61: Keys is shape-switched by its own Type field — same mechanism Bank uses for country. */
@@ -3883,7 +3890,16 @@
   var VCTRY = [{ k: "IN", l: "India" }, { k: "JP", l: "Japan" }];
   function vctryL(k) { for (var i = 0; i < VCTRY.length; i++) if (VCTRY[i].k === k) return VCTRY[i].l; return "India"; }
   function vctryOf(it) { var v = it && it.f && it.f.ctry; return v === "JP" ? "JP" : "IN"; }
-  function vShapeOf(c, it) { if (!c) return ""; if (c.ctry) return vctryOf(it); if (c.shape) return String(((it && it.f) || {})[c.shape] || ""); return ""; }
+  function vIsLegacy(c, it) { if (!c || !c.legacy) return false; var f = (it && it.f) || {}; return f.ctry === "" || (!f.ctry && !!(f.a1 || f.city)); }
+  /* v92 · Store half-width, copy full-width. toZenkaku: ASCII ! .. ~ shift by 0xFEE0 ('-' becomes U+FF0D), space becomes U+3000. */
+  function toZenkaku(s) { return String(s || "").replace(/[\x21-\x7e]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) + 0xFEE0); }).replace(/ /g, "\u3000"); }
+  function vNorm(fd, v) {
+    v = String(v == null ? "" : v); try { v = v.normalize("NFKC"); } catch (e) {}
+    if (fd && fd.kt) v = v.replace(/[\u3041-\u3096]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) + 0x60); });   // hiragana → katakana
+    if (fd && fd.pc) { v = v.replace(/^\u3012\s*/, "").replace(/\s+/g, ""); if (/^\d{7}$/.test(v)) v = v.slice(0, 3) + "-" + v.slice(3); }
+    return v;
+  }
+  function vShapeOf(c, it) { if (!c) return ""; if (c.ctry) return vIsLegacy(c, it) ? "_" : vctryOf(it); if (c.shape) return String(((it && it.f) || {})[c.shape] || ""); return ""; }
   function vfs(c, it) { if (!c) return []; if (!c.fsBy) return c.fs || []; return c.fsBy[vShapeOf(c, it)] || c.fsBy._ || c.fsBy.IN || c.fs || []; }
   /* v61: free-form extra fields on any record — f.x = [{l,v,s}] */
   function vXs(it) { var a = ((it && it.f) || {}).x; return Array.isArray(a) ? a : []; }
@@ -3941,6 +3957,7 @@
       }
       if (sec) acts += '<button class="v-ico" data-vact="reveal" data-vf="' + fd.k + '" title="' + (open ? "Hide again" : "Show the real value") + '">' + (open ? "Hide" : "Show") + '</button>';
       acts += '<button class="v-ico" data-vact="copy" data-vf="' + fd.k + '" title="Copy this field">Copy</button>';
+      if (fd.zk && vShapeOf(c, it) === "JP") acts += '<button class="v-ico zk" data-vact="copyzk" data-vf="' + fd.k + '" title="Copy as full-width \u5168\u89d2 for Japanese forms \u2014 stored value stays half-width">\u5168\u89d2</button>';
       if (fd.tp === "url") acts += '<a class="tbtn chat-open v-open" href="' + esc(/^https?:\/\//i.test(raw) ? raw : "https://" + raw) + '" target="_blank" rel="noopener">Open \u2197</a>';
       return '<div class="v-f' + (fd.tp === "ta" ? " ta" : "") + '"><span class="v-k">' + esc(fd.l) + '</span><span class="v-v' + (sec ? " sec" : "") + '">' + val + '</span><span class="v-acts">' + acts + '</span></div>';
     }).join("");
@@ -3953,14 +3970,15 @@
     var vfo = vfoldOf(it), vfh = foldHue(vfo);
     var head = '<div class="v-head"><span class="v-emo">' + c.emo + '</span><span class="v-title">' + esc(f.t || "Untitled") + '</span>' +
       (vfo ? '<span class="v-fold" style="color:oklch(0.45 0.16 ' + vfh + ');background:oklch(0.96 0.03 ' + vfh + ')">' + esc(vfo) + '</span>' : '') +
-      (c.ctry ? '<span class="v-ctry ctry-' + vctryOf(it).toLowerCase() + '">' + esc(vctryL(vctryOf(it))) + '</span>' : '') +
+      (c.ctry && !vIsLegacy(c, it) ? '<span class="v-ctry ctry-' + vctryOf(it).toLowerCase() + '">' + esc(vctryL(vctryOf(it))) + '</span>' : '') +
+      (vIsLegacy(c, it) ? '<span class="v-ctry legacy" title="Saved before v92 \u2014 Edit and pick a country to split it into fields">Old format</span>' : '') +
       (c.pb && String(f[c.pb] || "").trim() ? '<button class="v-cta pri" data-vact="copybody" title="' + esc(c.pl || "Copy the text only") + '">Copy ' + esc(c.one) + '</button>' : '') +
       '<button class="v-cta" data-vact="copyall" title="Copy the whole record' + (hasSec ? " \u2014 without secrets" : "") + '">Copy all</button>' +
       (hasSec ? '<button class="v-cta sec" data-vact="copysec" title="' + esc(c.sl || "Copy the secret only") + ' \u2014 clipboard clears after 60s">' + esc(c.sb || "Secret") + '</button>' : '') +
       '<button class="v-ico" data-vact="edit" title="Edit this item">Edit</button><button class="sub-del" data-vact="vdel" title="Delete">\u00d7</button></div>';
     return '<li class="vault-item" data-vid="' + esc(it.id) + '" style="border-color:oklch(0.9 0.04 ' + c.hue + ')">' + head + (body ? '<div class="v-fields">' + body + '</div>' : "") + '</li>';
   }
-  var VM_CAT = null, VM_ID = null, VM_CTRY = null, VM_FOLD = "", VM_RET = "", VM_SHAPE = "", VM_X = [];
+  var VM_OLD = null, VM_CAT = null, VM_ID = null, VM_CTRY = null, VM_FOLD = "", VM_RET = "", VM_SHAPE = "", VM_X = [];
   function vmRef() { var c = vcat(VM_CAT), o = { ctry: VM_CTRY }; if (c && c.shape) o[c.shape] = VM_SHAPE; return { f: o }; }
   function vmXHtml() {
     return '<div class="vm-xhead"><span>Extra fields</span><button type="button" class="tbtn" id="vmXAdd">+ Add field</button></div>' +
@@ -3982,14 +4000,23 @@
     VM_FOLD = fold != null ? String(fold) : (reopen ? VM_FOLD : vfoldOf(it));
     $("vmTitle").textContent = ((it && it.id) ? "Edit " : "Add ") + c.one;
     var f = (it && it.f) || {};
-    VM_CTRY = c.ctry ? vctryOf(it) : null;
+    var wasLegacy = reopen && c.legacy && VM_CTRY === "";
+    VM_CTRY = c.ctry ? (vIsLegacy(c, it) ? "" : vctryOf(it)) : null;
+    if (wasLegacy && VM_CTRY) { VM_OLD = { a1: f.a1 || "", city: f.city || "" }; f = Object.assign({}, f); delete f.a1; delete f.city; }   // one-box text → reference only
+    else if (!reopen) VM_OLD = c.legacy ? (vIsLegacy(c, it) ? { a1: f.a1 || "", city: f.city || "" } : (f.old || null)) : null;
+    if (c.k === "addr" && VM_CTRY === "JP" && !f.last && !f.first && String(f.name || "").trim()) {   // "Aniket Mangaonkar" → 名 Aniket, 姓 Mangaonkar
+      var np = String(f.name).trim().split(/\s+/); f = Object.assign({}, f);
+      f.first = np.length > 1 ? np.slice(0, -1).join(" ") : np[0]; f.last = np.length > 1 ? np[np.length - 1] : "";
+    }
     VM_SHAPE = c.shape ? String(f[c.shape] || "") : "";
     VM_X = vXs(it).map(function (r) { return { l: r.l, v: r.v, s: r.s ? 1 : 0 }; });
     var ctrySeg = c.ctry ? '<div class="cfield"><label>Country</label><div class="v-ctryseg">' + VCTRY.map(function (x) {
       return '<button type="button" class="vcseg' + (x.k === VM_CTRY ? " on" : "") + '" data-vctry="' + x.k + '">' + esc(x.l) + '</button>';
-    }).join("") + '</div><span class="cf-hint">picks the fields below \u2014 shown as a tag on the saved record</span></div>' : '';
+    }).join("") + '</div><span class="cf-hint">' + (VM_CTRY ? 'picks the fields below \u2014 shown as a tag on the saved record' : 'Old one-box format \u2014 pick a country to split it into separate fields') + '</span></div>' : '';
+    if (VM_CTRY && VM_OLD && (VM_OLD.a1 || VM_OLD.city)) ctrySeg += '<div class="cfield vm-old"><label>Old address text \u2014 for reference, kept with the record</label><div class="vm-oldtx">' + esc(VM_OLD.a1) + (VM_OLD.city ? "\n" + esc(VM_OLD.city) : "") + '</div></div>';
     var foldRow = '<div class="cfield"><label>Folder</label>' + vmFoldBtnHtml() + '<span class="cf-hint">also appears on that folder\u2019s Vault strip</span></div>';
     $("vmBody").innerHTML = foldRow + ctrySeg + vfs(c, vmRef()).map(function (fd) {
+      if (fd.lg && !String(f[fd.k] || "").trim()) return "";
       var v = esc(f[fd.k] || "");
       var inp = fd.tp === "big" ? '<textarea id="vmF_' + fd.k + '" class="vm-big" rows="12" spellcheck="false" placeholder="Paste the whole prompt here">' + v + '</textarea><span class="cf-hint vm-wc" data-wc-for="vmF_' + fd.k + '">' + (String(f[fd.k] || "").trim() ? String(f[fd.k]).trim().split(/\s+/).length : 0) + ' words</span>' :
         fd.tp === "ta" ? '<textarea id="vmF_' + fd.k + '" rows="2">' + v + '</textarea>' :
@@ -4005,7 +4032,7 @@
   function vCopyText(c, it, secretsOnly) {
     var f = it.f || {}, lines = [];
     if (!secretsOnly && String(f.t || "").trim()) lines.push(String(f.t).trim());
-    if (!secretsOnly && c.ctry) lines.push("Country: " + vctryL(vctryOf(it)));
+    if (!secretsOnly && c.ctry && !vIsLegacy(c, it)) lines.push("Country: " + vctryL(vctryOf(it)));
     vfs(c, it).forEach(function (fd) {
       if (fd.k === "t") return;
       var v = String(f[fd.k] || "").trim(); if (!v) return;
@@ -4209,10 +4236,12 @@
         var c = vcat(VM_CAT); if (!c) { closeVaultModal(); return; }
         var prevIt = null; if (VM_ID) vaultArr().forEach(function (x) { if (x.id === VM_ID) prevIt = x; });
         var f = prevIt && prevIt.f ? JSON.parse(JSON.stringify(prevIt.f)) : {}, any = false;
-        vfs(c, vmRef()).forEach(function (fd) { var el2 = $("vmF_" + fd.k); var v = el2 ? (fd.tp === "big" ? el2.value.replace(/\s+$/, "") : el2.value.trim()) : ""; if (v.trim()) any = true; f[fd.k] = v; });
-        if (c.ctry) f.ctry = VM_CTRY || "IN";
+        vfs(c, vmRef()).forEach(function (fd) { var el2 = $("vmF_" + fd.k); var v = el2 ? (fd.tp === "big" ? el2.value.replace(/\s+$/, "") : el2.value.trim()) : ""; if (c.k === "addr") v = vNorm(fd, v).trim(); if (v.trim()) any = true; f[fd.k] = v; });
+        if (c.ctry) { if (VM_CTRY) f.ctry = VM_CTRY; else if (!c.legacy) f.ctry = "IN"; }
+        if (c.legacy && VM_CTRY && VM_OLD && (VM_OLD.a1 || VM_OLD.city)) { f.old = VM_OLD; delete f.a1; }
+        if (c.k === "addr" && VM_CTRY === "JP" && (String(f.last || "").trim() || String(f.first || "").trim())) delete f.name;   // 姓/名 replace the one-box name
         vmXRead();
-        var xrows = VM_X.filter(function (r) { return String(r.v || "").trim() || String(r.l || "").trim(); }).map(function (r) { return { l: String(r.l || "").trim() || "Field", v: String(r.v || "").trim(), s: r.s ? 1 : 0 }; });
+        var xrows = VM_X.filter(function (r) { return String(r.v || "").trim() || String(r.l || "").trim(); }).map(function (r) { var xv = String(r.v || "").trim(); if (c.k === "addr" && !r.s) xv = vNorm(null, xv).trim(); return { l: String(r.l || "").trim() || "Field", v: xv, s: r.s ? 1 : 0 }; });
         if (xrows.length) { f.x = xrows; any = true; } else { delete f.x; }
         if (!any) { closeVaultModal(); return; }
         var fold2 = VM_FOLD || null;
@@ -4252,6 +4281,7 @@
         if (va === "copybody") { if (vc && vc.pb) vCopy(String((vit.f || {})[vc.pb] || ""), false); return; }
         if (va === "copysec") { if (vc) vCopy(vCopyText(vc, vit, true), true); return; }
         var vf = vb.getAttribute("data-vf");
+        if (va === "copyzk") { vCopy(toZenkaku(String((vit.f || {})[vf] || "")), false); return; }
         if (va === "reveal") { var vkk = vid + "|" + vf; VREVEAL[vkk] = !VREVEAL[vkk]; renderChats(); return; }
         if (va === "copy") {
           var mx = /^x(\d+)$/.exec(vf);

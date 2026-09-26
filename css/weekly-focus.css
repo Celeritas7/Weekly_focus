@@ -1852,3 +1852,7 @@ body.wdrag .wtile.empty{opacity:1;filter:none}
 /* v91 · layout fixes: name wrap takes the free space so the chip doesn't collapse it; header buttons stay on one line */
 .item .item-grip .iwrap-name{flex:1 1 auto;min-width:0}
 .fg-ib.add,.fg-ib.arch{white-space:nowrap}
+/* ---- v92 · Vault addresses ---- */
+.v-ico.zk{font-weight:700;letter-spacing:.02em}
+.v-ctry.legacy{background:var(--card-2);color:var(--faint);border:1px dashed var(--hair)}
+.vm-oldtx{white-space:pre-wrap;font-size:12px;line-height:1.45;color:var(--mid);background:var(--card-2);border:1px dashed var(--hair);border-radius:8px;padding:8px 10px}
