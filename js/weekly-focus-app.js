@@ -3654,7 +3654,6 @@
     return wishAll().filter(function (w) { return !w.done && pCanon(w.shop).toLowerCase() === low && !!low; });
   }
   /* ---- v54: boxes · journey · unsorted tray · shop sheet ---- */
-  var WISH_ALL = (function () { try { return localStorage.getItem("wf_wish_allshops") === "1"; } catch (e) { return false; } })();
   /* v88c: shops you pinned from Cost's list so their box shows even while empty (board data, synced) */
   function wishPins() { if (!Array.isArray(meta.wishPins)) meta.wishPins = []; return meta.wishPins; }
   function wIsPinned(n) { var low = String(n || "").toLowerCase(); return wishPins().some(function (p) { return String(p).toLowerCase() === low; }); }
@@ -3732,18 +3731,18 @@
     var host = $("wishRows"); if (!host) return;
     if (wishPrune()) saveWish();
     var S = wShops(), open = wishAll().filter(function (w) { return !w.done; });
-    var Sx = pShopNames() ? wShops(true).filter(function (x) { return !x.all && (WISH_ALL || WISH_SEL || wIsPinned(x.name)); }) : [];
-    var at = $("wishAllBtn"); if (at) { at.classList.toggle("on", WISH_ALL); at.style.display = pShopNames() ? "" : "none"; at.title = WISH_ALL ? "Showing every Cost shop \u2014 tap to show only shops with items" : "Show every Cost shop"; }
+    var Sx = pShopNames() ? wShops(true).filter(function (x) { return !x.all && (WISH_SEL || wIsPinned(x.name)); }) : [];
     if ($("wishCount")) $("wishCount").textContent = open.length ? open.length + " to buy" : "";
     var seg = $("wishSeg"); if (seg) Array.prototype.forEach.call(seg.children, function (b) { b.classList.toggle("on", b.getAttribute("data-hkey") === WISH_VIEW); });
     renderWishTray();
     var h = "";
     if (WISH_VIEW === "boxes") {
       S.sort(function (a, b) { return (wishNear(b.name) - wishNear(a.name)) || ((a.open === 0) - (b.open === 0)) || (b.open - a.open) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
-      h = (S.length || Sx.length) ? '<div class="wtiles' + (WISH_SEL || WISH_ALL ? " showall" : "") + '">' + S.map(function (s) { return wTileHtml(s); }).join("") +
-          Sx.map(function (s) { return wTileHtml(s).replace('class="wtile', 'class="wtile empty' + (!WISH_ALL && !WISH_SEL && wIsPinned(s.name) ? " pin" : "")); }).join("") +
+      /* v95: the Add shop tile shows even with no boxes, so an unsorted request (e.g. from Sukkiri) can still get a box */
+      h = (S.length || Sx.length || pShopNames()) ? '<div class="wtiles' + (WISH_SEL ? " showall" : "") + '">' + S.map(function (s) { return wTileHtml(s); }).join("") +
+          Sx.map(function (s) { return wTileHtml(s).replace('class="wtile', 'class="wtile empty' + (!WISH_SEL && wIsPinned(s.name) ? " pin" : "")); }).join("") +
           (pShopNames() ? '<button type="button" class="wtile addshop" data-hact="wshopadd" title="Show another of Cost\u2019s shops"><span class="wplus">+</span><span class="wnm">Add shop</span><span class="wtag">from Cost\u2019s list</span></button>' : '') + '</div>'
-        : '<div class="bb-none">No shops yet \u2014 type <b>Medical: facewash</b> above and press Add.</div>';
+        : '<div class="bb-none">Cost\u2019s shop list hasn\u2019t loaded yet \u2014 tap \u21bb to load it, then add a shop.</div>';
     } else {
       var fl = wishFlow();
       fl.stops = fl.stops.filter(function (n) { return !!wShop(n); });
@@ -4508,7 +4507,6 @@
       if (a === "wbtog") { WISH_BOUGHT_OPEN = !WISH_BOUGHT_OPEN; renderWish(); return; }
       if (a === "wshopadd") { openShopPick(); return; }
       if (a === "wunpin") { e.stopPropagation(); meta.wishPins = wishPins().filter(function (p) { return String(p).toLowerCase() !== String(k).toLowerCase(); }); saveWish(); renderWish(); toast(k + " hidden \u2014 it\u2019s still in Cost"); return; }
-      if (a === "wallshops") { WISH_ALL = !WISH_ALL; try { localStorage.setItem("wf_wish_allshops", WISH_ALL ? "1" : "0"); } catch (e2) {} renderWish(); toast(WISH_ALL ? "Showing every Cost shop" : "Showing shops with items only"); return; }
       if (a === "wview") { WISH_VIEW = k === "flow" ? "flow" : "boxes"; WISH_SEL = null; renderWish(); return; }
       if (a === "wchip") { WISH_SEL = WISH_SEL === k ? null : k; renderWish(); if (WISH_SEL) toast("Now tap a box to file it"); return; }
       if (a === "wtile") { if (WISH_SEL) { wAssign(WISH_SEL, k); return; } openWishSheet(k); return; }
