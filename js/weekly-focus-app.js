@@ -3541,7 +3541,9 @@
      payload.id. Box = boxOf(row): Cost's real shop once logged (display only), else plan_shop, else Unsorted.
      Boxes come from wf.purchases.shops() (Cost's list); a drop calls planShop / clearPlan.
      Other senders' items: read-only except the shop; delete = hide() on this device. */
-  var PB = { rows: [], shops: null, shAt: 0, at: 0, busy: false, err: "", views: {} };
+  var PB = { rows: [], shops: null, shAt: 0, at: 0, busy: false, err: "", views: {}, closed: {} };
+  /* v96: Wishlist is a shop assigner, not a purchase record — Cost keeps the history. Open = reply->>'status' is null. */
+  function pOpen(r) { return !(r && r.reply && r.reply.status); }
   function pApi() { return window.wf && window.wf.purchases; }
   function pShopNames() { return Array.isArray(PB.shops) && PB.shops.length ? PB.shops.map(function (x) { return String(x.name || "").trim(); }).filter(Boolean) : null; }
   /* Cost's spelling of a shop name; "" when Cost's list is loaded and the name isn't on it. */
@@ -3572,13 +3574,11 @@
       var r = w.ak && w.ak.dir === "out" ? own[akReqId(w)] : null;
       if (!r) { out.push(w); return; }
       used[api.keyOf(r)] = 1;
-      var v = Object.assign({}, w, { pr: r });
-      if (pStatus(r) === "logged") { var b = api.boxOf(r); if (b) v.shop = b; if (!v.done) { v.done = true; v.doneAt = Date.parse((r.reply && r.reply.at) || "") || Date.now(); } }
-      out.push(v);
+      out.push(Object.assign({}, w, { pr: r }));
     });
     PB.views = {};
     rows.forEach(function (r) { if (used[api.keyOf(r)]) return; var v = pView(r); PB.views[v.id] = v; out.push(v); });
-    return out;
+    return out.filter(function (w) { return !w.done; });
   }
   function pWishlistOpen() { var h = $("wishRows"); return !!(h && h.offsetParent !== null); }
   async function pRefresh(force) {
@@ -3588,7 +3588,9 @@
       var needShops = force || !PB.shops || Date.now() - PB.shAt > 10 * 60e3;
       var res = await Promise.all([api.board(), needShops ? api.shops() : Promise.resolve(PB.shops)]);
       var hid = api.hidden();
-      PB.rows = (res[0] || []).filter(function (r) { return !hid.has(api.keyOf(r)); });
+      var all = res[0] || []; PB.closed = {};
+      all.forEach(function (r) { if (!pOpen(r) && r.from_app === "wf" && r.payload && r.payload.id != null) PB.closed[String(r.payload.id)] = 1; });
+      PB.rows = all.filter(function (r) { return pOpen(r) && !hid.has(api.keyOf(r)); });
       if (needShops) { PB.shops = res[1] || []; PB.shAt = Date.now(); }
       PB.at = Date.now(); PB.err = "";
       akLog("purchase board: " + PB.rows.length + " rows, " + (PB.shops || []).length + " Cost shops");
@@ -3645,8 +3647,8 @@
   }
   function wishPrune() {
     wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === "anywhere") w.shop = ""; });
-    var cut = Date.now() - 30 * 864e5, before = wishArr().length;
-    meta.wish = wishArr().filter(function (w) { return !(w.done && (w.doneAt || 0) < cut); });
+    var before = wishArr().length;
+    meta.wish = wishArr().filter(function (w) { return !w.done && !(w.ak && w.ak.dir === "out" && PB.closed[akReqId(w)]); });
     return meta.wish.length !== before;
   }
   function wishFor(shopName) {
@@ -3654,9 +3656,7 @@
     return wishAll().filter(function (w) { return !w.done && pCanon(w.shop).toLowerCase() === low && !!low; });
   }
   /* ---- v54: boxes · journey · unsorted tray · shop sheet ---- */
-  /* v88c: shops you pinned from Cost's list so their box shows even while empty (board data, synced) */
-  function wishPins() { if (!Array.isArray(meta.wishPins)) meta.wishPins = []; return meta.wishPins; }
-  function wIsPinned(n) { var low = String(n || "").toLowerCase(); return wishPins().some(function (p) { return String(p).toLowerCase() === low; }); }
+  /* v96: boxes exist only while they hold something to plan; picking a shop files the selected item or opens its sheet */
   var SP_Q = "";
   function openShopPick() { SP_Q = ""; paintShopPick(); var m = $("shopPickModal"); if (m) m.classList.add("open"); var i = $("spSearch"); if (i) { i.value = ""; setTimeout(function () { i.focus(); }, 50); } }
   function closeShopPick() { var m = $("shopPickModal"); if (m) m.classList.remove("open"); }
@@ -3668,11 +3668,11 @@
     var cnt = $("spCount"); if (cnt) cnt.textContent = list.length + " of " + L.length + " shops";
     if (!L.length) { bd.innerHTML = '<div class="bb-none">Cost\u2019s shop list hasn\u2019t loaded yet \u2014 tap \u21bb in the Wishlist and try again.</div>'; return; }
     bd.innerHTML = list.length ? '<div class="sp-grid">' + list.map(function (n) {
-      var on = wIsPinned(n) || shown[n.toLowerCase()], has = shown[n.toLowerCase()];
-      return '<button type="button" class="sp-opt' + (on ? " on" : "") + '" style="--h:' + wHue(n) + '" data-sp="' + esc(n) + '"' + (has ? ' disabled title="Already on the board"' : '') + '>' + wEmo(n) + ' <span>' + esc(n) + '</span>' + (has ? '<b>has items</b>' : on ? '<b>\u2713 shown</b>' : '') + '</button>';
+      var has = shown[n.toLowerCase()];
+      return '<button type="button" class="sp-opt' + (has ? " on" : "") + '" style="--h:' + wHue(n) + '" data-sp="' + esc(n) + '">' + wEmo(n) + ' <span>' + esc(n) + '</span>' + (has ? '<b>has items</b>' : '') + '</button>';
     }).join("") + '</div>' : '<div class="bb-none">No Cost shop matches \u201c' + esc(SP_Q.trim()) + '\u201d. Shops are added in Cost; tap \u21bb here afterwards.</div>';
   }
-  var WISH_VIEW = "boxes", WISH_SEL = null, WS_SHOP = null, WISH_BOUGHT_OPEN = false, WS_MOVE = null, WS_DET = null;
+  var WISH_VIEW = "boxes", WISH_SEL = null, WS_SHOP = null, WS_MOVE = null, WS_DET = null;
   /* v86: item detail (needed-by, notes, request source/budget) — hidden until the item is tapped in its shop sheet */
   function wDetHtml(w) {
     if (w.ext) {
@@ -3714,10 +3714,10 @@
   function wShop(name) { var low = String(name || "").toLowerCase(), hit = null; wShops(true).forEach(function (s) { if (s.name.toLowerCase() === low) hit = s; }); return hit; }
   function wOpenOf(name) { var s = wShop(name); return s ? s.open : 0; }
   function wTileHtml(s, stopState) {
-    var near = wishNear(s.name), full = s.open === 0, fill = s.all ? Math.round((s.all - s.open) / s.all * 100) : 0;
-    var tag = near ? "nearby" : !s.all ? "empty" : full ? "all bought" : (s.all - s.open) ? (s.all - s.open) + " of " + s.all + " bought" : "to buy";
-    return '<button type="button" class="wtile' + (full ? " full" : "") + (near ? " near" : "") + (WISH_SEL ? " target" : "") + '" style="--h:' + wHue(s.name) + ';--fill:' + fill + '%" data-hact="wtile" data-hkey="' + esc(s.name) + '" data-wshop="' + esc(s.name) + '">' +
-      (!s.all && wIsPinned(s.name) ? '<span class="wunpin" role="button" data-hact="wunpin" data-hkey="' + esc(s.name) + '" title="Hide this empty box">\u00d7</span>' : '') + '<span class="wcnt">' + (full ? "\u2713 " : "") + s.open + '</span><span class="wem">' + wEmo(s.name) + '</span><span class="wnm">' + esc(s.name) + '</span><span class="wtag">' + tag + '</span></button>';
+    var near = wishNear(s.name);
+    var tag = near ? "nearby" : s.open ? "to buy" : "empty";
+    return '<button type="button" class="wtile' + (near ? " near" : "") + (WISH_SEL ? " target" : "") + '" style="--h:' + wHue(s.name) + ';--fill:0%" data-hact="wtile" data-hkey="' + esc(s.name) + '" data-wshop="' + esc(s.name) + '">' +
+      '<span class="wcnt">' + s.open + '</span><span class="wem">' + wEmo(s.name) + '</span><span class="wnm">' + esc(s.name) + '</span><span class="wtag">' + tag + '</span></button>';
   }
   function wChipHtml(w) { return '<button type="button" class="wchip' + (WISH_SEL === w.id ? " sel" : "") + '"' + (w.notes || w.need ? ' title="' + esc([w.need ? "by " + w.need : "", w.notes || ""].filter(Boolean).join(" \u00b7 ")) + '"' : '') + ' draggable="true" data-hact="wchip" data-hkey="' + esc(w.id) + '" data-wid="' + esc(w.id) + '"><span class="g">\u283f</span>' + esc(w.t) + akBadge(w) + '</button>'; }
   function renderWishTray() {
@@ -3730,26 +3730,26 @@
   function renderWish() {
     var host = $("wishRows"); if (!host) return;
     if (wishPrune()) saveWish();
-    var S = wShops(), open = wishAll().filter(function (w) { return !w.done; });
-    var Sx = pShopNames() ? wShops(true).filter(function (x) { return !x.all && (WISH_SEL || wIsPinned(x.name)); }) : [];
+    var S = wShops().filter(function (s) { return s.open > 0; }), open = wishAll();
+    var Sx = pShopNames() && WISH_SEL ? wShops(true).filter(function (x) { return !x.open; }) : [];   /* every Cost shop as a target while filing */
     if ($("wishCount")) $("wishCount").textContent = open.length ? open.length + " to buy" : "";
     var seg = $("wishSeg"); if (seg) Array.prototype.forEach.call(seg.children, function (b) { b.classList.toggle("on", b.getAttribute("data-hkey") === WISH_VIEW); });
     renderWishTray();
     var h = "";
     if (WISH_VIEW === "boxes") {
-      S.sort(function (a, b) { return (wishNear(b.name) - wishNear(a.name)) || ((a.open === 0) - (b.open === 0)) || (b.open - a.open) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
-      /* v95: the Add shop tile shows even with no boxes, so an unsorted request (e.g. from Sukkiri) can still get a box */
+      S.sort(function (a, b) { return (wishNear(b.name) - wishNear(a.name)) || (b.open - a.open) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
+      /* the Add shop tile shows even with no boxes, so an unsorted request (e.g. from Sukkiri) can still get a box */
       h = (S.length || Sx.length || pShopNames()) ? '<div class="wtiles' + (WISH_SEL ? " showall" : "") + '">' + S.map(function (s) { return wTileHtml(s); }).join("") +
-          Sx.map(function (s) { return wTileHtml(s).replace('class="wtile', 'class="wtile empty' + (!WISH_SEL && wIsPinned(s.name) ? " pin" : "")); }).join("") +
-          (pShopNames() ? '<button type="button" class="wtile addshop" data-hact="wshopadd" title="Show another of Cost\u2019s shops"><span class="wplus">+</span><span class="wnm">Add shop</span><span class="wtag">from Cost\u2019s list</span></button>' : '') + '</div>'
+          Sx.map(function (s) { return wTileHtml(s).replace('class="wtile', 'class="wtile empty'); }).join("") +
+          (pShopNames() ? '<button type="button" class="wtile addshop" data-hact="wshopadd" title="Pick one of Cost\u2019s shops"><span class="wplus">+</span><span class="wnm">Add shop</span><span class="wtag">from Cost\u2019s list</span></button>' : '') + '</div>'
         : '<div class="bb-none">Cost\u2019s shop list hasn\u2019t loaded yet \u2014 tap \u21bb to load it, then add a shop.</div>';
     } else {
       var fl = wishFlow();
       fl.stops = fl.stops.filter(function (n) { return !!wShop(n); });
       var stops = fl.stops, cur = -1;
       for (var i = 0; i < stops.length; i++) if (wOpenOf(stops[i]) > 0) { cur = i; break; }
-      var tot = 0, done = 0; wishAll().forEach(function (w) { if (stops.some(function (n) { return n.toLowerCase() === pCanon(w.shop).toLowerCase(); })) { tot++; if (w.done) done++; } });
-      h += '<div class="wfl-h"><span class="wfl-n">' + esc(fl.name || "Next run") + '</span><span class="wfl-s">' + (stops.length ? stops.length + " stop" + (stops.length > 1 ? "s" : "") + " \u00b7 " + done + " of " + tot + " bought" : "no stops yet \u2014 add from the pool below") + '</span>' +
+      var tot = 0; wishAll().forEach(function (w) { if (stops.some(function (n) { return n.toLowerCase() === pCanon(w.shop).toLowerCase(); })) tot++; });
+      h += '<div class="wfl-h"><span class="wfl-n">' + esc(fl.name || "Next run") + '</span><span class="wfl-s">' + (stops.length ? stops.length + " stop" + (stops.length > 1 ? "s" : "") + " \u00b7 " + tot + " to buy" : "no stops yet \u2014 add from the pool below") + '</span>' +
         (stops.length ? '<button type="button" class="tbtn" data-hact="wflclear">Clear route</button>' : '') + '</div>';
       h += '<div class="wjscroll"><div class="wjourney" id="wJourney"><div class="wtrack"><div class="wfillbar' + ((cur <= 0 && !stops.some(function (n) { return wOpenOf(n) === 0; })) ? " empty" : "") + '" id="wFillbar"></div><span class="wwalker" id="wWalker">' + (cur < 0 && stops.length ? "\ud83c\udfc1" : "\ud83d\udeb6") + '</span></div>' +
         stops.map(function (n, i) {
@@ -3762,12 +3762,6 @@
       if (stops.length && cur < 0) h += '<div class="wfin">\ud83c\udfc1 Route complete \u2014 everything bought.</div>';
       var pool = S.filter(function (s) { return s.open > 0 && !stops.some(function (n) { return n.toLowerCase() === s.name.toLowerCase(); }); });
       h += '<div class="wpool"><div class="wtk">Shops not on this route \u00b7 tap to add as a stop</div><div class="wchips">' + (pool.length ? pool.map(function (s) { return '<button type="button" class="wshopchip" data-hact="wfladd" data-hkey="' + esc(s.name) + '">' + esc(s.name) + '<b>' + s.open + '</b></button>'; }).join("") : '<span class="wnone">' + (S.length ? "Everything with items is on the route." : "Add some items first.") + '</span>') + '</div></div>';
-    }
-    var bought = wishAll().filter(function (w) { return w.done; });
-    if (bought.length) {
-      bought.sort(function (a, b) { return (b.doneAt || 0) - (a.doneAt || 0); });
-      h += '<button type="button" class="wbought" data-hact="wbtog">' + (WISH_BOUGHT_OPEN ? "Hide" : "Show") + " bought \u00b7 " + bought.length + " (kept 30 days)</button>";
-      if (WISH_BOUGHT_OPEN) h += '<div class="wshop bought"><div class="witems">' + bought.map(wishItemRow).join("") + '</div></div>';
     }
     if (pApi()) h = '<div class="wpb">' + (PB.err ? '<span class="wpb-err">Cost list didn\u2019t load \u2014 ' + esc(PB.err) + '</span>' : PB.at ? '<span>Cost \u00b7 ' + PB.rows.length + ' request' + (PB.rows.length === 1 ? "" : "s") + ' \u00b7 ' + new Date(PB.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + '</span>' : '<span>Loading Cost\u2019s list\u2026</span>') +
       '<button type="button" class="wpb-r" data-hact="wpbref" title="Refresh from Cost">\u21bb</button></div>' + h;
@@ -3806,11 +3800,11 @@
   }
   function paintWishSheet() {
     var name = WS_SHOP, s = wShop(name), hd = $("wsHead"), bd = $("wsBody"); if (!hd || !bd) return;
-    var items = s ? s.items.slice() : [], open = s ? s.open : 0, near = wishNear(name), pl = wishPlace(name);
+    var items = s ? s.items.slice() : [], open = s ? s.open : 0, near = wishNear(name), pl = wishPlace(name), un = wishAll().filter(function (w) { return !pCanon(w.shop); });
     var st = wishFlow().stops, fi = -1; st.forEach(function (n, k) { if (n.toLowerCase() === String(name).toLowerCase()) fi = k; });
     var inFlow = WISH_VIEW === "flow" && fi >= 0, nx = null; if (inFlow) for (var k = fi + 1; k < st.length; k++) if (wOpenOf(st[k]) > 0) { nx = st[k]; break; }
     $("wsBox").style.setProperty("--h", wHue(name));
-    hd.innerHTML = '<span class="wsem">' + wEmo(name) + '</span><div class="wst-t"><div class="wscr">' + (inFlow ? "stop " + (fi + 1) + " of " + st.length + (open ? " \u00b7 you are here" : " \u00b7 done") : near ? "nearby" : open ? open + " to buy" : "all bought") + '</div><div class="wsnm">' + esc(name) + '</div></div>' +
+    hd.innerHTML = '<span class="wsem">' + wEmo(name) + '</span><div class="wst-t"><div class="wscr">' + (inFlow ? "stop " + (fi + 1) + " of " + st.length + (open ? " \u00b7 you are here" : " \u00b7 done") : near ? "nearby" : open ? open + " to buy" : "empty") + '</div><div class="wsnm">' + esc(name) + '</div></div>' +
       '<button type="button" class="bs-x" data-hact="wsclose" title="Close">\u00d7</button>';
     items.sort(function (a, b) { return (a.done - b.done) || ((a.at || 0) - (b.at || 0)); });
     bd.innerHTML = '<div class="wsitems">' + (items.length ? items.map(function (w) {
@@ -3825,7 +3819,8 @@
       }
       if (WS_DET === w.id) row += wDetHtml(w);
       return row;
-    }).join("") : '<div class="wnone" style="padding:14px 0;text-align:center">Nothing here \u2014 add below or drag from Unsorted.</div>') + '</div>' +
+    }).join("") : '<div class="wnone" style="padding:14px 0;text-align:center">Nothing here yet \u2014 file something from Unsorted or add below. The box shows on the board once it holds an item.</div>') + '</div>' +
+      (un.length ? '<div class="wsmove"><span class="wtk" style="margin:0 6px 0 0">From Unsorted</span>' + un.map(function (u) { return '<button type="button" class="wshopchip" data-hact="wmoveto" data-hkey="' + esc(u.id) + '|' + esc(name) + '">' + esc(u.t) + '</button>'; }).join("") + '</div>' : '') +
       '<div class="wsadd"><input id="wsInp" placeholder="Add an item to ' + esc(name) + '\u2026" autocomplete="off"><button type="button" class="tbtn primary" data-hact="wsadd" data-hkey="' + esc(name) + '">Add</button></div>' +
       '<div class="wsfoot">' + (inFlow
         ? '<button type="button" class="tbtn" data-hact="wflskip" data-hkey="' + fi + '">Skip this stop</button><button type="button" class="tbtn wsdone" data-hact="wsdoneall" data-hkey="' + esc(name) + '">Done here' + (nx ? " \u2192 " + esc(nx) : "") + '</button>'
@@ -4178,11 +4173,10 @@
     if (spm) {
       spm.addEventListener("click", function (e) {
         if (e.target === spm || e.target.closest("#spClose")) { closeShopPick(); return; }
-        var ob = e.target.closest("[data-sp]"); if (!ob || ob.disabled) return;
-        var n = ob.getAttribute("data-sp");
-        if (wIsPinned(n)) { meta.wishPins = wishPins().filter(function (p) { return String(p).toLowerCase() !== n.toLowerCase(); }); toast(n + " hidden"); }
-        else { wishPins().push(n); toast(n + " added to the board"); }
-        saveWish(); renderWish(); paintShopPick();
+        var ob = e.target.closest("[data-sp]"); if (!ob) return;
+        var n = ob.getAttribute("data-sp"); closeShopPick();
+        if (WISH_SEL) { wAssign(WISH_SEL, n); return; }
+        openWishSheet(n);
       });
       spm.addEventListener("input", function (e) { if (e.target && e.target.id === "spSearch") { SP_Q = e.target.value; paintShopPick(); } });
       spm.addEventListener("keydown", function (e) {
@@ -4504,9 +4498,7 @@
       if (a === "wdet") { WS_DET = WS_DET === k ? null : k; WS_MOVE = null; paintWishSheet(); return; }
       if (a === "wdsave") { var dw2 = akWish(k); if (!dw2) return; var dn = $("wdNeed"), dt = $("wdNotes"); dw2.need = dn ? dn.value : (dw2.need || ""); dw2.notes = dt ? dt.value.trim() : (dw2.notes || ""); WS_DET = null; saveWish(); akEdit(dw2); renderWish(); toast("Saved"); return; }
       if (a === "wdel") { var dw = akWish(k); meta.wish = wishArr().filter(function (w) { return w.id !== k; }); saveWish(); akRemoved(dw); renderWish(); renderHome(); return; }
-      if (a === "wbtog") { WISH_BOUGHT_OPEN = !WISH_BOUGHT_OPEN; renderWish(); return; }
       if (a === "wshopadd") { openShopPick(); return; }
-      if (a === "wunpin") { e.stopPropagation(); meta.wishPins = wishPins().filter(function (p) { return String(p).toLowerCase() !== String(k).toLowerCase(); }); saveWish(); renderWish(); toast(k + " hidden \u2014 it\u2019s still in Cost"); return; }
       if (a === "wview") { WISH_VIEW = k === "flow" ? "flow" : "boxes"; WISH_SEL = null; renderWish(); return; }
       if (a === "wchip") { WISH_SEL = WISH_SEL === k ? null : k; renderWish(); if (WISH_SEL) toast("Now tap a box to file it"); return; }
       if (a === "wtile") { if (WISH_SEL) { wAssign(WISH_SEL, k); return; } openWishSheet(k); return; }
@@ -4514,7 +4506,7 @@
       if (a === "wsadd") { var wi = $("wsInp"), wt = wi ? wi.value.trim() : ""; if (!wt) return; wishArr().push({ id: uid(), shop: wishShopName(k), t: wt, at: Date.now(), done: false }); saveWish(); renderWish(); renderHome(); return; }
       if (a === "wsdoneall") { var dall = []; wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === k.toLowerCase() && !w.done) { w.done = true; w.doneAt = Date.now(); dall.push(w); } }); saveWish(); dall.forEach(akTick); closeWishSheet(); renderWish(); renderHome(); return; }
       if (a === "wmove") { WS_MOVE = WS_MOVE === k ? null : k; paintWishSheet(); return; }
-      if (a === "wmoveto" && pById(k.split("|")[0])) { var pm = k.split("|"); WS_MOVE = null; wAssign(pm[0], pm.slice(1).join("|")); return; }
+      if (a === "wmoveto" && pById(k.split("|")[0])) { var pm = k.split("|"); WS_MOVE = null; wAssign(pm[0], pm.slice(1).join("|")); if (WS_SHOP) paintWishSheet(); return; }
       if (a === "wmoveto") { var mp = k.split("|"), mid = mp[0], mto = mp.slice(1).join("|"); var mw2 = null; wishArr().forEach(function (x) { if (x.id === mid) mw2 = x; }); if (!mw2) return; mw2.shop = mto ? wishShopName(mto) : ""; WS_MOVE = null; saveWish(); akEdit(mw2); var mr = pRowOf(mw2); if (mr && !mw2.done) pPlan(mr, mw2.shop || null); renderWish(); renderHome(); toast(mw2.t + " \u2192 " + (mto || "Unsorted")); return; }
       if (a === "wmovenew") { var ni = $("wsMoveNew"), nv = ni ? ni.value.trim() : ""; if (!nv) { if (ni) ni.focus(); return; } var mw3 = null; wishArr().forEach(function (x) { if (x.id === k) mw3 = x; }); if (!mw3) return; mw3.shop = wishShopName(nv); WS_MOVE = null; saveWish(); akEdit(mw3); renderWish(); renderHome(); toast(mw3.t + " \u2192 " + mw3.shop); return; }
       if (a === "wrename") { var rn = prompt("Rename shop", k); if (!rn || !rn.trim() || rn.trim() === k) return; rn = rn.trim(); var rnw = []; wishArr().forEach(function (w) { if (String(w.shop || "").toLowerCase() === k.toLowerCase()) { w.shop = rn; rnw.push(w); } }); rnw.forEach(akEdit); wishFlow().stops = wishFlow().stops.map(function (n) { return n.toLowerCase() === k.toLowerCase() ? rn : n; }); saveWish(); WS_SHOP = rn; renderWish(); return; }

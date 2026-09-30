@@ -9,31 +9,27 @@
  */
 (function () {
   const DOC = 'purchase_plan', PATH = 'shop';
-  const OPEN = (r) => !r.reply || ['pending', 'approved'].includes(r.reply.status);
-  const RECENT_MS = 30 * 864e5;                       // "Show bought · kept 30 days"
+  const OPEN = (r) => !(r.reply && r.reply.status);   // v96: reply->>'status' null = open; anything else is Cost's history
 
   function WfPurchases(supabase, hub) {
     const keyOf = (row) => row.plan_key || (row.from_app + ':' + row.payload.id);
 
     return {
-      /** Every purchase request to Cost, all senders. Open ones + logged in the last 30 days.
+      /** Every purchase request to Cost, all senders — open and closed (newest 500).
        *  Each row: { seq, from_app, payload:{id,items,…}, reply, plan_shop, … }.
-       *  Box to show: logged → reply.shop (Cost's real shop), else plan_shop, else Unsorted. */
+       *  Open = reply status null (open(row)); the Wishlist shows open rows only and uses
+       *  closed WF rows to drop its matching local items. Box to show: plan_shop, else Unsorted. */
       async board() {
         const { data, error } = await supabase.from('akatsuki_purchases')
           .select('seq,from_app,src_addr,payload,reply,reply_seq,created_at,plan_key,plan_shop')
-          .order('seq', { ascending: false });
+          .order('seq', { ascending: false }).limit(500);
         if (error) throw new Error(error.message);
-        const now = Date.now();
-        return (data || []).filter(r => OPEN(r) ||
-          (r.reply && r.reply.status === 'logged' && now - Date.parse(r.reply.at || r.created_at) < RECENT_MS));
+        return data || [];
       },
+      open: OPEN,
 
       /** Where the item sits in the Wishlist. Display only — never write this back. */
-      boxOf(row) {
-        if (row.reply && row.reply.status === 'logged' && row.reply.shop) return row.reply.shop;
-        return row.plan_shop || null;                  // null → Unsorted
-      },
+      boxOf(row) { return row.plan_shop || null; },   // null → Unsorted
 
       /** Cost's shop list. Shop boxes pick from this only — no typed names. */
       async shops() {
