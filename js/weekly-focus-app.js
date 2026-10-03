@@ -212,13 +212,26 @@
      stale copy instead of being resurrected. Legacy subtasks (no id) get a stable
      id derived from their text so the same legacy item dedupes across devices. */
   function subLegacyId(t) { var s = String(t || ""), h = 5381; for (var i = 0; i < s.length; i++) { h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; } return "l_" + h.toString(36); }
-  /* ---- v63 (phase 5a): task contexts — the 7-item vocabulary shared with Roadmap (roadmap_contexts_map).
-     Stored per subtask as ctx: ['@train', …]; mirrors the WF tasks.contexts text[] column for the V2-D bridge. */
-  var CTX = [["@train", "On the train", "train"], ["@home", "At home", "home"], ["@office", "At the office", "office"], ["@needs-claude-code", "Needs Claude Code", "CC"], ["@claude-chat-only", "Claude chat is enough", "chat"], ["@phone-only", "Phone only", "phone"], ["@deep-work", "Deep work block", "deep"]];
+  /* ---- v97 (R022/R006): task contexts come from akatsuki_vocab (ns = 'context'), read on sign-in.
+     Stored per subtask as ctx: ['@train', …]. The last good read is cached so the chips work offline.
+     Rows are [id, label, short]. */
+  var CTX_CACHE = "wf_ctx_vocab", CTX = loadArr(CTX_CACHE);
+  function ctxLoad() {
+    if (!sb) return;
+    sb.from("akatsuki_vocab").select("id,meta").eq("ns", "context").then(function (r) {
+      if (r.error) { console.warn("[ctx] akatsuki_vocab read failed", r.error.message); return; }
+      var rows = (r.data || []).map(function (v) { var m = v.meta || {}, id = String(v.id); return { o: typeof m.ord === "number" ? m.ord : 999, r: [id, String(m.label || m.name || m.title || id), String(m.short || m.abbr || id.replace(/^@/, ""))] }; })
+        .sort(function (a, b) { return a.o - b.o; }).map(function (x) { return x.r; });
+      if (!rows.length || JSON.stringify(rows) === JSON.stringify(CTX)) return;
+      CTX = rows; try { localStorage.setItem(CTX_CACHE, JSON.stringify(rows)); } catch (e) {}
+      try { renderAll(); } catch (e) {}
+    }, function (e) { console.warn("[ctx] akatsuki_vocab read failed", e && e.message); });
+  }
   function ctxRow(id) { for (var i = 0; i < CTX.length; i++) if (CTX[i][0] === id) return CTX[i]; return null; }
   function ctxLabel(id) { var r = ctxRow(id); return r ? r[1] : id; }
   function ctxShort(id) { var r = ctxRow(id); return r ? r[2] : String(id).replace(/^@/, ""); }
-  function ctxNorm(a) { if (!Array.isArray(a)) return []; var out = []; a.forEach(function (c) { c = String(c || "").trim(); if (ctxRow(c) && out.indexOf(c) < 0) out.push(c); }); return out; }
+  /* keeps every id, known or not: before the vocab arrives CTX is empty, and dropping ids here would wipe them on the next merge push */
+  function ctxNorm(a) { if (!Array.isArray(a)) return []; var out = []; a.forEach(function (c) { c = String(c || "").trim(); if (c && out.indexOf(c) < 0) out.push(c); }); return out; }
   function normSubs(arr) {
     return (Array.isArray(arr) ? arr : []).map(function (s) {
       if (!s) return null;
@@ -731,7 +744,7 @@
   try { TAG_FILTER = localStorage.getItem("wf-tagfilter") || ""; } catch (e) {}
   /* v63: context filter — "Show: @train" on Week + Today. One situation at a time, remembered per device. */
   var CTX_FILTER = ""; try { CTX_FILTER = localStorage.getItem("wf-ctxfilter") || ""; } catch (e) {}
-  if (CTX_FILTER && !ctxRow(CTX_FILTER)) CTX_FILTER = "";
+  if (CTX_FILTER && CTX.length && !ctxRow(CTX_FILTER)) CTX_FILTER = "";   // only once the vocab is known
   var CTXPOP = false;
   function ctxBarHtml() {
     var on = !!CTX_FILTER;
@@ -1941,6 +1954,7 @@
   function queue(qkey, op) { outbox[qkey] = op; saveOutbox(); flushOutbox(); updateCloudStatus(); }
   function cloudPushEntry(key, payload) {
     if (!cloudConfigured()) return;
+    if (rmItemKey(key)) rmSoon();
     queue("entry:" + key, { table: "weekly_focus_entries", onConflict: "user_id,board_id,item_key", row: { board_id: cloud.board, item_key: key, payload: payload, updated_at: nowISO() } });
   }
   function cloudDeleteEntry(key) {
@@ -2328,16 +2342,79 @@
     else console.warn("[ak] wf-purchase-adapter.js not loaded \u2014 Wishlist shows WF items only");
     akLog("listening as wf on board " + cloud.board);
     window.__wfAk = akHub;
-    akStop = akHub.listen({ "request.created": akSafe(akOnCreated), "request.changed": akSafe(akOnChanged) }, 30000);
+    akStop = akHub.listen({ "request.created": akSafe(akOnCreated), "request.changed": akSafe(akOnChanged),
+      "task.done": akSafe(function (r) { return rmApply(r, "done"); }), "task.skipped": akSafe(function (r) { return rmApply(r, "lat"); }) }, 30000);
+    if (typeof window.AkatsukiBanner === "function" && !window.wf.banner) {
+      try { window.wf.banner = window.AkatsukiBanner(sb, "wf", { roadmapUrl: (window.WF_CONFIG && WF_CONFIG.roadmapUrl) || null, log: akLog }); window.wf.banner.start(); }
+      catch (e) { console.warn("[ak banner] not started", e.message); }
+    }
+    ctxLoad();
     var tick = function () {
       if (akNotReady()) return;
-      akMigrateLife(); akFlushReplies(); akRetry();
+      akMigrateLife(); akFlushReplies(); akRetry(); rmSync();
       akPollReplies().catch(function (e) { console.warn("[ak] reply poll failed", e.message); });
       if (!PB.at || (document.visibilityState === "visible" && pWishlistOpen())) pRefresh();   // on load, then every 30 s while the Wishlist is open
     };
     tick(); akPoll = setInterval(tick, 30000);
     window.addEventListener("online", tick);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") tick(); });
+  }
+  /* ---- v97 (R022): WF -> Roadmap · task.upsert for every app: / study: / office: subtask ----
+     One row per subtask, sent only when its payload changed (hash gate per board, per device).
+     A subtask whose item was deleted goes out once more as del:true. At most 50 per run; the 30 s tick continues. */
+  var RM_SKIP = { __board: 1, __timeline: 1, __inbox: 1 }, RM_SEEN = "wf_rm_task_seen", rmBlocked = {}, rmBusy = false, rmT = null;
+  function rmItemKey(k) { return !!k && !RM_SKIP[k] && k !== AK_KEY && /^(app|study|office):/.test(k); }
+  function rmPayload(s) { return { id: s.id, t: s.t, done: !!s.done, ctx: s.ctx || [], urg: !!s.urg, dl: !!s.dl, lat: !!s.lat, latAt: s.latAt || 0, when: s.when ? String(s.when).slice(0, 10) : "", del: !!s.del, u: s.u || 0 }; }
+  function rmSeen() { try { return JSON.parse(localStorage.getItem(RM_SEEN) || "{}"); } catch (e) { return {}; } }
+  function rmSoon() { clearTimeout(rmT); rmT = setTimeout(rmSync, 1500); }
+  async function rmSync() {
+    if (!akHub || rmBusy || akNotReady()) return;
+    rmBusy = true;
+    try {
+      var board = cloud.board || "my-week", seen = rmSeen(), live = {}, jobs = [], n = 0;
+      Object.keys(entries).forEach(function (k) {
+        if (!rmItemKey(k)) return;
+        normSubs((entries[k] || {}).subtasks).forEach(function (s) {
+          var key = board + "|" + k + "|" + s.id, p = rmPayload(s), h = JSON.stringify(p);
+          live[key] = 1;
+          if (!seen[key] || seen[key].h !== h) jobs.push({ key: key, k: k, p: p, h: h });
+        });
+      });
+      Object.keys(seen).forEach(function (key) {
+        var o = seen[key];
+        if (live[key] || key.indexOf(board + "|") !== 0 || !o || !o.p || o.p.del) return;
+        var p = Object.assign({}, o.p, { del: true, u: Date.now() });
+        jobs.push({ key: key, k: o.k, p: p, h: JSON.stringify(p) });
+      });
+      for (var i = 0; i < jobs.length && i < 50; i++) {
+        var j = jobs[i], pre = j.k.split(":")[0];
+        if (rmBlocked[pre]) continue;
+        try {
+          await akHub.publish({ to: "rm", kind: "task.upsert", addr: { board_id: board, item_key: j.k, sub_id: j.p.id }, clock: j.p.u, payload: j.p });
+          seen[j.key] = { k: j.k, h: j.h, p: j.p }; n++;
+        } catch (e) {
+          if (e.contract || /unknown kind|does not declare|no route|missing required/.test(e.message || "")) { rmBlocked[pre] = 1; console.warn("[rm] task.upsert for " + pre + ": items refused by the hub — retried next load", e.code, e.message); }
+          else console.warn("[rm] task.upsert failed — retried next tick", e.message);
+        }
+      }
+      try { localStorage.setItem(RM_SEEN, JSON.stringify(seen)); } catch (e) {}
+      if (n) akLog("rm: published " + n + " task.upsert" + (jobs.length > 50 ? " (" + (jobs.length - 50) + " left for the next tick)" : ""));
+    } finally { rmBusy = false; }
+  }
+  /* Roadmap asks, WF applies and replies in place (vocab enum wf_apply_status). The reason is not kept. */
+  function rmApply(r, field) {
+    var wait = akNotReady(); if (wait) return { defer: wait };
+    var a = r.src_addr || {}; if (typeof a === "string") { try { a = JSON.parse(a); } catch (e) { a = {}; } }
+    if (a.board_id && a.board_id !== (cloud.board || "my-week")) return { defer: "board " + a.board_id + " not open" };
+    var at = nowISO(), k = a.item_key, hit = null, list = rmItemKey(k) ? normSubs((entries[k] || {}).subtasks) : [];
+    list.forEach(function (s) { if (a.sub_id != null && String(s.id) === String(a.sub_id)) hit = s; });
+    if (!hit) return { reply: { status: "unknown", at: at } };
+    if (hit.del) return { reply: { status: "stale", at: at } };
+    if (field === "done" ? hit.done : hit.lat) return { reply: { status: "already", at: at } };
+    var t = Date.now(), up = field === "done" ? { done: true, u: t } : { lat: true, latAt: t, u: t };
+    patch(k, { subtasks: list.map(function (x) { return x.id === hit.id ? Object.assign({}, x, up) : x; }) });
+    akLog("seq " + r.seq + " " + r.kind + " applied to " + k + " / " + hit.id); akRender();
+    return { reply: { status: "applied", at: at } };
   }
   function pendingCount() { return Object.keys(outbox).length; }
   function updateCloudStatus() {
