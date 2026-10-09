@@ -214,13 +214,14 @@
   function subLegacyId(t) { var s = String(t || ""), h = 5381; for (var i = 0; i < s.length; i++) { h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; } return "l_" + h.toString(36); }
   /* ---- v97 (R022/R006): task contexts come from akatsuki_vocab (ns = 'context'), read on sign-in.
      Stored per subtask as ctx: ['@train', …]. The last good read is cached so the chips work offline.
-     Rows are [id, label, short]. */
+     Rows are [id, label, short, aliasOf]. label = meta.label, order = meta.ord, fallback = id without '@'.
+     A row with meta.alias_of is hidden from pickers and read as its canonical id. */
   var CTX_CACHE = "wf_ctx_vocab", CTX = loadArr(CTX_CACHE);
   function ctxLoad() {
     if (!sb) return;
     sb.from("akatsuki_vocab").select("id,meta").eq("ns", "context").then(function (r) {
       if (r.error) { console.warn("[ctx] akatsuki_vocab read failed", r.error.message); return; }
-      var rows = (r.data || []).map(function (v) { var m = v.meta || {}, id = String(v.id); return { o: typeof m.ord === "number" ? m.ord : 999, r: [id, String(m.label || m.name || m.title || id), String(m.short || m.abbr || id.replace(/^@/, ""))] }; })
+      var rows = (r.data || []).map(function (v, i) { var m = v.meta || {}, id = String(v.id), sh = id.replace(/^@/, ""); return { o: typeof m.ord === "number" ? m.ord : 1000 + i, r: [id, String(m.label || sh), sh, m.alias_of ? String(m.alias_of) : ""] }; })
         .sort(function (a, b) { return a.o - b.o; }).map(function (x) { return x.r; });
       if (!rows.length || JSON.stringify(rows) === JSON.stringify(CTX)) return;
       CTX = rows; try { localStorage.setItem(CTX_CACHE, JSON.stringify(rows)); } catch (e) {}
@@ -230,8 +231,10 @@
   function ctxRow(id) { for (var i = 0; i < CTX.length; i++) if (CTX[i][0] === id) return CTX[i]; return null; }
   function ctxLabel(id) { var r = ctxRow(id); return r ? r[1] : id; }
   function ctxShort(id) { var r = ctxRow(id); return r ? r[2] : String(id).replace(/^@/, ""); }
+  function ctxCanon(id) { var r = ctxRow(id); return r && r[3] ? r[3] : id; }
+  function ctxPick() { return CTX.filter(function (c) { return !c[3]; }); }
   /* keeps every id, known or not: before the vocab arrives CTX is empty, and dropping ids here would wipe them on the next merge push */
-  function ctxNorm(a) { if (!Array.isArray(a)) return []; var out = []; a.forEach(function (c) { c = String(c || "").trim(); if (c && out.indexOf(c) < 0) out.push(c); }); return out; }
+  function ctxNorm(a) { if (!Array.isArray(a)) return []; var out = []; a.forEach(function (c) { c = ctxCanon(String(c || "").trim()); if (c && out.indexOf(c) < 0) out.push(c); }); return out; }
   function normSubs(arr) {
     return (Array.isArray(arr) ? arr : []).map(function (s) {
       if (!s) return null;
@@ -696,7 +699,7 @@
         '<button type="button" class="chip" data-tklocnew="1">+ New…</button>';
     }
     var cel = $("tkCtx");
-    if (cel) cel.innerHTML = CTX.map(function (c) { var on = (TSK.ctx || []).indexOf(c[0]) >= 0; return '<button type="button" class="chip ctxchip' + (on ? " on" : "") + '" data-tkctx="' + c[0] + '" title="' + esc(c[1]) + '">' + esc(c[0]) + "</button>"; }).join("");
+    if (cel) cel.innerHTML = ctxPick().map(function (c) { var on = (TSK.ctx || []).indexOf(c[0]) >= 0; return '<button type="button" class="chip ctxchip' + (on ? " on" : "") + '" data-tkctx="' + c[0] + '" title="' + esc(c[1]) + '">' + esc(c[0]) + "</button>"; }).join("");
     var ub = $("tkUrg");
     ub.classList.toggle("on", TSK.urg);
     ub.innerHTML = IC.flag + "<span>" + (TSK.urg ? "Urgent \u2014 pinned on top in red" : "Mark as urgent") + "</span>";
@@ -750,7 +753,7 @@
     var on = !!CTX_FILTER;
     return '<button type="button" class="ctxshow' + (on ? " on" : "") + '" data-ctxpick="1" title="Show only tasks doable in this context">Show: <b>' + (on ? esc(CTX_FILTER) : "everything") + '</b><span class="cfb-car">\u25be</span></button>' +
       (CTXPOP ? '<div class="ctxpop"><button type="button" class="ctxopt' + (on ? "" : " on") + '" data-ctxset="">Everything<small>no context filter</small></button>' +
-        CTX.map(function (c) { return '<button type="button" class="ctxopt' + (c[0] === CTX_FILTER ? " on" : "") + '" data-ctxset="' + c[0] + '">' + esc(c[0]) + '<small>' + esc(c[1]) + '</small></button>'; }).join("") + '</div>' : "");
+        ctxPick().map(function (c) { return '<button type="button" class="ctxopt' + (c[0] === CTX_FILTER ? " on" : "") + '" data-ctxset="' + c[0] + '">' + esc(c[0]) + '<small>' + esc(c[1]) + '</small></button>'; }).join("") + '</div>' : "");
   }
   function renderCtxBars() { ["ctxBarWeek", "ctxBarToday"].forEach(function (id) { var el = $(id); if (el) el.innerHTML = ctxBarHtml(); }); }
   function ctxOk(x) { return !CTX_FILTER || (x.ctx || []).indexOf(CTX_FILTER) >= 0; }
@@ -1850,7 +1853,8 @@
     var settled = false;
     function finish(saveIt) {
       if (settled) return; settled = true;
-      if (saveIt && input.value !== cur) { var subs_norm = normSubs(subs(key)); patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid ? Object.assign({}, x, { t: input.value, u: Date.now() }) : x; }) }); }
+      /* v98.3: clearing the text deletes the subtask (no more blank leftovers). */
+      if (saveIt && input.value !== cur) { var subs_norm = normSubs(subs(key)), blank = !input.value.trim(); patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid ? Object.assign({}, x, blank ? { del: true, u: Date.now() } : { t: input.value, u: Date.now() }) : x; }) }); }
       renderCols();
     }
     input.addEventListener("keydown", function (ev) {
@@ -2345,13 +2349,15 @@
     akStop = akHub.listen({ "request.created": akSafe(akOnCreated), "request.changed": akSafe(akOnChanged),
       "task.done": akSafe(function (r) { return rmApply(r, "done"); }), "task.skipped": akSafe(function (r) { return rmApply(r, "lat"); }) }, 30000);
     if (typeof window.AkatsukiBanner === "function" && !window.wf.banner) {
-      try { window.wf.banner = window.AkatsukiBanner(sb, "wf", { roadmapUrl: (window.WF_CONFIG && WF_CONFIG.roadmapUrl) || null, log: akLog }); window.wf.banner.start(); }
+      try { var tb = document.querySelector(".htabbar"), tbh = tb && tb.offsetHeight ? tb.offsetHeight : 64;
+        window.wf.banner = window.AkatsukiBanner(sb, "wf", { roadmapUrl: (window.WF_CONFIG && WF_CONFIG.roadmapUrl) || null, bottom: tbh + 8, reserve: true, log: akLog }); window.wf.banner.start(); }
       catch (e) { console.warn("[ak banner] not started", e.message); }
     }
     ctxLoad();
     var tick = function () {
       if (akNotReady()) return;
-      akMigrateLife(); akFlushReplies(); akRetry(); rmSync();
+      akMigrateLife(); akFlushReplies(); akRetry();
+      Promise.resolve(akHub.flush && akHub.flush()).catch(function (e) { console.warn("[ak] outbox flush failed", e.message); }).then(rmSync);
       akPollReplies().catch(function (e) { console.warn("[ak] reply poll failed", e.message); });
       if (!PB.at || (document.visibilityState === "visible" && pWishlistOpen())) pRefresh();   // on load, then every 30 s while the Wishlist is open
     };
@@ -2361,44 +2367,70 @@
   }
   /* ---- v97 (R022): WF -> Roadmap · task.upsert for every app: / study: / office: subtask ----
      One row per subtask, sent only when its payload changed (hash gate per board, per device).
-     A subtask whose item was deleted goes out once more as del:true. At most 50 per run; the 30 s tick continues. */
-  var RM_SKIP = { __board: 1, __timeline: 1, __inbox: 1 }, RM_SEEN = "wf_rm_task_seen", rmBlocked = {}, rmBusy = false, rmT = null;
+     A subtask whose item was deleted goes out once more as del:true. At most 50 per run; the 30 s tick continues.
+     v98: the hub client returns { status:'queued', error } instead of throwing on a non-contract error — that is
+     NOT a send. Only a row with a seq (or a non-queued status) is marked seen. The hub outbox is flushed every tick.
+     The seen cache moved to _v2 so every subtask is backfilled once more after this fix. */
+  var RM_SKIP = { __board: 1, __timeline: 1, __inbox: 1 }, RM_SEEN = "wf_rm_task_seen_v3", rmBlocked = {}, rmBusy = false, rmT = null, rmDoneLogged = false, rmErr = {};
   function rmItemKey(k) { return !!k && !RM_SKIP[k] && k !== AK_KEY && /^(app|study|office):/.test(k); }
-  function rmPayload(s) { return { id: s.id, t: s.t, done: !!s.done, ctx: s.ctx || [], urg: !!s.urg, dl: !!s.dl, lat: !!s.lat, latAt: s.latAt || 0, when: s.when ? String(s.when).slice(0, 10) : "", del: !!s.del, u: s.u || 0 }; }
+  /* v98.3 (R022 after STEP2b): title only, trimmed. A legacy hash (old {t,title} shape) counts as already sent,
+     so dropping t does not resend the backfill. A blank title is never published: skipped, or del:true if it went out before. */
+  function rmLegacyHash(p) { var o = { id: p.id, t: p.title, title: p.title }; Object.keys(p).forEach(function (k) { if (k !== "id" && k !== "title") o[k] = p[k]; }); return JSON.stringify(o); }
+  function rmDelPayload(old) { var p = Object.assign({}, old, { del: true, u: Date.now() }); if (p.title == null) p.title = String(p.t || "").trim(); delete p.t; return p; }
+  window.__wfSub = function (itemKey, subId) { var hit = null; normSubs((entries[itemKey] || {}).subtasks).forEach(function (s) { if (s.id === subId) hit = s; }); return hit ? { item: (entries[itemKey] || {}).name || itemKey, sub: hit } : "not found"; };
+  /* v98.4: a subtask with nothing in it (no text, date, place, tag, context, source) is a leftover — delete it. */
+  function rmSweepBlank() {
+    var any = false;
+    Object.keys(entries).forEach(function (k) {
+      var arr = (entries[k] || {}).subtasks; if (!Array.isArray(arr) || !arr.length) return;
+      var hit = false, out = normSubs(arr).map(function (s) {
+        if (s.del || String(s.t || "").trim() || s.when || String(s.loc || "").trim() || String(s.tag || "").trim() || (s.ctx || []).length || s.src) return s;
+        hit = true; return Object.assign({}, s, { del: true, u: Date.now() });
+      });
+      if (hit) { any = true; patch(k, { subtasks: out }); console.info("[wf] removed blank subtask(s) in " + k); }
+    });
+    if (any) { try { renderCols(); renderPulse(); renderFive(); } catch (e) {} }
+  }
+  function rmPayload(s) { return { id: s.id, title: String(s.t || "").trim(), done: !!s.done, ctx: s.ctx || [], urg: !!s.urg, dl: !!s.dl, lat: !!s.lat, latAt: s.latAt || 0, when: s.when ? String(s.when).slice(0, 10) : "", del: !!s.del, u: s.u || 0 }; }
   function rmSeen() { try { return JSON.parse(localStorage.getItem(RM_SEEN) || "{}"); } catch (e) { return {}; } }
   function rmSoon() { clearTimeout(rmT); rmT = setTimeout(rmSync, 1500); }
   async function rmSync() {
     if (!akHub || rmBusy || akNotReady()) return;
     rmBusy = true;
     try {
-      var board = cloud.board || "my-week", seen = rmSeen(), live = {}, jobs = [], n = 0;
+      rmSweepBlank();
+      var board = cloud.board || "my-week", seen = rmSeen(), live = {}, jobs = [], n = 0, q = 0;
       Object.keys(entries).forEach(function (k) {
         if (!rmItemKey(k)) return;
         normSubs((entries[k] || {}).subtasks).forEach(function (s) {
-          var key = board + "|" + k + "|" + s.id, p = rmPayload(s), h = JSON.stringify(p);
+          var key = board + "|" + k + "|" + s.id, p = rmPayload(s), h = JSON.stringify(p), o = seen[key];
           live[key] = 1;
-          if (!seen[key] || seen[key].h !== h) jobs.push({ key: key, k: k, p: p, h: h });
+          if (!p.title) { if (o && o.p && !o.p.del) { var dp = rmDelPayload(o.p); jobs.push({ key: key, k: k, p: dp, h: JSON.stringify(dp) }); } return; }
+          if (!o || (o.h !== h && o.h !== rmLegacyHash(p))) jobs.push({ key: key, k: k, p: p, h: h });
         });
       });
       Object.keys(seen).forEach(function (key) {
         var o = seen[key];
         if (live[key] || key.indexOf(board + "|") !== 0 || !o || !o.p || o.p.del) return;
-        var p = Object.assign({}, o.p, { del: true, u: Date.now() });
+        var p = rmDelPayload(o.p);
         jobs.push({ key: key, k: o.k, p: p, h: JSON.stringify(p) });
       });
       for (var i = 0; i < jobs.length && i < 50; i++) {
         var j = jobs[i], pre = j.k.split(":")[0];
         if (rmBlocked[pre]) continue;
         try {
-          await akHub.publish({ to: "rm", kind: "task.upsert", addr: { board_id: board, item_key: j.k, sub_id: j.p.id }, clock: j.p.u, payload: j.p });
+          var res = await akHub.publish({ to: "rm", kind: "task.upsert", addr: { board_id: board, item_key: j.k, sub_id: j.p.id }, clock: j.p.u, payload: j.p });
+          if (res && res.status === "queued") { if (!q++) console.warn("[rm] task.upsert not accepted — held in the hub outbox, retried next tick", res.error || "(offline)"); continue; }
           seen[j.key] = { k: j.k, h: j.h, p: j.p }; n++;
         } catch (e) {
-          if (e.contract || /unknown kind|does not declare|no route|missing required/.test(e.message || "")) { rmBlocked[pre] = 1; console.warn("[rm] task.upsert for " + pre + ": items refused by the hub — retried next load", e.code, e.message); }
+          if (e.contract || /unknown kind|does not declare|no route|missing required/.test(e.message || "")) { rmBlocked[pre] = 1; rmErr[e.code || "contract"] = (rmErr[e.code || "contract"] || 0) + 1; console.warn("[rm] task.upsert for " + pre + ": refused by the hub (contract) — retried next load", e.code, e.message); }
+          else if (e.refused) { rmErr[e.code || "refused"] = (rmErr[e.code || "refused"] || 0) + 1; console.warn("[rm] task.upsert refused (" + e.code + ") — sign in again; retried next tick", e.message); }
           else console.warn("[rm] task.upsert failed — retried next tick", e.message);
         }
       }
       try { localStorage.setItem(RM_SEEN, JSON.stringify(seen)); } catch (e) {}
-      if (n) akLog("rm: published " + n + " task.upsert" + (jobs.length > 50 ? " (" + (jobs.length - 50) + " left for the next tick)" : ""));
+      if (!jobs.length && !rmDoneLogged) { rmDoneLogged = true; console.info("[rm] backfill done \u00b7 " + Object.keys(seen).length + " task.upsert rows sent from this device" + (Object.keys(rmErr).length ? " \u00b7 errors " + JSON.stringify(rmErr) : " \u00b7 no errors")); }
+      if (n) console.info("[rm] published " + n + " task.upsert" + (jobs.length > 50 ? " (" + (jobs.length - 50) + " left for the next tick)" : ""));
     } finally { rmBusy = false; }
   }
   /* Roadmap asks, WF applies and replies in place (vocab enum wf_apply_status). The reason is not kept. */

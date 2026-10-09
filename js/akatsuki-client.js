@@ -8,25 +8,22 @@
  * localStorage-first: publishes queue in an outbox when offline and flush on
  * reconnect, so the app never requires the cloud (ecosystem rule).
  * Load as a classic script; exposes window.Akatsuki.
+ *
+ * R017: errors carry error.code (AK1xx contract · AK2xx outcome · AK3xx client).
+ * publish → { seq, status: pending|skipped|closed|queued, code, delivery, reply }.
+ *   queued = will retry (AK301 offline · AK302 transient, retry:true).  Anything the hub REFUSED throws:
+ *   e.contract (AK1xx — fix the call) or e.refused (auth/RLS — sign in, then publish again).  Never treat queued as sent.
+ * A consume handler may return { defer: 'reason' } — the row stays pending, retried with back-off.
+ * Works against pre-R017 SQL too (old messages still match; defer needs R017).
+ * Sep 26: doc() merges a path held by two owners (calapp_sukkiri.cycles) instead of
+ * keeping only the last; returns rows for per-owner reads. keys() lists my live rows.
  */
 (function () {
   const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
   const stable = (o) => JSON.stringify(o, o && typeof o === 'object' && !Array.isArray(o) ? Object.keys(o).sort() : undefined);
-  const parse = (v) => { if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch { return v; } };
-  /* akatsuki_consume may come back as setof rows, a jsonb array, a jsonb {rows:[…]} envelope,
-     a single composite, or rows wrapped as {akatsuki_consume:{…}}. A bare object used to hit
-     for…of and throw "rows is not iterable" inside listen(), which swallowed it — no ack ever sent. */
-  function normRows(d) {
-    d = parse(d);
-    if (d == null) return [];
-    if (!Array.isArray(d)) d = Array.isArray(d.rows) ? d.rows : Array.isArray(d.items) ? d.items : Array.isArray(d.data) ? d.data : [d];
-    return d.map((x) => {
-      x = parse(x);
-      if (x && typeof x === 'object' && x.seq == null && x.kind == null) { const ks = Object.keys(x); if (ks.length === 1) x = parse(x[ks[0]]); }
-      return x;
-    }).filter((x) => x && typeof x === 'object' && x.seq != null)
-      .map((x) => Object.assign({}, x, { kind: String(x.kind == null ? '' : x.kind).trim(), src_addr: parse(x.src_addr), payload: parse(x.payload) }));
-  }
+  const isContract = (e) => /^AK1\d\d$/.test(e.code || '') || /unknown kind|does not declare|no route|missing required/.test(e.message || '');
+  // R022 (WF v98 ask): refusals a retry can't fix — not signed in, RLS, expired JWT.  Thrown, never queued.
+  const isRefused = (e) => /^(42501|PGRST301|PGRST302|401|403)$/.test(String(e.code || '')) || /permission denied|JWT|not authenticated|row-level security/i.test(e.message || '');
 
   function Akatsuki(supabase, app, opts = {}) {
     if (!supabase || !app) throw new Error('Akatsuki(supabase, appId) — both required');
@@ -37,7 +34,7 @@
 
     async function rpc(fn, args) {
       const { data, error } = await supabase.rpc(fn, args);
-      if (error) throw Object.assign(new Error(error.message), { code: error.code, fn });
+      if (error) throw Object.assign(new Error(error.message), { code: error.code, hint: error.hint, fn, contract: isContract(error) });
       return data;
     }
 
@@ -48,14 +45,15 @@
       async publish({ to, kind, addr, payload, clock, key }) {
         const p = { from_app: app, to_app: to, kind, src_addr: addr, src_clock: clock == null ? null : String(clock), payload,
                     idempotency_key: key || `${app}:${hash(stable(addr))}:${hash(stable(payload))}` };
-        if (!navigator.onLine) { writeBox([...readBox(), p]); log('queued', p.idempotency_key); return { status: 'queued' }; }
+        if (!navigator.onLine) { writeBox([...readBox(), p]); log('queued', p.idempotency_key); return { status: 'queued', code: 'AK301' }; }
         try {
           const rows = await rpc('akatsuki_publish', { p });
           const r = Array.isArray(rows) ? rows[0] : rows;
           log(r.status, r.seq); return r;
         } catch (e) {
-          if (/unknown kind|does not declare|no route|missing required/.test(e.message)) throw e;   // contract errors: never queue
-          writeBox([...readBox(), p]); log('queued after error', e.message); return { status: 'queued', error: e.message };
+          if (isContract(e)) { log('contract', e.code, e.message); throw Object.assign(e, { code: e.code || 'AK100', contract: true }); }   // hub refused the call (kind, route, payload): fix it, never queue
+          if (isRefused(e)) { log('refused', e.code, e.message); throw Object.assign(e, { code: e.code || 'AK303', refused: true }); }   // hub said no: sign in, then re-publish
+          writeBox([...readBox(), p]); log('queued after error', e.message); return { status: 'queued', code: 'AK302', error: e.message, retry: true };
         }
       },
 
@@ -63,28 +61,27 @@
       async flush() {
         const box = readBox(); if (!box.length) return 0;
         const left = [];
-        for (const p of box) { try { await rpc('akatsuki_publish', { p }); } catch (e) { if (!/unknown kind|does not declare|no route|missing required/.test(e.message)) left.push(p); } }
+        for (const p of box) { try { await rpc('akatsuki_publish', { p }); } catch (e) { if (!isContract(e) && !isRefused(e)) left.push(p); else console.warn('[ak] dropped', e.code, e.message); } }
         writeBox(left); return box.length - left.length;
       },
 
       /** Read everything addressed to me past my cursor and hand each row to a handler by kind.
-       *  Handler may return { addr } (the id it created, to record the pair) and/or { reply }.
-       *  Handler may return { defer: reason } to leave the row pending for the next poll (no ack).
-       *  A throwing handler acks 'rejected'. A failed ack is logged and the row stays pending. */
+       *  Handler may return { addr } (the id it created, to record the pair) and/or { reply }. */
       async consume(handlers, limit = 100) {
-        const raw = await rpc('akatsuki_consume', { p_app: app, p_limit: limit });
-        const rows = normRows(raw);
-        if (rows.length) log('consume', rows.length, rows.map((r) => r.seq + ':' + r.kind).join(', '));
-        else if (raw != null && !(Array.isArray(raw) && !raw.length)) log('consume: unrecognised response shape', raw);
+        const rows = await rpc('akatsuki_consume', { p_app: app, p_limit: limit });
         let n = 0;
-        for (const r of rows) {
+        for (const r of rows || []) {
           const h = handlers[r.kind];
-          if (!h) { log('no handler', r.seq, JSON.stringify(r.kind)); await safeAck(r.seq, { status: 'skipped' }); continue; }
+          if (!h) { await hub.ack(r.seq, { status: 'skipped' }); continue; }
           let res;
           try { res = (await h(r)) || {}; }
-          catch (e) { console.error('[akatsuki] handler threw', r.seq, r.kind, e); await safeAck(r.seq, { status: 'rejected' }); continue; }
-          if (res.defer) { log('deferred', r.seq, r.kind, res.defer); continue; }
-          if (await safeAck(r.seq, { addr: res.addr, reply: res.reply })) { log('acked', r.seq, r.kind, res.addr || null); n++; }
+          catch (e) { await hub.ack(r.seq, { status: 'rejected' }); log('rejected', r.seq, e.message); continue; }
+          if (res.defer) {   // row stays pending; a failed defer call must not reject it
+            try { await rpc('akatsuki_defer', { p_app: app, p_seq: r.seq, p_reason: String(res.defer) }); log('deferred', r.seq, res.defer); }
+            catch (e) { log('defer failed (pre-R017?)', r.seq, e.message); }
+            continue;
+          }
+          await hub.ack(r.seq, { addr: res.addr, reply: res.reply }); n++;
         }
         return n;
       },
@@ -105,9 +102,8 @@
        *  Pages on reply_seq (R010), not seq: a late reply or an un-tick moves reply_seq only.
        *  Keep the max reply_seq you've seen and pass it back as sinceSeq. */
       async replies(kind, sinceSeq = 0) {
-        let q = supabase.from('akatsuki_requests').select('seq,reply_seq,kind,src_addr,payload,reply,delivered_at').eq('from_app', app).not('reply', 'is', null).gt('reply_seq', sinceSeq).order('reply_seq');
-        if (kind) q = q.eq('kind', kind);
-        const { data, error } = await q; if (error) throw new Error(error.message); return data;
+        // R017: same shape as consume. Needs R017 on the hub.
+        return (await rpc('akatsuki_replies', { p_app: app, p_kind: kind || null, p_since: sinceSeq || 0 })) || [];
       },
 
       /** Document pattern — write only paths this app owns. The trigger rejects anything else. */
@@ -120,13 +116,48 @@
         const { error } = await supabase.from('akatsuki_state').update({ deleted_at: new Date().toISOString(), updated_by: app }).match({ doc, path, item_key: itemKey ?? '' });
         if (error) throw new Error(error.message);
       },
+      /* ── Places (R023).  The hub owns the list; every app reads it and writes only through these. ── */
+      /** Live places, in display order: [{ id, label, class, aliases, ord, lat, lng, radius_m }] */
+      async places({ withRetired = false } = {}) {
+        let q = supabase.from('akatsuki_places').select('id,label,class,aliases,ord,lat,lng,radius_m,retired_at,seq').order('ord').order('label');
+        if (!withRetired) q = q.is('retired_at', null);
+        const { data, error } = await q;
+        if (error) throw Object.assign(new Error(error.message), { code: error.code });
+        return data;
+      },
+      /** Find by id, label or alias (any spelling: 'Shin-Ōkubo', 'shin-okubo', '@home'). */
+      matchPlace(list, word) {
+        if (!word) return null;
+        const slug = (s) => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const w = slug(word);
+        return list.find(p => p.id === word) || list.find(p => p.id === w || slug(p.label) === w || (p.aliases || []).some(a => slug(a) === w)) || null;
+      },
+      /** Add (or get the existing one).  → { id, label, class, status: 'created' | 'exists' } */
+      async addPlace(label, cls = 'out') { const r = await rpc('akatsuki_place_add', { p_label: label, p_class: cls, p_app: app }); return r && r[0]; },
+      /** Edit label / class / ord / aliases.  The id never changes. */
+      editPlace(id, patch) { return rpc('akatsuki_place_edit', { p_id: id, p: patch, p_app: app }); },
+      /** Retire (never deleted; old tasks still resolve). */
+      retirePlace(id) { return rpc('akatsuki_place_retire', { p_id: id, p_app: app }); },
+
       /** Read a whole doc re-grouped by path: { cycles: [...], away: [...], show: true } */
       async doc(doc) {
         const { data, error } = await supabase.from('akatsuki_docs').select('path,owner_app,items,scalar,seq').eq('doc', doc);
         if (error) throw new Error(error.message);
         const out = {}, owners = {};
-        for (const r of data) { out[r.path] = r.items ?? r.scalar; owners[r.path] = r.owner_app; }
-        return { value: out, owners };
+        for (const r of data) {
+          const v = r.items ?? r.scalar;
+          if (owners[r.path] && Array.isArray(out[r.path]) && Array.isArray(v)) {
+            out[r.path] = out[r.path].concat(v); owners[r.path] += ',' + r.owner_app;
+          } else { out[r.path] = v; owners[r.path] = r.owner_app; }
+        }
+        return { value: out, owners, rows: data };
+      },
+      /** Live item keys this app owns in a doc, as 'path/item_key' — seeds a diff cache. */
+      async keys(doc) {
+        const { data, error } = await supabase.from('akatsuki_state').select('path,item_key')
+          .match({ doc, owner_app: app }).is('deleted_at', null);
+        if (error) throw new Error(error.message);
+        return data.map(r => r.path + '/' + r.item_key);
       },
 
       /** Cached source data (one fetch, many consumers). */
@@ -137,7 +168,7 @@
 
       /** Poll helper: consume on an interval, on focus, and on reconnect. Returns stop(). */
       listen(handlers, ms = 15000) {
-        let t = null; const run = () => hub.consume(handlers).catch(e => console.error('[akatsuki] consume failed', e.message, e.code || ''));
+        let t = null; const run = () => hub.consume(handlers).catch(e => log('consume failed', e.message));
         const onl = () => { hub.flush().then(run); };
         const vis = () => { if (document.visibilityState === 'visible') run(); };
         window.addEventListener('online', onl); document.addEventListener('visibilitychange', vis);
@@ -145,11 +176,6 @@
         return () => { clearInterval(t); window.removeEventListener('online', onl); document.removeEventListener('visibilitychange', vis); };
       }
     };
-
-    async function safeAck(seq, o) {
-      try { await hub.ack(seq, o); return true; }
-      catch (e) { console.error('[akatsuki] ack failed — row stays pending', seq, e.message, e.code || ''); return false; }
-    }
 
     window.addEventListener('online', () => hub.flush().catch(() => {}));
     return hub;

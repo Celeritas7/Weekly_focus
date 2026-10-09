@@ -1,9 +1,10 @@
 /* Weekly Focus — v57 login gate + Vault PIN. Self-contained; loads after weekly-focus-app.js.
    Uses window.__wfSb (the app's Supabase client). Locked = nothing but the login screen is visible.
-   Session policy: 30 days from sign-in, enforced here (Supabase refresh tokens never expire on their own).
+   Session policy (v98.5): stays signed in. Every open renews the clock; you're only asked again after DAYS without opening the app.
+   (Supabase refresh tokens never expire on their own; autoRefreshToken keeps the access token fresh.)
    Vault PIN: 6 digits, SHA-256 hashed in localStorage, asked every session, relocks after 5 min idle. */
 (function () {
-  var DAYS = 30, IDLE_MS = 5 * 60 * 1000, PIN_LEN = 6;
+  var DAYS = 365, IDLE_MS = 5 * 60 * 1000, PIN_LEN = 6;
   var K_AT = "wf_login_at", K_PIN = "wf_vault_pin";
   var $ = function (id) { return document.getElementById(id); };
   var sb = null, email = "", code = "", codeSent = false, screen = "signin", vaultOpen = false, idleT = null, pin = "", pinStage = "enter", pinFirst = "", pending = null;
@@ -35,13 +36,13 @@
         '<div class="wfl-resend">Didn&rsquo;t arrive? <a data-wfl="resend">Send again</a></div>' + keypad() + '</div>';
     } else {
       var expired = screen === "expired";
-      h = '<div class="wfl-band">' + lamp(expired ? 64 : 72) + '<div class="wfl-ttl"><h1 class="wfl-h light">' + (expired ? "Session expired" : "Weekly Focus") + '</h1><p class="wfl-sub light">' + (expired ? DAYS + " days since you last signed in." : "One must, four cans, every week.") + '</p></div></div><div class="wfl-body">' +
+      h = '<div class="wfl-band">' + lamp(expired ? 64 : 72) + '<div class="wfl-ttl"><h1 class="wfl-h light">' + (expired ? "Session expired" : "Weekly Focus") + '</h1><p class="wfl-sub light">' + (expired ? "Not opened for over a year on this device." : "One must, four cans, every week.") + '</p></div></div><div class="wfl-body">' +
         (expired && !navigator.onLine ? '<div class="wfl-note">You&rsquo;re offline. Sign in again when you have signal &mdash; nothing has been lost.</div>' : "") +
         '<button type="button" class="wfl-btn g" data-wfl="google">' + GICON + 'Continue with Google</button><div class="wfl-or">or</div>' +
         '<div><label class="wfl-lab" for="wflEmail">Email</label><input id="wflEmail" class="wfl-in" type="email" autocomplete="email" placeholder="you@example.com" value="' + esc(email) + '"></div>' +
         '<button type="button" class="wfl-btn p" data-wfl="send">Email me a 6-digit code</button>' +
         '<p class="wfl-status' + (warn ? " warn" : "") + '">' + (status || "") + '</p>' +
-        '<p class="wfl-foot">Stays signed in for ' + DAYS + ' days on this device.<br>Everything lives behind sign-in.</p></div>';
+        '<p class="wfl-foot">Stays signed in on this device until you sign out.<br>Everything lives behind sign-in.</p></div>';
     }
     d.innerHTML = h;
     if (screen === "code") { var hi = $("wflHidden"); if (hi) { hi.value = code; hi.addEventListener("input", function () { code = hi.value.replace(/\D/g, "").slice(0, PIN_LEN); paintCodeCells(); if (code.length === PIN_LEN) verify(); }); } }
@@ -86,16 +87,17 @@
     if (event === "SIGNED_IN") { if (!ls(K_AT)) ls(K_AT, String(Date.now())); }
     if (sess && sess.user) {
       if (expired()) { ls(K_AT, null); ls(K_PIN, null); try { await sb.auth.signOut(); } catch (e) {} show("expired"); return; }
-      if (!ls(K_AT)) ls(K_AT, String(Date.now()));
+      ls(K_AT, String(Date.now()));   // sliding: every open while signed in renews it
       email = sess.user.email || email; hide(); paintProfile(sess); return;
     }
     if (event === "SIGNED_OUT") { ls(K_AT, null); ls(K_PIN, null); lockVault(); }
     if (screen !== "code") show(expired() ? "expired" : "signin");
   }
-  function daysLeft() { var at = +ls(K_AT) || Date.now(); return Math.max(0, Math.ceil((at + DAYS * 864e5 - Date.now()) / 864e5)); }
   function paintProfile(sess) {
-    var who = $("authWho"); if (who) who.textContent = (sess.user.email || "your account") + " \u00b7 " + daysLeft() + " days left";
+    var who = $("authWho"); if (who) who.textContent = (sess.user.email || "your account") + " \u00b7 stays signed in";
   }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && ls(K_AT) && !expired()) ls(K_AT, String(Date.now())); });
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
 
   /* ---------------- Vault PIN ---------------- */
   function hasPin() { return !!ls(K_PIN); }

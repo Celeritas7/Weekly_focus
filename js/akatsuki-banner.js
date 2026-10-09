@@ -10,11 +10,16 @@
  *   · reads doc roadmap_now (akatsuki_docs) — Roadmap owns it; this file never writes it
  *   · shows the suggestion while `until` has not passed and this app has not answered it
  *   · Start → publishes suggestion.answered {action:'start'} and STAYS in this app
+ *   · in Roadmap itself (app === 'rm') nothing is published — opts.onAnswer(payload) is called instead (no rm → rm route)
  *   · Skip  → asks for a reason (required), publishes {action:'skip', reason}
  *   · ✕     → {action:'dismiss'}  (counts as a miss in Roadmap)
  *   · an answered id is remembered in localStorage akatsuki_banner_<app> so the nag stops here;
  *     it comes back on the NEXT suggestion — "repeat on every app open" is Roadmap's by issuing a new id
  *   · after `until`: a quiet line "Roadmap has nothing current — open it" (Roadmap only suggests while open)
+ * Layout: fixed to the bottom.  Apps with a bottom tab bar pass opts.bottom (px above the screen edge,
+ *   e.g. the bar's height + 8).  opts.reserve:true pads <body> by the banner's height while it shows,
+ *   so it never covers the last row of content.  opts.mount puts it inside your own element instead (static, not fixed).
+ * The sub-line is the level (Defender / Midplayer / Attacker) — Roadmap's level of the task — and is hidden when absent.
  * Styling inherits the host app's font.  Colours are the hub's: night #07050a, red #c3242b.  🌑 is the icon.
  */
 (function () {
@@ -24,12 +29,19 @@
     const KEY = 'akatsuki_banner_' + app, roadmapUrl = opts.roadmapUrl || null;
     const answered = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; } };
     const markAnswered = (id, action) => localStorage.setItem(KEY, JSON.stringify({ ...answered(), [id]: { action, at: Date.now() } }));
-    let el = null, timer = null, current = null;
+    let el = null, timer = null, current = null, padBase = null;
+    const LEVEL = { defender: 'Defender task', midplayer: 'Midplayer task', attacker: 'Attacker task' };
+    function reserve(on) {
+      if (!opts.reserve || opts.mount || !el) return;
+      const b = document.body; if (padBase === null) padBase = b.style.paddingBottom || '';
+      b.style.paddingBottom = on ? `${el.offsetHeight + (opts.bottom ?? 12) + 8}px` : padBase;
+    }
 
     function node(tag, style, text) { const n = document.createElement(tag); if (style) n.style.cssText = style; if (text != null) n.textContent = text; return n; }
     function mount() {
       if (el) return el;
-      el = node('div', 'position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483000;display:none;gap:10px;align-items:center;padding:12px 14px;border-radius:14px;background:#07050a;color:#efe8e0;border:1px solid #2a2127;box-shadow:0 8px 30px rgba(0,0,0,.45);font:inherit;font-size:14px;line-height:1.35');
+      const pos = opts.mount ? 'position:relative;margin:8px 0;' : `position:fixed;left:12px;right:12px;bottom:calc(${opts.bottom ?? 12}px + env(safe-area-inset-bottom, 0px));z-index:2147483000;`;
+      el = node('div', pos + 'display:none;gap:10px;align-items:center;padding:12px 14px;border-radius:14px;background:#07050a;color:#efe8e0;border:1px solid #2a2127;box-shadow:0 8px 30px rgba(0,0,0,.45);font:inherit;font-size:14px;line-height:1.35');
       el.setAttribute('role', 'status');
       (opts.mount || document.body).appendChild(el);
       return el;
@@ -42,16 +54,21 @@
       if (!current) return;
       const payload = { suggestion_id: current.id, action, at: new Date().toISOString(), app };
       if (reason) payload.reason = reason;
+      if (app === 'rm') {                       // Roadmap answers itself: no hub row, no rm → rm route
+        try { if (opts.onAnswer) await opts.onAnswer(payload, 'rm'); } catch (e) { console.warn('[ak banner] onAnswer', e.message); return; }
+        markAnswered(current.id, action); render(); return;
+      }
       try { await hub.publish({ to: 'rm', kind: 'suggestion.answered', addr: { suggestion_id: current.id }, key: `${app}:ans:${current.id}`, payload }); }
       catch (e) { console.warn('[ak banner]', e.code, e.message); if (e.contract) return; }
       markAnswered(current.id, action); render();
     }
     function render() {
-      const box = mount(); box.replaceChildren(); box.style.display = 'none';
+      const box = mount(); box.replaceChildren(); box.style.display = 'none'; reserve(false);
       if (!current) return;
       const expired = current.until && Date.parse(current.until) < Date.now();
       if (answered()[current.id]) return;
       box.style.display = 'flex';
+      requestAnimationFrame(() => reserve(box.style.display !== 'none'));
       box.appendChild(node('span', 'font-size:18px;flex:none', '🌑'));
       const text = node('div', 'flex:1;min-width:0;display:flex;flex-direction:column;gap:2px');
       if (expired) {
@@ -61,8 +78,10 @@
         box.appendChild(button('✕', 'transparent', '#bfb4aa', () => { markAnswered(current.id, 'seen'); render(); }));
         return;
       }
-      text.appendChild(node('div', 'font-weight:600', current.say || current.title));
-      if (current.say && current.title) text.appendChild(node('div', 'color:#bfb4aa;font-size:12px', current.title + (current.level ? ' · ' + current.level : '')));
+      const head = current.say || current.title;
+      text.appendChild(node('div', 'font-weight:600', head));
+      const sub = [current.title && !head.includes(current.title) ? current.title : null, LEVEL[current.level] || null].filter(Boolean).join(' · ');
+      if (sub) text.appendChild(node('div', 'color:#bfb4aa;font-size:12px', sub));
       box.appendChild(text);
       const actions = node('div', 'display:flex;gap:6px;flex:none');
       actions.appendChild(button('Start', '#c3242b', '#fff', () => answer('start')));
@@ -81,13 +100,18 @@
       } catch (e) { console.warn('[ak banner] read failed', e.message); }
       render();
     }
+    let stopFns = [];
     return {
       hub,
       start(ms = 60000) {
+        if (stopFns.length) return () => this.stop();
         read(); timer = setInterval(read, ms);
-        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') read(); });
-        return () => clearInterval(timer);
+        const onVis = () => { if (document.visibilityState === 'visible') read(); };
+        document.addEventListener('visibilitychange', onVis);
+        stopFns = [() => clearInterval(timer), () => document.removeEventListener('visibilitychange', onVis), () => { reserve(false); if (el) el.style.display = 'none'; }];
+        return () => this.stop();
       },
+      stop() { stopFns.forEach(f => f()); stopFns = []; timer = null; },
       refresh: read,
       current: () => current
     };
