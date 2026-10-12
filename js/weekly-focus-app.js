@@ -395,13 +395,20 @@
       '<button type="button" class="fgp-b none' + (cur.length ? "" : " on") + '" data-act="fgset" data-fg="">No group</button>' +
       '<button type="button" class="fgp-b add" data-act="fgnew">+ New group…</button></div></div>';
   }
-  function fgHead(g, n) {
-    var d = document.createElement("div");
-    if (!g) { d.className = "fg-head none"; d.innerHTML = '<span class="fg-nm">No group</span><span class="fg-n">' + n + '</span>'; return d; }
-    var coll = !!FG_COLL[g.id];
+  /* v102: a group with nothing in the sphere auto-collapses to one line; tapping it opens it for this session */
+  var FG_PEEK = {};
+  function fgSphN(gid) { return fgMembers(gid).filter(function (k) { var it = itemById(k); return it && isActive(it) && inSphere(k); }).length; }
+  function fgAuto(gid, sN) { return sphereOn() && !sN && !FG_PEEK[gid] && !FG_COLL[gid]; }
+  function fgIsColl(gid, sN) { return !!FG_COLL[gid] || fgAuto(gid, sN); }
+  function fgSphTag(sN) { return sphereOn() ? '<span class="fg-sph' + (sN ? " on" : "") + '">' + sN + ' in sphere</span>' : ''; }
+  function sphFirst(list) { return list.filter(function (it) { return inSphere(it.id); }).concat(list.filter(function (it) { return !inSphere(it.id); })); }
+  function fgHead(g, n, sN) {
+    var d = document.createElement("div"); sN = sN || 0;
+    if (!g) { d.className = "fg-head none"; d.innerHTML = '<span class="fg-nm">No group</span><span class="fg-n">' + n + '</span>' + fgSphTag(sN); return d; }
+    var coll = fgIsColl(g.id, sN);
     d.className = "fg-head" + (g.focus ? " focus" : "") + (coll ? " coll" : ""); d.style.setProperty("--fh", fgHue(g));
     d.innerHTML = '<button type="button" class="fg-cv" data-act="fgcoll" data-fg="' + esc(g.id) + '" title="' + (coll ? "Expand" : "Collapse") + '">▾</button>' +
-      '<span class="fg-nm" data-act="fgcoll" data-fg="' + esc(g.id) + '">' + esc(g.name) + '</span><span class="fg-n">' + n + '</span>' + (g.focus ? '<span class="fg-tag">Focus</span>' : '') +
+      '<span class="fg-nm" data-act="fgcoll" data-fg="' + esc(g.id) + '">' + esc(g.name) + '</span><span class="fg-n">' + n + '</span>' + fgSphTag(sN) + (g.focus ? '<span class="fg-tag">Focus</span>' : '') +
       '<span class="fg-acts"><button type="button" class="fg-ib add" data-act="fgadd" data-fg="' + esc(g.id) + '" title="Add apps to this group">+ Apps</button><button type="button" class="fg-ib' + (g.focus ? " on" : "") + '" data-act="fgfocus" data-fg="' + esc(g.id) + '" title="' + (g.focus ? "Remove focus" : "Put this group in focus — shows first") + '">★</button>' +
       '<button type="button" class="fg-ib" data-act="fgren" data-fg="' + esc(g.id) + '" title="Rename">✎</button>' +
       '<button type="button" class="fg-ib arch" data-act="fgarch" data-fg="' + esc(g.id) + '" title="Archive group — hides its apps everywhere">Archive</button></span>';
@@ -411,15 +418,15 @@
     var by = {};
     flatSortActive(active).forEach(function (it) { var gs = fgLiveOf(it.id); if (!gs.length) (by[""] = by[""] || []).push(it); gs.forEach(function (g) { (by[g.id] = by[g.id] || []).push(it); }); });
     fgLive().forEach(function (g) {
-      var items = by[g.id] || [];
-      host.appendChild(fgHead(g, items.length));
-      if (FG_COLL[g.id]) return;
+      var items = sphFirst(by[g.id] || []), sN = items.filter(function (it) { return inSphere(it.id); }).length;   // v102: sphere apps first
+      host.appendChild(fgHead(g, items.length, sN));
+      if (fgIsColl(g.id, sN)) return;
       if (g.note) { var nt = document.createElement("div"); nt.className = "fg-note"; nt.textContent = g.note; host.appendChild(nt); }
       if (!items.length) { var em = document.createElement("div"); em.className = "fg-empty"; em.textContent = "No apps on the Week tab in this group."; host.appendChild(em); }
       items.forEach(function (it) { host.appendChild(itemCard(it.id)); });
     });
-    var rest = by[""] || [];
-    if (rest.length) { host.appendChild(fgHead(null, rest.length)); rest.forEach(function (it) { host.appendChild(itemCard(it.id)); }); }
+    var rest = sphFirst(by[""] || []);
+    if (rest.length) { host.appendChild(fgHead(null, rest.length, rest.filter(function (it) { return inSphere(it.id); }).length)); rest.forEach(function (it) { host.appendChild(itemCard(it.id)); }); }
   }
   function fgTail(host) {
     if (VIEW_FOCUS) { var bar = document.createElement("div"); bar.className = "fg-tailbar"; bar.innerHTML = '<button type="button" class="fg-new main" data-act="fgassign">Assign apps to groups\u2026</button><button type="button" class="fg-new" data-act="fgnew">+ New group</button>'; host.appendChild(bar); }
@@ -1679,7 +1686,13 @@
     if (/^fg(coll|focus|ren|arch|rest|del|add)$/.test(a)) {
       var fgg = fgById(act.getAttribute("data-fg")); if (!fgg) return;
       if (a === "fgadd") { openFgSheet(fgg.id); return; }
-      if (a === "fgcoll") { FG_COLL[fgg.id] = !FG_COLL[fgg.id]; fgSaveLocal(); renderCols(); return; }
+      if (a === "fgcoll") {   // v102: open an auto-collapsed group for this session, else toggle as before
+        var sN0 = fgSphN(fgg.id);
+        if (fgAuto(fgg.id, sN0)) FG_PEEK[fgg.id] = true;
+        else if (FG_PEEK[fgg.id] && !FG_COLL[fgg.id] && sphereOn() && !sN0) delete FG_PEEK[fgg.id];
+        else { FG_COLL[fgg.id] = !FG_COLL[fgg.id]; fgSaveLocal(); }
+        renderCols(); return;
+      }
       if (a === "fgfocus") { fgg.focus = !fgg.focus; fgPushGroup(fgg); renderCols(); return; }
       if (a === "fgren") { var rn = prompt("Rename group", fgg.name); if (rn && rn.trim()) { fgg.name = rn.trim(); fgPushGroup(fgg); renderCols(); } return; }
       if (a === "fgarch") { fgArchive(fgg, true); return; }
@@ -2004,8 +2017,68 @@
   function dropClient() { if (authSub) { try { authSub.unsubscribe(); } catch (e) {} authSub = null; } sb = null; session = null; }
 
   function queue(qkey, op) { outbox[qkey] = op; saveOutbox(); flushOutbox(); updateCloudStatus(); }
+  /* ---- v102 guards: never let one save empty a list the cloud still has. SNAP = last copy seen in the cloud. ---- */
+  var SNAP = { meta: null, inv: null, tl: null, ib: null }, HELD = {}, invDirty = false;
+  var GUARD_KEYS = { cvault: "Vault", cchats: "Chats", wish: "Wishlist", places: "Places", routines: "Routines", links: "Dev links" };
+  function gLen(v) { return Array.isArray(v) ? v.length : (v && typeof v === "object") ? Object.keys(v).length : 0; }
+  function deep(v) { try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; } }
+  function gAllow() { return window.__wfAllowEmpty === true; }   // console override for a deliberate wipe
+  function gBlocked(what) { console.warn("[wf] v102 guard blocked a save that would empty: " + what); toast("Blocked: that save would have emptied " + what + ". The cloud copy is kept."); setTimeout(function () { try { renderAll(); if (typeof renderChats === "function") renderChats(); } catch (e) {} }, 0); }
+  function guardMeta() {
+    if (!SNAP.meta || gAllow()) return [];
+    var hit = [];
+    Object.keys(GUARD_KEYS).forEach(function (k) { if (gLen(SNAP.meta[k]) > 0 && gLen(meta[k]) === 0) { meta[k] = deep(SNAP.meta[k]); hit.push(GUARD_KEYS[k]); } });
+    return hit;
+  }
+  /* v102: export the whole board to a .json file — a button in the Cloud panel + automatically once a day on desktop */
+  function exportBoard(auto) {
+    var day = new Date().toISOString().slice(0, 10);
+    var data = { exportedAt: nowISO(), build: "v102", board: cloud.board, account: session && session.user ? session.user.email : null,
+      targetOrder: targetOrder, meta: meta, entries: entries, inventory: { apps: state.apps, study: state.study, office: state.office || [] },
+      groups: (typeof FG !== "undefined" && FG) ? { groups: FG.groups, members: FG.map } : null };
+    var blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "weekly-focus-" + cloud.board + "-" + day + ".json";
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    try { localStorage.setItem("wf2_last_export", day); } catch (e) {}
+    toast(auto ? "Daily backup saved to Downloads" : "Board exported to Downloads");
+  }
+  /* v102.1: the daily file is per DEVICE — only devices where "Daily backup on this device" is ticked download it.
+     The setting lives in this browser's localStorage, not in the cloud, so each device decides for itself. */
+  function autoExportOn() {
+    try { return localStorage.getItem("wf2_auto_export") === "1"; } catch (e) { return false; }   // off by default — tick it per device
+  }
+  function paintAutoExport() { var cb = $("cloudAutoExport"); if (cb) cb.checked = autoExportOn(); }
+  document.addEventListener("change", function (e) {
+    if (!e.target || e.target.id !== "cloudAutoExport") return;
+    try { localStorage.setItem("wf2_auto_export", e.target.checked ? "1" : "0"); } catch (x) {}
+    toast(e.target.checked ? "Daily backup on \u2014 this device will save a .json on the first sync each day." : "Daily backup off on this device. Export board still works any time.");
+    if (e.target.checked) autoExport();
+  });
+  function autoExport() {
+    if (!autoExportOn()) return;
+    if (!window.matchMedia || !window.matchMedia("(pointer:fine)").matches) return;   // desktop only — phones would pop a share sheet
+    if (!boardPulled || !invPulled) return;
+    var day = new Date().toISOString().slice(0, 10);
+    try { if (localStorage.getItem("wf2_last_export") === day) return; } catch (e) { return; }
+    if (!(gLen(meta.cvault) || gLen(meta.cchats) || state.apps.length)) return;   // never "back up" an empty board
+    exportBoard(true);
+  }
+  document.addEventListener("click", function (e) { if (!e.target) return; if (e.target.id === "cloudExport") exportBoard(false); if (e.target.id === "cloudPill" || e.target.closest("#cloudPill")) setTimeout(paintAutoExport, 0); });
+  function blobField(key) { return key === TL_ITEM ? "notes" : "items"; }
+  function mergeById(remote, local) {
+    var out = (remote || []).slice(), seen = {};
+    out.forEach(function (x) { seen[x && x.id != null ? "i:" + x.id : "j:" + JSON.stringify(x)] = 1; });
+    (local || []).forEach(function (x) { var k = x && x.id != null ? "i:" + x.id : "j:" + JSON.stringify(x); if (!seen[k]) { out.push(x); seen[k] = 1; } });
+    return out;
+  }
   function cloudPushEntry(key, payload) {
     if (!cloudConfigured()) return;
+    if (key === TL_ITEM || key === IB_ITEM) {   // v102: Timeline / Inbox — held until pulled, and never emptied by one save
+      if (!boardPulled) { HELD[key] = deep(payload); return; }
+      var f = blobField(key), snap = key === TL_ITEM ? SNAP.tl : SNAP.ib;
+      if (snap && gLen(snap[f]) > 0 && gLen(payload && payload[f]) === 0 && !gAllow()) { entries[key] = deep(snap); save(); gBlocked(key === TL_ITEM ? "Timeline notes" : "Inbox"); return; }
+      if (key === TL_ITEM) SNAP.tl = deep(payload); else SNAP.ib = deep(payload);
+    }
     if (rmItemKey(key)) rmSoon();
     queue("entry:" + key, { table: "weekly_focus_entries", onConflict: "user_id,board_id,item_key", row: { board_id: cloud.board, item_key: key, payload: payload, updated_at: nowISO() } });
   }
@@ -2019,10 +2092,15 @@
   var boardPulled = false, boardDirty = false;
   function cloudPushBoard() {
     if (!boardPulled) { boardDirty = true; return; }
+    var hit = guardMeta(); if (hit.length) { save(); gBlocked(hit.join(", ")); }   // v102: emptied lists are put back from the cloud copy before saving
     boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta, u: boardU });
+    SNAP.meta = deep(meta);
   }
   function cloudPushInv() {
     if (!cloudConfigured()) return;
+    if (!invPulled) { invDirty = true; return; }   // v102: before the first pull the list is empty in memory — never push that
+    if (SNAP.inv && !gAllow() && ((SNAP.inv.apps > 0 && !state.apps.length) || (SNAP.inv.study > 0 && !state.study.length))) { gBlocked("your app / study list"); cloudPullInventory(true); return; }
+    SNAP.inv = { apps: state.apps.length, study: state.study.length };
     queue("inv", { table: "weekly_focus_inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, apps: state.apps, study: state.study, office: state.office || [], updated_at: invTs || nowISO() } });
   }
 
@@ -2120,7 +2198,7 @@
         if (qk.indexOf("entry:") === 0) map[outbox[qk].row.item_key] = outbox[qk].row.payload;
         if (qk.indexOf("del:") === 0) { delete map[qk.slice(4)]; delete remoteSubsBy[qk.slice(4)]; }
       });
-      if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; delete map[BOARD_ITEM]; if ((b.u || 0) >= boardU) { if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; boardU = b.u || 0; } }
+      if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; SNAP.meta = deep(b.meta || {}); delete map[BOARD_ITEM]; if ((b.u || 0) >= boardU) { if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; boardU = b.u || 0; } }
       var wasPulled = boardPulled; boardPulled = true;
       if (!wasPulled && boardDirty) { boardDirty = false; cloudPushBoard(); }   // v100: a pre-pull edit goes up only now, on top of the real meta
       Object.keys(map).forEach(function (k) {                     // union-merge subtasks: remote ∪ local-current
@@ -2131,6 +2209,13 @@
         if (subsDiffer(remoteSubs, merged)) cloudPushEntry(k, map[k]);   // converge server; gate prevents push storms
       });
       entries = map; save();
+      SNAP.tl = map[TL_ITEM] ? deep(map[TL_ITEM]) : SNAP.tl; SNAP.ib = map[IB_ITEM] ? deep(map[IB_ITEM]) : SNAP.ib;   // v102
+      [TL_ITEM, IB_ITEM].forEach(function (hk) {   // v102: a Timeline / Inbox edit made before the pull is merged on top of the real list
+        if (!HELD[hk]) return; var f = blobField(hk), held = HELD[hk]; delete HELD[hk];
+        entries[hk] = Object.assign({}, entries[hk], { u: Date.now() }); entries[hk][f] = mergeById((map[hk] || {})[f], held[f]);
+        save(); cloudPushEntry(hk, entries[hk]);
+      });
+      setTimeout(autoExport, 1500);   // v102: daily backup file (desktop)
       // Only touch the DOM when the board actually changed — otherwise the 15s
       // poll / tab-return needlessly rebuilds everything and flashes. Animate the
       // entrance only on the first load, never on a routine background sync.
@@ -2147,7 +2232,10 @@
       var r = await sb.from("weekly_focus_inventory").select("apps,study,office,updated_at").eq("board_id", cloud.board).limit(1);
       if (r.error) throw r.error;
       invPulled = true;
-      var rows = r.data || []; if (!rows.length) return false;
+      var rows = r.data || [];
+      SNAP.inv = rows.length ? { apps: (rows[0].apps || []).length, study: (rows[0].study || []).length } : { apps: 0, study: 0 };   // v102
+      if (invDirty) { invDirty = false; toast("An app-list change made while loading wasn\u2019t saved \u2014 please redo it."); }
+      if (!rows.length) return false;
       var remoteTs = rows[0].updated_at || "";
       var hasInvPending = !!outbox["inv"];
       if (force || (!hasInvPending && (!invTs || remoteTs > invTs))) {

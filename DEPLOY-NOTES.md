@@ -1,30 +1,31 @@
-# v101 — Sphere (replaces The Five) · local only, not deployed
+# v102 — data guards + daily export + history trigger + Label group headers · local only, not deployed
 
-Built on v100. Copy these four files over `Weekly_focus/`, then reload twice:
-- `index.html`
+Built on v101. Copy over `Weekly_focus/`, then reload twice:
+- `index.html` (adds **Export board** to the Cloud panel)
 - `js/weekly-focus-app.js`
-- `css/weekly-focus.css` (new rules appended at the end)
-- `sw.js` (cache → `weekly-focus-v101`)
+- `css/weekly-focus.css` (v102 rules appended at the end)
+- `sw.js` (cache → `weekly-focus-v102`)
 
-## What you'll see
-- **◎ Sphere** where The Five was. Top row = the five targets (same cards as before: rank, Must/Can, subtasks, tick, ×). Under it, **Also in the sphere** — every other app/topic you pulled in, ordered by rank. No limit.
-- **Columns unchanged.** Items in the sphere are outlined; everything else is faint. Hover, tap or open a faint card and it's full strength — fully usable.
-- **◎ button** on every card (replaces the ☆ star): tap to pull in / take out.
-- **Add to sphere**: the dashed tile opens the picker — tap rows to toggle, no limit.
-- **Ranking**: the rank badge on any app — rank 1–5 makes it a target. Dropping a sphere tile or a column card into the top row makes it a target at that slot; the last target slides down to "Also in the sphere".
-- × on a target or tile takes it out of the sphere; the next-ranked sphere item moves up into the free slot.
+Then run `history-trigger-v102.sql` in Supabase → SQL Editor, one numbered block at a time.
 
-## Data
-- Sphere membership is `sph: true` on each item's own row in `weekly_focus_entries` — **not** inside `__board`. A bad board save can't wipe it.
-- The Five is still `targetOrder` on `__board` (unchanged), so Today, Print and Claude/SQL readers keep working.
-- Your current targets join the sphere the first time you add anything.
+## Protection
+1. **Shrink guard** — a save that would empty the Vault, Chats, Wishlist, Places, Routines or Dev links while the cloud copy still has items is blocked: the cloud copy is put back and a toast says so. Same for Timeline notes, Inbox and the app / study list.
+   Deliberately clearing one of those for real: in the console run `__wfAllowEmpty = true`, do it, then reload.
+2. **Push guard** — Timeline and Inbox edits made before the first sync are held and merged on top of the real list (not pushed over it). App-list edits before the first sync are not saved (toast asks you to redo).
+3. **Daily export** — on desktop, the first sync of each day saves `weekly-focus-my_week-YYYY-MM-DD.json` to Downloads. Skipped if the board is empty. **Export board** in the Cloud panel does it any time.
+4. **History trigger (SQL)** — every overwrite of `__board`, `__timeline`, `__inbox` and the inventory row keeps the previous copy for 30 days (at most one per 10 min per row, but any save that shrinks a row by >10 % is always kept). Restore query is at the bottom of the SQL file.
 
-## Review fixes (same build)
-- "Also in the sphere" tiles drag as items (not targets) — dropping one into the top row now works.
-- Ranking via the popover keeps the pushed-out #5 in the sphere.
-- Free-slot auto-fill only runs when a slot is actually free.
+## v102.1 — daily backup is per device
+Cloud panel → **Daily backup on this device** checkbox. Stored in this browser only (localStorage), so each device decides for itself. **Off by default on every device** — tick it on the device(s) you want. Export board stays available on every device.
+Files changed: `index.html`, `js/weekly-focus-app.js`, `sw.js` (cache → `weekly-focus-v102-1`).
 
-## Check (console)
-```js
-({inSphere: document.querySelectorAll('.item.insph').length, faintCols: document.querySelectorAll('.col.sph-on').length, alsoTiles: document.querySelectorAll('.sph-t').length})
-```
+## Look
+- Group headers are now a plain label: colour dot · name · "N in sphere" · + Apps, on a hairline. ★ ✎ Archive appear on hover (always shown on touch when the group is open).
+- Groups with nothing in the sphere auto-collapse to one dashed line; tap to open for this session.
+- Sphere apps come first inside each group.
+- App cards are white; priority stays as the coloured left edge.
+
+## Check
+- Cloud panel shows **Export board**; clicking it downloads a .json.
+- Console: `({sph: document.querySelectorAll('.fg-sph').length, collapsed: document.querySelectorAll('.fg-head.coll').length})`
+- SQL block 4 lists rows after an edit.
