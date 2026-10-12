@@ -271,12 +271,12 @@
   /* ---------------- targets (The Five) ---------------- */
   var MAX_TARGETS = 5;
   function isTarget(k) { return targetOrder.indexOf(k) >= 0; }
-  function addTarget(k) { if (isTarget(k) || targetOrder.length >= MAX_TARGETS) return false; targetOrder.push(k); save(); cloudPushBoard(); return true; }
+  function addTarget(k) { if (isTarget(k) || targetOrder.length >= MAX_TARGETS) return false; targetOrder.push(k); sphFlag(k); save(); cloudPushBoard(); return true; }
   function addTargetAt(k, at) {
     if (isTarget(k)) return false;
     if (typeof at !== "number" || at < 0) return addTarget(k);
     if (targetOrder.length >= MAX_TARGETS) targetOrder.pop();   // last Can drops back to Will
-    targetOrder.splice(Math.min(at, targetOrder.length), 0, k); save(); cloudPushBoard(); return true;
+    targetOrder.splice(Math.min(at, targetOrder.length), 0, k); sphFlag(k); save(); cloudPushBoard(); return true;
   }
   function removeTarget(k) { var i = targetOrder.indexOf(k); if (i >= 0) { targetOrder.splice(i, 1); if (entries[k]) patch(k, { targetDone: false }); save(); cloudPushBoard(); } }
   function targetDone(k) { return getEntry(k).targetDone === true; }
@@ -296,8 +296,9 @@
     n = Math.max(1, Math.min(list.length + 1, Math.round(n) || 1));
     list.splice(n - 1, 0, id);
     var appsInFive = list.slice(0, MAX_TARGETS), others = targetOrder.filter(function (k) { return kindOf(k) !== "app"; });
+    targetOrder.forEach(sphFlag);   // v101: whoever gets pushed out of the five stays in the sphere
     var wasDone = {}; targetOrder.forEach(function (k) { wasDone[k] = targetDone(k); });
-    targetOrder = appsInFive.concat(others).slice(0, MAX_TARGETS);
+    targetOrder = appsInFive.concat(others).slice(0, MAX_TARGETS); appsInFive.forEach(sphFlag);   // v101: a ranked target stays in the sphere when it drops to 6+
     list.forEach(function (k, i) { var e = getEntry(k); if (e.rank !== i + 1) patch(k, { rank: i + 1 }); if (i >= MAX_TARGETS && e.targetDone) patch(k, { targetDone: false }); });
     save(); cloudPushBoard(); renderAll();
     var role = rankRole(n); toast(labelFor(id).name + " \u2192 #" + n + (role ? " \u00b7 " + role : ""));
@@ -443,6 +444,51 @@
     var role = rankRole(r);
     return '<button type="button" class="rk' + (role ? " rk-" + role.toLowerCase() : "") + (RANK_OPEN === id ? " open" : "") + '" data-act="rank" title="' + (role ? role + " \u2014 rank " + r : "Rank " + r) + ' \u2014 tap to change">' + r + '</button>' + (RANK_OPEN === id ? rankPopHtml(id) : "");
   }
+  /* ---- v101 Sphere: any number of apps / topics this week. The top five by rank ARE The Five (targetOrder);
+     the rest sit under "Also in the sphere". Membership = entries[id].sph — a per-item row, never the __board blob.
+     Items outside the sphere stay in their columns, faint. ---- */
+  function sphFlag(k) { if (getEntry(k).sph !== true) patch(k, { sph: true }); }
+  function inSphere(k) { return isTarget(k) || getEntry(k).sph === true; }
+  function sphereExtras() {
+    var ra = rankedApps();
+    return activeItems("app").concat(activeItems("study"), activeItems("office"))
+      .filter(function (x) { return !isSpecialItem(x) && !isTarget(x.id) && getEntry(x.id).sph === true; })
+      .map(function (x) { return x.id; })
+      .sort(function (a, b) { var ia = ra.indexOf(a), ib = ra.indexOf(b); if (ia < 0) ia = 1e6; if (ib < 0) ib = 1e6; return ia - ib || labelFor(a).name.toLowerCase().localeCompare(labelFor(b).name.toLowerCase()); });
+  }
+  function sphereCount() { return targetOrder.length + sphereExtras().length; }
+  function sphereOn() { return targetOrder.length > 0 || sphereExtras().length > 0; }
+  function sphereFill() { var ex = sphereExtras(), ch = false; while (targetOrder.length < MAX_TARGETS && ex.length) { targetOrder.push(ex.shift()); ch = true; } return ch; }   // a free target slot pulls up the next-ranked sphere item
+  function sphereAdd(k, at) {
+    if (isTarget(k) || (inSphere(k) && typeof at !== "number")) return false;
+    targetOrder.forEach(sphFlag);   // pre-v101 targets join the sphere so a push to 6+ never drops them
+    sphFlag(k);
+    if (typeof at === "number" && at < MAX_TARGETS) addTargetAt(k, at);
+    else if (targetOrder.length < MAX_TARGETS) addTarget(k);
+    syncRanks(); return true;
+  }
+  function sphereRemove(k) {
+    removeTarget(k); if (getEntry(k).sph) patch(k, { sph: false });
+    if (sphereFill()) { save(); cloudPushBoard(); }
+    syncRanks();
+  }
+  function sphTile(k) {
+    var lab = labelFor(k), prog = subProgress(k), kd = kindOf(k), nx = nextSub(k);
+    return '<div class="sph-t k-' + kd + '" data-key="' + esc(k) + '" draggable="true">' +
+      '<div class="sph-th">' + (kd === "app" ? rankBadge(k) : '<span class="sph-k">' + (kd === "study" ? "Study" : "Office") + '</span>') +
+      '<span class="sph-cr">' + esc(lab.crumb || "") + '</span></div>' +
+      '<button type="button" class="sph-x" data-act="sphrm" title="Take out of the sphere">\u00d7</button>' +
+      '<div class="sph-nm">' + esc(lab.name) + '</div>' + (nx ? '<div class="sph-nx">' + esc(nx) + '</div>' : '') +
+      (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div><div class="sph-m">' + prog.done + '/' + prog.total + ' subtasks</div>' : '') + '</div>';
+  }
+  function renderSphereMore() {
+    var mh = $("sphereMore"); if (!mh) return;
+    var ex = sphereExtras(), full = targetOrder.length >= MAX_TARGETS;
+    var add = full ? '<button type="button" class="sph-add" data-act="tpick">+ Add to sphere<br><span>or drag a card up here</span></button>' : '';
+    mh.innerHTML = ex.length
+      ? '<div class="sph-div"><span class="sph-dl">Also in the sphere</span><i></i><span class="sph-dh">' + ex.length + ' \u00b7 rank one 1\u20135 or drag it into the top row to make it a target</span></div><div class="sph-grid">' + ex.map(sphTile).join("") + add + '</div>'
+      : (add ? '<div class="sph-grid sph-grid-solo">' + add + '</div>' : '');
+  }
 
   /* ============================================================
      RENDER
@@ -454,7 +500,8 @@
   var DRAG = { id: null, type: null, kind: null };
 
   function renderAll() {
-    pruneTargets(); renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome(); if (FGS.open) { paintFgsTabs(); paintFgsList(); }
+    pruneTargets(); if (targetOrder.length < MAX_TARGETS && (boardPulled || !cloudConfigured()) && sphereFill()) { save(); cloudPushBoard(); }   // v101: a free target slot pulls up the next sphere item
+    renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome(); if (FGS.open) { paintFgsTabs(); paintFgsList(); }
     if (ENTER) { ENTER = false; setTimeout(function () { var ns = document.querySelectorAll(".wf-enter"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("wf-enter"); }, 720); }
     lastCloudSig = boardSig();
   }
@@ -464,7 +511,7 @@
     var pct = total ? done / total : 0;
     var el = $("pulse");
     var msg;
-    if (!total) msg = "Pick up to five targets below \u2014 the things that actually have to move this week.";
+    if (!total) msg = "Pull apps into the sphere below \u2014 its top five by rank are this week\u2019s targets.";
     else if (done === total) msg = "<b>Every target cleared.</b> Re-curate for next week, or print the sheet.";
     else msg = "<b>" + done + " of " + total + "</b> targets done. Stay on the five \u2014 everything else is just noise.";
     el.innerHTML =
@@ -507,24 +554,18 @@
         '<div class="tmeta">' + m + '</div>' +
         (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div>' : '') +
         subList +
-        '<button class="tdrop" data-act="tdrop" title="Remove from focus">\u00d7</button>';
+        '<button class="tdrop" data-act="tdrop" title="Take out of the sphere">\u00d7</button>';
       grid.appendChild(card);
     });
     if (targetOrder.length < MAX_TARGETS) {
       var add = document.createElement("div");
       add.className = "tcard empty"; add.setAttribute("data-act", "tpick");
-      add.innerHTML = '<span class="plus">+</span><span class="etxt">Add target</span>';
+      add.innerHTML = '<span class="plus">+</span><span class="etxt">Add to sphere</span>';
       grid.appendChild(add);
     }
-    var wid = willId();
-    if (wid && targetOrder.length >= MAX_TARGETS) {
-      var wl = labelFor(wid), wc = document.createElement("div");
-      wc.className = "tcard will"; wc.setAttribute("data-key", wid);
-      wc.innerHTML = '<div class="thead"><span class="tnum">06</span><span class="trole trole-will">Will</span><span class="trule"></span></div>' +
-        '<div class="ttitle">' + esc(wl.name) + '</div><div class="tmeta">next up \u2014 moves in when a slot frees</div>';
-      grid.appendChild(wc);
-    }
-    $("fiveCount").textContent = targetOrder.length + "/" + MAX_TARGETS;
+    var sc = sphereCount();   // v101: the Will card is gone — rank 6+ lives under "Also in the sphere"
+    $("fiveCount").textContent = targetOrder.length + "/" + MAX_TARGETS + (sc > targetOrder.length ? " \u00b7 " + sc + " in sphere" : "");
+    renderSphereMore();
   }
 
   /* ---- scheduled tasks: date (+ optional time) on Special subtasks ---- */
@@ -1364,6 +1405,7 @@
     else flatSortActive(active).forEach(function (it) { host.appendChild(itemCard(it.id)); });
 
     if (kind === "app") fgTail(host);
+    var colEl = host.closest(".col"); if (colEl) colEl.classList.toggle("sph-on", sphereOn());   // v101: outside the sphere = faint
     $(ids.wrap).style.display = backlog.length ? "" : "none";
     $(ids.bn).textContent = backlog.length;
     function brow(it) {
@@ -1454,13 +1496,13 @@
   function itemCard(id) {
     var open = !!detailOpen[id], prog = subProgress(id), pri = priOf(id);
     var li = document.createElement("div");
-    li.className = "item" + (pri ? " pri-" + pri : "") + (open ? " open" : "");
+    li.className = "item" + (pri ? " pri-" + pri : "") + (open ? " open" : "") + (inSphere(id) ? " insph" : "");
     li.setAttribute("data-key", id); li.setAttribute("data-kind", kindOf(id));
     if (!open) li.setAttribute("draggable", "true");   // collapsed cards drag; open ones are being edited
     var ring = prog
       ? '<div class="miniring" title="' + prog.done + ' of ' + prog.total + ' subtasks done">' + ringSVG(prog.pct, 26, 3.5, { t: "mt", f: "mf" }) + '<span class="mn">' + prog.done + '/' + prog.total + '</span></div>'
       : '';
-    var starOn = isTarget(id), starFull = !starOn && targetOrder.length >= MAX_TARGETS;
+    var starOn = inSphere(id), tIx = targetOrder.indexOf(id);
     var updOn = !!getEntry(id).upd;
     var it = itemById(id);
     li.innerHTML =
@@ -1470,7 +1512,7 @@
         '</div>' +
         '<div class="item-actions">' + ring +
           '<button class="updflag' + (updOn ? " on" : "") + '" data-act="flagupd" title="' + (updOn ? "Update pending — click to clear" : "Flag a pending update / prompt for Claude") + '">' + IC.flag + '</button>' +
-          '<button class="star' + (starOn ? " on" : "") + '" data-act="star"' + (starFull ? " disabled" : "") + ' title="' + (starOn ? "In The Five" : starFull ? "The Five is full" : "Add to The Five") + '">' + IC.star + '</button>' +
+          '<button type="button" class="orb' + (starOn ? " on" : "") + '" data-act="star" title="' + (tIx >= 0 ? "Target #" + (tIx + 1) + " in the sphere \u2014 tap to take out" : starOn ? "In the sphere \u2014 tap to take out" : "Pull into the sphere") + '">\u25CE</button>' +
           '<button class="caret-btn" data-act="open">' + IC.chev + '</button>' +
           '<button class="tgl on" data-act="off" title="Move to backlog"><span class="knob"></span></button>' +
         '</div>' +
@@ -1553,9 +1595,9 @@
     activeItems("app").forEach(function (a) { if (isSpecialItem(a)) return; rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
     activeItems("study").forEach(function (s) { if (isSpecialItem(s)) return; rows.push({ key: s.id, name: s.name, crumb: s.group, tag: "Study", color: "oklch(0.55 0.13 " + hueFor(s.group) + ")" }); });
     activeItems("office").forEach(function (o) { if (isSpecialItem(o)) return; rows.push({ key: o.id, name: o.name, crumb: o.group, tag: "Office", color: "var(--office)" }); });
-    if (!rows.length) { body.innerHTML = '<div class="modal-empty">No active items yet.<br>Switch on an app or topic first, then pick your targets from them.</div>'; }
+    if (!rows.length) { body.innerHTML = '<div class="modal-empty">No active items yet.<br>Switch on an app or topic first, then pull it into the sphere.</div>'; }
     else rows.forEach(function (r) {
-      var taken = isTarget(r.key);
+      var taken = inSphere(r.key);
       var b = document.createElement("button");
       b.className = "pick" + (taken ? " taken" : ""); b.setAttribute("data-pick", r.key);
       b.innerHTML = '<span class="pdot" style="background:' + r.color + '"></span>' +
@@ -1597,7 +1639,7 @@
 
   document.addEventListener("click", function (e) {
     var pk = e.target.closest("[data-pick]");
-    if (pk) { var k = pk.getAttribute("data-pick"); if (addTarget(k)) { renderAll(); openPicker(); } else toast("The Five is full \u2014 remove one first."); return; }
+    if (pk) { var k = pk.getAttribute("data-pick"); if (inSphere(k)) sphereRemove(k); else sphereAdd(k); renderAll(); openPicker(); return; }   // v101: picker toggles sphere membership, no limit
     var rp = e.target.closest("[data-rank]");
     if (rp) { var rpid = rp.closest("[data-rankpop]").getAttribute("data-rankpop"); RANK_OPEN = null; setRank(rpid, +rp.getAttribute("data-rank")); return; }
     if (RANK_OPEN && !e.target.closest(".rankpop") && !e.target.closest("[data-act=\"rank\"]")) { RANK_OPEN = null; renderCols(); renderFive(); }
@@ -1619,7 +1661,8 @@
       if (nowAll && !wasAll) celebrate();
       toastMaybeDone(); return;
     }
-    if (a === "tdrop") { removeTarget(act.closest("[data-tkey]").getAttribute("data-tkey")); renderAll(); return; }
+    if (a === "tdrop") { var tdk = act.closest("[data-tkey]").getAttribute("data-tkey"); sphereRemove(tdk); renderAll(); toast(labelFor(tdk).name + " taken out of the sphere"); return; }
+    if (a === "sphrm") { var srk = keyOf(act); if (srk) { sphereRemove(srk); renderAll(); toast(labelFor(srk).name + " taken out of the sphere"); } return; }
 
     var key = keyOf(act);
     if (a === "rank") { RANK_OPEN = RANK_OPEN === key ? null : key; renderCols(); renderFive(); return; }
@@ -1708,9 +1751,11 @@
     if (a === "sparch") { patch(key, { arch: true }); if (SP_OPEN === key) closeLifeSheet(); toast("Archived \u2014 it\u2019s in the Archive tile, still in the cloud."); renderAll(); return; }
     if (a === "spunarch") { patch(key, { arch: false }); renderAll(); return; }
     if (a === "flagupd") { var wasUpd = !!getEntry(key).upd; patch(key, { upd: !wasUpd }); toast(wasUpd ? "Update flag cleared." : "Flagged \u2014 pending update for Claude."); renderAll(); return; }
-    if (a === "star") {
-      if (isTarget(key)) { removeTarget(key); } else if (!addTarget(key)) { toast("The Five is full \u2014 remove one first."); return; }
-      renderAll(); return;
+    if (a === "star") {   // v101: the ◎ button — in / out of the sphere
+      var snm = labelFor(key).name;
+      if (inSphere(key)) { sphereRemove(key); renderAll(); toast(snm + " back to faint"); }
+      else { sphereAdd(key); renderAll(); var six = targetOrder.indexOf(key); toast(snm + (six >= 0 ? " \u2192 target #" + (six + 1) : " pulled into the sphere")); }
+      return;
     }
     if (a === "del") {
       var it = itemById(key); if (!it) return;
@@ -1945,6 +1990,9 @@
 
     var sub = sb.auth.onAuthStateChange(function (event, sess) {
       session = sess || null;
+      var uidNow = session && session.user ? session.user.id : null;
+      if (event === "SIGNED_OUT" || (uidNow && lastUid && uidNow !== lastUid)) { resetBoardState(); ENTER = true; renderAll(); }   // v100
+      if (uidNow) lastUid = uidNow;
       renderAuthUI(); updateCloudStatus();
       var cm = $("cloudModal"); if (cm && cm.classList.contains("open")) cloudSetStatus(cloudSummary());
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) Promise.resolve(initialSync()).then(akStart);
@@ -1966,7 +2014,13 @@
     delete outbox["entry:" + key];                    // drop any pending upsert for it
     queue("del:" + key, { method: "delete", table: "weekly_focus_entries", match: { board_id: cloud.board, item_key: key } });
   }
-  function cloudPushBoard() { boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta, u: boardU }); }
+  /* v100: never push the __board row before it has been pulled — an empty in-memory meta would overwrite
+     chats, Vault, wishlist etc. in the cloud. The edit is held and pushed right after the first pull. */
+  var boardPulled = false, boardDirty = false;
+  function cloudPushBoard() {
+    if (!boardPulled) { boardDirty = true; return; }
+    boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta, u: boardU });
+  }
   function cloudPushInv() {
     if (!cloudConfigured()) return;
     queue("inv", { table: "weekly_focus_inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, apps: state.apps, study: state.study, office: state.office || [], updated_at: invTs || nowISO() } });
@@ -2044,11 +2098,20 @@
   async function cloudPullEntries() {
     if (!syncReady()) return;
     try {
-      var r = await sb.from("weekly_focus_entries").select("item_key,payload").eq("board_id", cloud.board);
-      if (r.error) throw r.error;
-      var rows = r.data || [];
+      /* v100: page through — PostgREST caps a select at 1000 rows, and past that the __board row (meta: chats,
+         Vault, wishlist…) could be cut off, leaving meta empty and the next edit overwriting it in the cloud. */
+      var rows = [], from = 0, PAGE = 1000;
+      for (;;) {
+        var r = await sb.from("weekly_focus_entries").select("item_key,payload").eq("board_id", cloud.board).order("item_key").range(from, from + PAGE - 1);
+        if (r.error) throw r.error;
+        var pg = r.data || []; rows = rows.concat(pg);
+        if (pg.length < PAGE) break;
+        from += PAGE;
+      }
+      if (rows.length >= PAGE) console.info("[wf] pulled " + rows.length + " entry rows (paged)");
       if (!rows.length && (state.apps.length || state.study.length || Object.keys(entries).length)) {
         // empty cloud board + this device has data → seed cloud (never wipe local)
+        boardPulled = true;
         cloudPushInv(); cloudPushBoard(); Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); }); flushOutbox(); updateCloudStatus(); return;
       }
       var map = {}, remoteSubsBy = {};
@@ -2058,6 +2121,8 @@
         if (qk.indexOf("del:") === 0) { delete map[qk.slice(4)]; delete remoteSubsBy[qk.slice(4)]; }
       });
       if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; delete map[BOARD_ITEM]; if ((b.u || 0) >= boardU) { if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; boardU = b.u || 0; } }
+      var wasPulled = boardPulled; boardPulled = true;
+      if (!wasPulled && boardDirty) { boardDirty = false; cloudPushBoard(); }   // v100: a pre-pull edit goes up only now, on top of the real meta
       Object.keys(map).forEach(function (k) {                     // union-merge subtasks: remote ∪ local-current
         if (k === BOARD_ITEM) return;
         var remoteSubs = remoteSubsBy[k] || [];
@@ -2459,6 +2524,7 @@
     if (!navigator.onLine) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Offline" + (n ? " \u00b7 " + n : ""); }
     else if (n) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Syncing " + n + "\u2026"; }
     else { el.className = "cloud-pill ok"; el.textContent = "\u2601 Synced"; }
+    el.title = "Board " + cloud.board + " \u00b7 " + (session.user.email || "signed in") + " \u2014 tap for details";   // v100: wrong account is spottable at a glance
   }
   function renderAuthUI() {
     var inEl = $("authSignedIn"), outEl = $("authSignedOut"); if (!inEl || !outEl) return;
@@ -2477,7 +2543,9 @@
     if (!cloudConfigured()) return "Cloud is off. Enter your project details above, then <b>Save connection</b>.";
     if (!signedIn()) return "Connected to board <b>" + esc(cloud.board) + "</b> \u2014 not signed in on this device yet. Send yourself a magic link below and open it <b>on this device</b>.";
     var n = pendingCount();
-    return "Syncing board <b>" + esc(cloud.board) + "</b> as <b>" + esc(session.user.email || "you") + "</b>." + (n ? " " + n + " change" + (n > 1 ? "s" : "") + " waiting to upload." : " Everything is up to date.");
+    var empty = !state.apps.length && !state.study.length && !(state.office || []).length && !Object.keys(entries).length;
+    return "Syncing board <b>" + esc(cloud.board) + "</b> as <b>" + esc(session.user.email || "you") + "</b>." + (n ? " " + n + " change" + (n > 1 ? "s" : "") + " waiting to upload." : " Everything is up to date.") +
+      (empty ? "<br><b>This board is empty for this account.</b> If you expected data here, you may be signed in with a different email than the one that holds it \u2014 sign out and sign back in with that email." : "");
   }
   function urlLooksRight(u) { return /^https:\/\/[a-z0-9-]+\.supabase\.(co|in|net)$/i.test(u); }
   async function testConnection() {
@@ -2542,9 +2610,10 @@
       });
     };
     $("cloudSignOut").onclick = async function () {
+      if (sb && syncReady() && navigator.onLine) { try { await flushOutbox(); } catch (e) {} }   // v100: upload queued edits before the session goes away
       if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
-      session = null; renderAuthUI(); updateCloudStatus();
-      cloudSetStatus("Signed out. Your local copy stays on this device; sync pauses until you sign in again.");
+      session = null; resetBoardState(); renderAll(); renderAuthUI(); updateCloudStatus();   // v100: never carry one account's board into the next
+      cloudSetStatus("Signed out. Sync pauses until you sign in again \u2014 your data stays in the cloud under the account you used.");
     };
   }
 
@@ -2699,6 +2768,8 @@
       if (!e.target.closest) return;
       var t = e.target.closest("[data-tkey]");
       if (t && t.getAttribute("draggable") === "true") { DRAG = { id: t.getAttribute("data-tkey"), type: "target", kind: null }; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", DRAG.id); } catch (x) {} t.classList.add("dragging"); return; }
+      var st = e.target.closest(".sph-t[data-key]");   // v101: an "Also in the sphere" tile drags like a column card
+      if (st) { var sid0 = st.getAttribute("data-key"); DRAG = { id: sid0, type: "item", kind: kindOf(sid0) }; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", sid0); } catch (x) {} st.classList.add("dragging"); return; }
       var it = e.target.closest(".item[data-key]") || e.target.closest(".brow[data-key]");
       if (it && it.getAttribute("draggable") === "true") {
         var id = it.getAttribute("data-key"); DRAG = { id: id, type: "item", kind: kindOf(id) };
@@ -2715,14 +2786,35 @@
 
     // The Five — drag to reorder
     var grid = $("fiveGrid");
-    grid.addEventListener("dragover", function (e) { if (DRAG.type !== "target") return; e.preventDefault(); });
+    grid.addEventListener("dragover", function (e) { if (DRAG.type !== "target" && DRAG.type !== "item") return; e.preventDefault(); });
     grid.addEventListener("drop", function (e) {
-      if (DRAG.type !== "target") return; e.preventDefault();
+      if (DRAG.type !== "target" && DRAG.type !== "item") return; e.preventDefault();
       var before = afterEl(grid, e.clientX, "x", ".tcard[data-tkey]");
-      var cur = targetOrder.slice(), from = cur.indexOf(DRAG.id); if (from < 0) return; cur.splice(from, 1);
+      var cur = targetOrder.slice(), from = cur.indexOf(DRAG.id);
+      if (from < 0) {   // v101: an "Also in the sphere" tile or a column card dropped into the top row → target at that slot
+        var at0 = before ? cur.indexOf(before.getAttribute("data-tkey")) : cur.length; if (at0 < 0) at0 = cur.length;
+        var dit = itemById(DRAG.id); if (!dit) return;
+        if (!isActive(dit)) patch(DRAG.id, { active: true });
+        sphereAdd(DRAG.id, at0); ENTER = false; renderAll();
+        var dix = targetOrder.indexOf(DRAG.id); toast(dit.name + (dix >= 0 ? " \u2192 target #" + (dix + 1) : " pulled into the sphere"));
+        return;
+      }
+      cur.splice(from, 1);
       var at = before ? cur.indexOf(before.getAttribute("data-tkey")) : cur.length; if (at < 0) at = cur.length;
       cur.splice(at, 0, DRAG.id); targetOrder = cur; save(); cloudPushBoard(); syncRanks(); renderFive(); renderCols();
     });
+
+    var smore = $("sphereMore");   // v101: drop a column card under the top row → into the sphere
+    if (smore) {
+      smore.addEventListener("dragover", function (e) { if (DRAG.type !== "item") return; e.preventDefault(); smore.classList.add("dropzone-hot"); });
+      smore.addEventListener("dragleave", function (e) { if (!smore.contains(e.relatedTarget)) smore.classList.remove("dropzone-hot"); });
+      smore.addEventListener("drop", function (e) {
+        if (DRAG.type !== "item") return; e.preventDefault(); smore.classList.remove("dropzone-hot");
+        var sit = itemById(DRAG.id); if (!sit) return;
+        if (!isActive(sit)) patch(DRAG.id, { active: true });
+        sphereAdd(DRAG.id); ENTER = false; renderAll(); toast(sit.name + " pulled into the sphere");
+      });
+    }
 
     // Active columns — drop to activate (if needed) + reorder
     [["appsActive", "app"], ["studyActive", "study"]].forEach(function (pair) {
@@ -2760,12 +2852,19 @@
      ============================================================ */
   function updateBoardUI() { var el = $("boardName"); if (el) el.textContent = cloud.board || "my-week"; }
 
+  /* v100: drop everything in memory that belongs to the current account/board. Used when switching
+     boards AND on sign-out / account change — otherwise the old account's data (incl. meta.cvault)
+     survives in memory and cloudPullEntries would seed it into the next account's empty board. */
+  function resetBoardState() {
+    state = { apps: [], study: [], office: [] }; itemIndex = {}; rebuildIndex();
+    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true; boardU = 0; lastCloudSig = ""; boardPulled = false; boardDirty = false;
+  }
+  var lastUid = null;   // v100: user id of the last pull — a different account must start from a clean board
   function switchBoard(name) {
     name = (name || "").trim(); if (!name || name === cloud.board) { closeBoardMenu(); return; }
     cloud.board = name;
     try { localStorage.setItem("wf2_active_board", name); } catch (e) {}
-    state = { apps: [], study: [], office: [] }; itemIndex = {}; rebuildIndex();
-    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true;
+    resetBoardState();
     ENTER = true; updateBoardUI(); refreshGroupLists(); renderAll(); updateCloudStatus(); closeBoardMenu();
     if (syncReady()) initialSync();           // pulls THIS board's inventory + entries
   }
