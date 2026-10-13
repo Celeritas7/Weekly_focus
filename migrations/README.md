@@ -25,6 +25,13 @@ by hand in the SQL Editor or by an agent without a migration file committed firs
 
 | Object | Current migration | Notes |
 |---|---|---|
-| `public.wf_keep_history()` | `20261013_01_wf_keep_history_merged.sql` | The only version. History for every `weekly_focus_entries` row; `del` flag always kept; cap 20 per key (100 for `__*`); per-user 30-day prune. |
+| `public.wf_keep_history()` | `20261013_02_wf_keep_history_reapply.sql` (body from `_01`) | The only version. History for every `weekly_focus_entries` row; `del` flag always kept; cap 20 per key (100 for `__*`); per-user 30-day prune. |
 
 Older SQL in `docs/` is history, not something to re-run.
+
+## Applied log
+
+| Migration | Applied (UTC) | md5 after | Notes |
+|---|---|---|---|
+| `20261013_01_wf_keep_history_merged.sql` | 2026-10-13 ~15:00 | `212409a042cc1ad5bb18a07ed1a915a1` | Overwritten by 15:05 with STEP5 fix A (md5 `a0767ab0dc079df9670f58ae0a690001`) from outside this repo. |
+| `20261013_02_wf_keep_history_reapply.sql` | — | — | Pending. |
