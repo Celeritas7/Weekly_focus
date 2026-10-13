@@ -271,12 +271,12 @@
   /* ---------------- targets (The Five) ---------------- */
   var MAX_TARGETS = 5;
   function isTarget(k) { return targetOrder.indexOf(k) >= 0; }
-  function addTarget(k) { if (isTarget(k) || targetOrder.length >= MAX_TARGETS) return false; targetOrder.push(k); save(); cloudPushBoard(); return true; }
+  function addTarget(k) { if (isTarget(k) || targetOrder.length >= MAX_TARGETS) return false; targetOrder.push(k); sphFlag(k); save(); cloudPushBoard(); return true; }
   function addTargetAt(k, at) {
     if (isTarget(k)) return false;
     if (typeof at !== "number" || at < 0) return addTarget(k);
     if (targetOrder.length >= MAX_TARGETS) targetOrder.pop();   // last Can drops back to Will
-    targetOrder.splice(Math.min(at, targetOrder.length), 0, k); save(); cloudPushBoard(); return true;
+    targetOrder.splice(Math.min(at, targetOrder.length), 0, k); sphFlag(k); save(); cloudPushBoard(); return true;
   }
   function removeTarget(k) { var i = targetOrder.indexOf(k); if (i >= 0) { targetOrder.splice(i, 1); if (entries[k]) patch(k, { targetDone: false }); save(); cloudPushBoard(); } }
   function targetDone(k) { return getEntry(k).targetDone === true; }
@@ -296,8 +296,9 @@
     n = Math.max(1, Math.min(list.length + 1, Math.round(n) || 1));
     list.splice(n - 1, 0, id);
     var appsInFive = list.slice(0, MAX_TARGETS), others = targetOrder.filter(function (k) { return kindOf(k) !== "app"; });
+    targetOrder.forEach(sphFlag);   // v101: whoever gets pushed out of the five stays in the sphere
     var wasDone = {}; targetOrder.forEach(function (k) { wasDone[k] = targetDone(k); });
-    targetOrder = appsInFive.concat(others).slice(0, MAX_TARGETS);
+    targetOrder = appsInFive.concat(others).slice(0, MAX_TARGETS); appsInFive.forEach(sphFlag);   // v101: a ranked target stays in the sphere when it drops to 6+
     list.forEach(function (k, i) { var e = getEntry(k); if (e.rank !== i + 1) patch(k, { rank: i + 1 }); if (i >= MAX_TARGETS && e.targetDone) patch(k, { targetDone: false }); });
     save(); cloudPushBoard(); renderAll();
     var role = rankRole(n); toast(labelFor(id).name + " \u2192 #" + n + (role ? " \u00b7 " + role : ""));
@@ -394,13 +395,20 @@
       '<button type="button" class="fgp-b none' + (cur.length ? "" : " on") + '" data-act="fgset" data-fg="">No group</button>' +
       '<button type="button" class="fgp-b add" data-act="fgnew">+ New group…</button></div></div>';
   }
-  function fgHead(g, n) {
-    var d = document.createElement("div");
-    if (!g) { d.className = "fg-head none"; d.innerHTML = '<span class="fg-nm">No group</span><span class="fg-n">' + n + '</span>'; return d; }
-    var coll = !!FG_COLL[g.id];
+  /* v102: a group with nothing in the sphere auto-collapses to one line; tapping it opens it for this session */
+  var FG_PEEK = {};
+  function fgSphN(gid) { return fgMembers(gid).filter(function (k) { var it = itemById(k); return it && isActive(it) && inSphere(k); }).length; }
+  function fgAuto(gid, sN) { return sphereOn() && !sN && !FG_PEEK[gid] && !FG_COLL[gid]; }
+  function fgIsColl(gid, sN) { return !!FG_COLL[gid] || fgAuto(gid, sN); }
+  function fgSphTag(sN) { return sphereOn() ? '<span class="fg-sph' + (sN ? " on" : "") + '">' + sN + ' in sphere</span>' : ''; }
+  function sphFirst(list) { return list.filter(function (it) { return inSphere(it.id); }).concat(list.filter(function (it) { return !inSphere(it.id); })); }
+  function fgHead(g, n, sN) {
+    var d = document.createElement("div"); sN = sN || 0;
+    if (!g) { d.className = "fg-head none"; d.innerHTML = '<span class="fg-nm">No group</span><span class="fg-n">' + n + '</span>' + fgSphTag(sN); return d; }
+    var coll = fgIsColl(g.id, sN);
     d.className = "fg-head" + (g.focus ? " focus" : "") + (coll ? " coll" : ""); d.style.setProperty("--fh", fgHue(g));
     d.innerHTML = '<button type="button" class="fg-cv" data-act="fgcoll" data-fg="' + esc(g.id) + '" title="' + (coll ? "Expand" : "Collapse") + '">▾</button>' +
-      '<span class="fg-nm" data-act="fgcoll" data-fg="' + esc(g.id) + '">' + esc(g.name) + '</span><span class="fg-n">' + n + '</span>' + (g.focus ? '<span class="fg-tag">Focus</span>' : '') +
+      '<span class="fg-nm" data-act="fgcoll" data-fg="' + esc(g.id) + '">' + esc(g.name) + '</span><span class="fg-n">' + n + '</span>' + fgSphTag(sN) + (g.focus ? '<span class="fg-tag">Focus</span>' : '') +
       '<span class="fg-acts"><button type="button" class="fg-ib add" data-act="fgadd" data-fg="' + esc(g.id) + '" title="Add apps to this group">+ Apps</button><button type="button" class="fg-ib' + (g.focus ? " on" : "") + '" data-act="fgfocus" data-fg="' + esc(g.id) + '" title="' + (g.focus ? "Remove focus" : "Put this group in focus — shows first") + '">★</button>' +
       '<button type="button" class="fg-ib" data-act="fgren" data-fg="' + esc(g.id) + '" title="Rename">✎</button>' +
       '<button type="button" class="fg-ib arch" data-act="fgarch" data-fg="' + esc(g.id) + '" title="Archive group — hides its apps everywhere">Archive</button></span>';
@@ -410,15 +418,15 @@
     var by = {};
     flatSortActive(active).forEach(function (it) { var gs = fgLiveOf(it.id); if (!gs.length) (by[""] = by[""] || []).push(it); gs.forEach(function (g) { (by[g.id] = by[g.id] || []).push(it); }); });
     fgLive().forEach(function (g) {
-      var items = by[g.id] || [];
-      host.appendChild(fgHead(g, items.length));
-      if (FG_COLL[g.id]) return;
+      var items = sphFirst(by[g.id] || []), sN = items.filter(function (it) { return inSphere(it.id); }).length;   // v102: sphere apps first
+      host.appendChild(fgHead(g, items.length, sN));
+      if (fgIsColl(g.id, sN)) return;
       if (g.note) { var nt = document.createElement("div"); nt.className = "fg-note"; nt.textContent = g.note; host.appendChild(nt); }
       if (!items.length) { var em = document.createElement("div"); em.className = "fg-empty"; em.textContent = "No apps on the Week tab in this group."; host.appendChild(em); }
       items.forEach(function (it) { host.appendChild(itemCard(it.id)); });
     });
-    var rest = by[""] || [];
-    if (rest.length) { host.appendChild(fgHead(null, rest.length)); rest.forEach(function (it) { host.appendChild(itemCard(it.id)); }); }
+    var rest = sphFirst(by[""] || []);
+    if (rest.length) { host.appendChild(fgHead(null, rest.length, rest.filter(function (it) { return inSphere(it.id); }).length)); rest.forEach(function (it) { host.appendChild(itemCard(it.id)); }); }
   }
   function fgTail(host) {
     if (VIEW_FOCUS) { var bar = document.createElement("div"); bar.className = "fg-tailbar"; bar.innerHTML = '<button type="button" class="fg-new main" data-act="fgassign">Assign apps to groups\u2026</button><button type="button" class="fg-new" data-act="fgnew">+ New group</button>'; host.appendChild(bar); }
@@ -443,6 +451,51 @@
     var role = rankRole(r);
     return '<button type="button" class="rk' + (role ? " rk-" + role.toLowerCase() : "") + (RANK_OPEN === id ? " open" : "") + '" data-act="rank" title="' + (role ? role + " \u2014 rank " + r : "Rank " + r) + ' \u2014 tap to change">' + r + '</button>' + (RANK_OPEN === id ? rankPopHtml(id) : "");
   }
+  /* ---- v101 Sphere: any number of apps / topics this week. The top five by rank ARE The Five (targetOrder);
+     the rest sit under "Also in the sphere". Membership = entries[id].sph — a per-item row, never the __board blob.
+     Items outside the sphere stay in their columns, faint. ---- */
+  function sphFlag(k) { if (getEntry(k).sph !== true) patch(k, { sph: true }); }
+  function inSphere(k) { return isTarget(k) || getEntry(k).sph === true; }
+  function sphereExtras() {
+    var ra = rankedApps();
+    return activeItems("app").concat(activeItems("study"), activeItems("office"))
+      .filter(function (x) { return !isSpecialItem(x) && !isTarget(x.id) && getEntry(x.id).sph === true; })
+      .map(function (x) { return x.id; })
+      .sort(function (a, b) { var ia = ra.indexOf(a), ib = ra.indexOf(b); if (ia < 0) ia = 1e6; if (ib < 0) ib = 1e6; return ia - ib || labelFor(a).name.toLowerCase().localeCompare(labelFor(b).name.toLowerCase()); });
+  }
+  function sphereCount() { return targetOrder.length + sphereExtras().length; }
+  function sphereOn() { return targetOrder.length > 0 || sphereExtras().length > 0; }
+  function sphereFill() { var ex = sphereExtras(), ch = false; while (targetOrder.length < MAX_TARGETS && ex.length) { targetOrder.push(ex.shift()); ch = true; } return ch; }   // a free target slot pulls up the next-ranked sphere item
+  function sphereAdd(k, at) {
+    if (isTarget(k) || (inSphere(k) && typeof at !== "number")) return false;
+    targetOrder.forEach(sphFlag);   // pre-v101 targets join the sphere so a push to 6+ never drops them
+    sphFlag(k);
+    if (typeof at === "number" && at < MAX_TARGETS) addTargetAt(k, at);
+    else if (targetOrder.length < MAX_TARGETS) addTarget(k);
+    syncRanks(); return true;
+  }
+  function sphereRemove(k) {
+    removeTarget(k); if (getEntry(k).sph) patch(k, { sph: false });
+    if (sphereFill()) { save(); cloudPushBoard(); }
+    syncRanks();
+  }
+  function sphTile(k) {
+    var lab = labelFor(k), prog = subProgress(k), kd = kindOf(k), nx = nextSub(k);
+    return '<div class="sph-t k-' + kd + '" data-key="' + esc(k) + '" draggable="true">' +
+      '<div class="sph-th">' + (kd === "app" ? rankBadge(k) : '<span class="sph-k">' + (kd === "study" ? "Study" : "Office") + '</span>') +
+      '<span class="sph-cr">' + esc(lab.crumb || "") + '</span></div>' +
+      '<button type="button" class="sph-x" data-act="sphrm" title="Take out of the sphere">\u00d7</button>' +
+      '<div class="sph-nm">' + esc(lab.name) + '</div>' + (nx ? '<div class="sph-nx">' + esc(nx) + '</div>' : '') +
+      (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div><div class="sph-m">' + prog.done + '/' + prog.total + ' subtasks</div>' : '') + '</div>';
+  }
+  function renderSphereMore() {
+    var mh = $("sphereMore"); if (!mh) return;
+    var ex = sphereExtras(), full = targetOrder.length >= MAX_TARGETS;
+    var add = full ? '<button type="button" class="sph-add" data-act="tpick">+ Add to sphere<br><span>or drag a card up here</span></button>' : '';
+    mh.innerHTML = ex.length
+      ? '<div class="sph-div"><span class="sph-dl">Also in the sphere</span><i></i><span class="sph-dh">' + ex.length + ' \u00b7 rank one 1\u20135 or drag it into the top row to make it a target</span></div><div class="sph-grid">' + ex.map(sphTile).join("") + add + '</div>'
+      : (add ? '<div class="sph-grid sph-grid-solo">' + add + '</div>' : '');
+  }
 
   /* ============================================================
      RENDER
@@ -454,7 +507,8 @@
   var DRAG = { id: null, type: null, kind: null };
 
   function renderAll() {
-    pruneTargets(); renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome(); if (FGS.open) { paintFgsTabs(); paintFgsList(); }
+    pruneTargets(); if (targetOrder.length < MAX_TARGETS && (boardPulled || !cloudConfigured()) && sphereFill()) { save(); cloudPushBoard(); }   // v101: a free target slot pulls up the next sphere item
+    renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome(); if (FGS.open) { paintFgsTabs(); paintFgsList(); }
     if (ENTER) { ENTER = false; setTimeout(function () { var ns = document.querySelectorAll(".wf-enter"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("wf-enter"); }, 720); }
     lastCloudSig = boardSig();
   }
@@ -464,7 +518,7 @@
     var pct = total ? done / total : 0;
     var el = $("pulse");
     var msg;
-    if (!total) msg = "Pick up to five targets below \u2014 the things that actually have to move this week.";
+    if (!total) msg = "Pull apps into the sphere below \u2014 its top five by rank are this week\u2019s targets.";
     else if (done === total) msg = "<b>Every target cleared.</b> Re-curate for next week, or print the sheet.";
     else msg = "<b>" + done + " of " + total + "</b> targets done. Stay on the five \u2014 everything else is just noise.";
     el.innerHTML =
@@ -507,24 +561,18 @@
         '<div class="tmeta">' + m + '</div>' +
         (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div>' : '') +
         subList +
-        '<button class="tdrop" data-act="tdrop" title="Remove from focus">\u00d7</button>';
+        '<button class="tdrop" data-act="tdrop" title="Take out of the sphere">\u00d7</button>';
       grid.appendChild(card);
     });
     if (targetOrder.length < MAX_TARGETS) {
       var add = document.createElement("div");
       add.className = "tcard empty"; add.setAttribute("data-act", "tpick");
-      add.innerHTML = '<span class="plus">+</span><span class="etxt">Add target</span>';
+      add.innerHTML = '<span class="plus">+</span><span class="etxt">Add to sphere</span>';
       grid.appendChild(add);
     }
-    var wid = willId();
-    if (wid && targetOrder.length >= MAX_TARGETS) {
-      var wl = labelFor(wid), wc = document.createElement("div");
-      wc.className = "tcard will"; wc.setAttribute("data-key", wid);
-      wc.innerHTML = '<div class="thead"><span class="tnum">06</span><span class="trole trole-will">Will</span><span class="trule"></span></div>' +
-        '<div class="ttitle">' + esc(wl.name) + '</div><div class="tmeta">next up \u2014 moves in when a slot frees</div>';
-      grid.appendChild(wc);
-    }
-    $("fiveCount").textContent = targetOrder.length + "/" + MAX_TARGETS;
+    var sc = sphereCount();   // v101: the Will card is gone — rank 6+ lives under "Also in the sphere"
+    $("fiveCount").textContent = targetOrder.length + "/" + MAX_TARGETS + (sc > targetOrder.length ? " \u00b7 " + sc + " in sphere" : "");
+    renderSphereMore();
   }
 
   /* ---- scheduled tasks: date (+ optional time) on Special subtasks ---- */
@@ -1364,6 +1412,7 @@
     else flatSortActive(active).forEach(function (it) { host.appendChild(itemCard(it.id)); });
 
     if (kind === "app") fgTail(host);
+    var colEl = host.closest(".col"); if (colEl) colEl.classList.toggle("sph-on", sphereOn());   // v101: outside the sphere = faint
     $(ids.wrap).style.display = backlog.length ? "" : "none";
     $(ids.bn).textContent = backlog.length;
     function brow(it) {
@@ -1454,13 +1503,13 @@
   function itemCard(id) {
     var open = !!detailOpen[id], prog = subProgress(id), pri = priOf(id);
     var li = document.createElement("div");
-    li.className = "item" + (pri ? " pri-" + pri : "") + (open ? " open" : "");
+    li.className = "item" + (pri ? " pri-" + pri : "") + (open ? " open" : "") + (inSphere(id) ? " insph" : "");
     li.setAttribute("data-key", id); li.setAttribute("data-kind", kindOf(id));
     if (!open) li.setAttribute("draggable", "true");   // collapsed cards drag; open ones are being edited
     var ring = prog
       ? '<div class="miniring" title="' + prog.done + ' of ' + prog.total + ' subtasks done">' + ringSVG(prog.pct, 26, 3.5, { t: "mt", f: "mf" }) + '<span class="mn">' + prog.done + '/' + prog.total + '</span></div>'
       : '';
-    var starOn = isTarget(id), starFull = !starOn && targetOrder.length >= MAX_TARGETS;
+    var starOn = inSphere(id), tIx = targetOrder.indexOf(id);
     var updOn = !!getEntry(id).upd;
     var it = itemById(id);
     li.innerHTML =
@@ -1470,7 +1519,7 @@
         '</div>' +
         '<div class="item-actions">' + ring +
           '<button class="updflag' + (updOn ? " on" : "") + '" data-act="flagupd" title="' + (updOn ? "Update pending — click to clear" : "Flag a pending update / prompt for Claude") + '">' + IC.flag + '</button>' +
-          '<button class="star' + (starOn ? " on" : "") + '" data-act="star"' + (starFull ? " disabled" : "") + ' title="' + (starOn ? "In The Five" : starFull ? "The Five is full" : "Add to The Five") + '">' + IC.star + '</button>' +
+          '<button type="button" class="orb' + (starOn ? " on" : "") + '" data-act="star" title="' + (tIx >= 0 ? "Target #" + (tIx + 1) + " in the sphere \u2014 tap to take out" : starOn ? "In the sphere \u2014 tap to take out" : "Pull into the sphere") + '">\u25CE</button>' +
           '<button class="caret-btn" data-act="open">' + IC.chev + '</button>' +
           '<button class="tgl on" data-act="off" title="Move to backlog"><span class="knob"></span></button>' +
         '</div>' +
@@ -1553,9 +1602,9 @@
     activeItems("app").forEach(function (a) { if (isSpecialItem(a)) return; rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
     activeItems("study").forEach(function (s) { if (isSpecialItem(s)) return; rows.push({ key: s.id, name: s.name, crumb: s.group, tag: "Study", color: "oklch(0.55 0.13 " + hueFor(s.group) + ")" }); });
     activeItems("office").forEach(function (o) { if (isSpecialItem(o)) return; rows.push({ key: o.id, name: o.name, crumb: o.group, tag: "Office", color: "var(--office)" }); });
-    if (!rows.length) { body.innerHTML = '<div class="modal-empty">No active items yet.<br>Switch on an app or topic first, then pick your targets from them.</div>'; }
+    if (!rows.length) { body.innerHTML = '<div class="modal-empty">No active items yet.<br>Switch on an app or topic first, then pull it into the sphere.</div>'; }
     else rows.forEach(function (r) {
-      var taken = isTarget(r.key);
+      var taken = inSphere(r.key);
       var b = document.createElement("button");
       b.className = "pick" + (taken ? " taken" : ""); b.setAttribute("data-pick", r.key);
       b.innerHTML = '<span class="pdot" style="background:' + r.color + '"></span>' +
@@ -1597,7 +1646,7 @@
 
   document.addEventListener("click", function (e) {
     var pk = e.target.closest("[data-pick]");
-    if (pk) { var k = pk.getAttribute("data-pick"); if (addTarget(k)) { renderAll(); openPicker(); } else toast("The Five is full \u2014 remove one first."); return; }
+    if (pk) { var k = pk.getAttribute("data-pick"); if (inSphere(k)) sphereRemove(k); else sphereAdd(k); renderAll(); openPicker(); return; }   // v101: picker toggles sphere membership, no limit
     var rp = e.target.closest("[data-rank]");
     if (rp) { var rpid = rp.closest("[data-rankpop]").getAttribute("data-rankpop"); RANK_OPEN = null; setRank(rpid, +rp.getAttribute("data-rank")); return; }
     if (RANK_OPEN && !e.target.closest(".rankpop") && !e.target.closest("[data-act=\"rank\"]")) { RANK_OPEN = null; renderCols(); renderFive(); }
@@ -1619,7 +1668,8 @@
       if (nowAll && !wasAll) celebrate();
       toastMaybeDone(); return;
     }
-    if (a === "tdrop") { removeTarget(act.closest("[data-tkey]").getAttribute("data-tkey")); renderAll(); return; }
+    if (a === "tdrop") { var tdk = act.closest("[data-tkey]").getAttribute("data-tkey"); sphereRemove(tdk); renderAll(); toast(labelFor(tdk).name + " taken out of the sphere"); return; }
+    if (a === "sphrm") { var srk = keyOf(act); if (srk) { sphereRemove(srk); renderAll(); toast(labelFor(srk).name + " taken out of the sphere"); } return; }
 
     var key = keyOf(act);
     if (a === "rank") { RANK_OPEN = RANK_OPEN === key ? null : key; renderCols(); renderFive(); return; }
@@ -1636,7 +1686,13 @@
     if (/^fg(coll|focus|ren|arch|rest|del|add)$/.test(a)) {
       var fgg = fgById(act.getAttribute("data-fg")); if (!fgg) return;
       if (a === "fgadd") { openFgSheet(fgg.id); return; }
-      if (a === "fgcoll") { FG_COLL[fgg.id] = !FG_COLL[fgg.id]; fgSaveLocal(); renderCols(); return; }
+      if (a === "fgcoll") {   // v102: open an auto-collapsed group for this session, else toggle as before
+        var sN0 = fgSphN(fgg.id);
+        if (fgAuto(fgg.id, sN0)) FG_PEEK[fgg.id] = true;
+        else if (FG_PEEK[fgg.id] && !FG_COLL[fgg.id] && sphereOn() && !sN0) delete FG_PEEK[fgg.id];
+        else { FG_COLL[fgg.id] = !FG_COLL[fgg.id]; fgSaveLocal(); }
+        renderCols(); return;
+      }
       if (a === "fgfocus") { fgg.focus = !fgg.focus; fgPushGroup(fgg); renderCols(); return; }
       if (a === "fgren") { var rn = prompt("Rename group", fgg.name); if (rn && rn.trim()) { fgg.name = rn.trim(); fgPushGroup(fgg); renderCols(); } return; }
       if (a === "fgarch") { fgArchive(fgg, true); return; }
@@ -1708,9 +1764,11 @@
     if (a === "sparch") { patch(key, { arch: true }); if (SP_OPEN === key) closeLifeSheet(); toast("Archived \u2014 it\u2019s in the Archive tile, still in the cloud."); renderAll(); return; }
     if (a === "spunarch") { patch(key, { arch: false }); renderAll(); return; }
     if (a === "flagupd") { var wasUpd = !!getEntry(key).upd; patch(key, { upd: !wasUpd }); toast(wasUpd ? "Update flag cleared." : "Flagged \u2014 pending update for Claude."); renderAll(); return; }
-    if (a === "star") {
-      if (isTarget(key)) { removeTarget(key); } else if (!addTarget(key)) { toast("The Five is full \u2014 remove one first."); return; }
-      renderAll(); return;
+    if (a === "star") {   // v101: the ◎ button — in / out of the sphere
+      var snm = labelFor(key).name;
+      if (inSphere(key)) { sphereRemove(key); renderAll(); toast(snm + " back to faint"); }
+      else { sphereAdd(key); renderAll(); var six = targetOrder.indexOf(key); toast(snm + (six >= 0 ? " \u2192 target #" + (six + 1) : " pulled into the sphere")); }
+      return;
     }
     if (a === "del") {
       var it = itemById(key); if (!it) return;
@@ -1945,6 +2003,9 @@
 
     var sub = sb.auth.onAuthStateChange(function (event, sess) {
       session = sess || null;
+      var uidNow = session && session.user ? session.user.id : null;
+      if (event === "SIGNED_OUT" || (uidNow && lastUid && uidNow !== lastUid)) { resetBoardState(); ENTER = true; renderAll(); }   // v100
+      if (uidNow) lastUid = uidNow;
       renderAuthUI(); updateCloudStatus();
       var cm = $("cloudModal"); if (cm && cm.classList.contains("open")) cloudSetStatus(cloudSummary());
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) Promise.resolve(initialSync()).then(akStart);
@@ -1956,8 +2017,68 @@
   function dropClient() { if (authSub) { try { authSub.unsubscribe(); } catch (e) {} authSub = null; } sb = null; session = null; }
 
   function queue(qkey, op) { outbox[qkey] = op; saveOutbox(); flushOutbox(); updateCloudStatus(); }
+  /* ---- v102 guards: never let one save empty a list the cloud still has. SNAP = last copy seen in the cloud. ---- */
+  var SNAP = { meta: null, inv: null, tl: null, ib: null }, HELD = {}, invDirty = false;
+  var GUARD_KEYS = { cvault: "Vault", cchats: "Chats", wish: "Wishlist", places: "Places", routines: "Routines", links: "Dev links" };
+  function gLen(v) { return Array.isArray(v) ? v.length : (v && typeof v === "object") ? Object.keys(v).length : 0; }
+  function deep(v) { try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; } }
+  function gAllow() { return window.__wfAllowEmpty === true; }   // console override for a deliberate wipe
+  function gBlocked(what) { console.warn("[wf] v102 guard blocked a save that would empty: " + what); toast("Blocked: that save would have emptied " + what + ". The cloud copy is kept."); setTimeout(function () { try { renderAll(); if (typeof renderChats === "function") renderChats(); } catch (e) {} }, 0); }
+  function guardMeta() {
+    if (!SNAP.meta || gAllow()) return [];
+    var hit = [];
+    Object.keys(GUARD_KEYS).forEach(function (k) { if (gLen(SNAP.meta[k]) > 0 && gLen(meta[k]) === 0) { meta[k] = deep(SNAP.meta[k]); hit.push(GUARD_KEYS[k]); } });
+    return hit;
+  }
+  /* v102: export the whole board to a .json file — a button in the Cloud panel + automatically once a day on desktop */
+  function exportBoard(auto) {
+    var day = new Date().toISOString().slice(0, 10);
+    var data = { exportedAt: nowISO(), build: "v102", board: cloud.board, account: session && session.user ? session.user.email : null,
+      targetOrder: targetOrder, meta: meta, entries: entries, inventory: { apps: state.apps, study: state.study, office: state.office || [] },
+      groups: (typeof FG !== "undefined" && FG) ? { groups: FG.groups, members: FG.map } : null };
+    var blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "weekly-focus-" + cloud.board + "-" + day + ".json";
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    try { localStorage.setItem("wf2_last_export", day); } catch (e) {}
+    toast(auto ? "Daily backup saved to Downloads" : "Board exported to Downloads");
+  }
+  /* v102.1: the daily file is per DEVICE — only devices where "Daily backup on this device" is ticked download it.
+     The setting lives in this browser's localStorage, not in the cloud, so each device decides for itself. */
+  function autoExportOn() {
+    try { return localStorage.getItem("wf2_auto_export") === "1"; } catch (e) { return false; }   // off by default — tick it per device
+  }
+  function paintAutoExport() { var cb = $("cloudAutoExport"); if (cb) cb.checked = autoExportOn(); }
+  document.addEventListener("change", function (e) {
+    if (!e.target || e.target.id !== "cloudAutoExport") return;
+    try { localStorage.setItem("wf2_auto_export", e.target.checked ? "1" : "0"); } catch (x) {}
+    toast(e.target.checked ? "Daily backup on \u2014 this device will save a .json on the first sync each day." : "Daily backup off on this device. Export board still works any time.");
+    if (e.target.checked) autoExport();
+  });
+  function autoExport() {
+    if (!autoExportOn()) return;
+    if (!window.matchMedia || !window.matchMedia("(pointer:fine)").matches) return;   // desktop only — phones would pop a share sheet
+    if (!boardPulled || !invPulled) return;
+    var day = new Date().toISOString().slice(0, 10);
+    try { if (localStorage.getItem("wf2_last_export") === day) return; } catch (e) { return; }
+    if (!(gLen(meta.cvault) || gLen(meta.cchats) || state.apps.length)) return;   // never "back up" an empty board
+    exportBoard(true);
+  }
+  document.addEventListener("click", function (e) { if (!e.target) return; if (e.target.id === "cloudExport") exportBoard(false); if (e.target.id === "cloudPill" || e.target.closest("#cloudPill")) setTimeout(paintAutoExport, 0); });
+  function blobField(key) { return key === TL_ITEM ? "notes" : "items"; }
+  function mergeById(remote, local) {
+    var out = (remote || []).slice(), seen = {};
+    out.forEach(function (x) { seen[x && x.id != null ? "i:" + x.id : "j:" + JSON.stringify(x)] = 1; });
+    (local || []).forEach(function (x) { var k = x && x.id != null ? "i:" + x.id : "j:" + JSON.stringify(x); if (!seen[k]) { out.push(x); seen[k] = 1; } });
+    return out;
+  }
   function cloudPushEntry(key, payload) {
     if (!cloudConfigured()) return;
+    if (key === TL_ITEM || key === IB_ITEM) {   // v102: Timeline / Inbox — held until pulled, and never emptied by one save
+      if (!boardPulled) { HELD[key] = deep(payload); return; }
+      var f = blobField(key), snap = key === TL_ITEM ? SNAP.tl : SNAP.ib;
+      if (snap && gLen(snap[f]) > 0 && gLen(payload && payload[f]) === 0 && !gAllow()) { entries[key] = deep(snap); save(); gBlocked(key === TL_ITEM ? "Timeline notes" : "Inbox"); return; }
+      if (key === TL_ITEM) SNAP.tl = deep(payload); else SNAP.ib = deep(payload);
+    }
     if (rmItemKey(key)) rmSoon();
     queue("entry:" + key, { table: "weekly_focus_entries", onConflict: "user_id,board_id,item_key", row: { board_id: cloud.board, item_key: key, payload: payload, updated_at: nowISO() } });
   }
@@ -1966,9 +2087,20 @@
     delete outbox["entry:" + key];                    // drop any pending upsert for it
     queue("del:" + key, { method: "delete", table: "weekly_focus_entries", match: { board_id: cloud.board, item_key: key } });
   }
-  function cloudPushBoard() { boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta, u: boardU }); }
+  /* v100: never push the __board row before it has been pulled — an empty in-memory meta would overwrite
+     chats, Vault, wishlist etc. in the cloud. The edit is held and pushed right after the first pull. */
+  var boardPulled = false, boardDirty = false;
+  function cloudPushBoard() {
+    if (!boardPulled) { boardDirty = true; return; }
+    var hit = guardMeta(); if (hit.length) { save(); gBlocked(hit.join(", ")); }   // v102: emptied lists are put back from the cloud copy before saving
+    boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta, u: boardU });
+    SNAP.meta = deep(meta);
+  }
   function cloudPushInv() {
     if (!cloudConfigured()) return;
+    if (!invPulled) { invDirty = true; return; }   // v102: before the first pull the list is empty in memory — never push that
+    if (SNAP.inv && !gAllow() && ((SNAP.inv.apps > 0 && !state.apps.length) || (SNAP.inv.study > 0 && !state.study.length))) { gBlocked("your app / study list"); cloudPullInventory(true); return; }
+    SNAP.inv = { apps: state.apps.length, study: state.study.length };
     queue("inv", { table: "weekly_focus_inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, apps: state.apps, study: state.study, office: state.office || [], updated_at: invTs || nowISO() } });
   }
 
@@ -2044,11 +2176,20 @@
   async function cloudPullEntries() {
     if (!syncReady()) return;
     try {
-      var r = await sb.from("weekly_focus_entries").select("item_key,payload").eq("board_id", cloud.board);
-      if (r.error) throw r.error;
-      var rows = r.data || [];
+      /* v100: page through — PostgREST caps a select at 1000 rows, and past that the __board row (meta: chats,
+         Vault, wishlist…) could be cut off, leaving meta empty and the next edit overwriting it in the cloud. */
+      var rows = [], from = 0, PAGE = 1000;
+      for (;;) {
+        var r = await sb.from("weekly_focus_entries").select("item_key,payload").eq("board_id", cloud.board).order("item_key").range(from, from + PAGE - 1);
+        if (r.error) throw r.error;
+        var pg = r.data || []; rows = rows.concat(pg);
+        if (pg.length < PAGE) break;
+        from += PAGE;
+      }
+      if (rows.length >= PAGE) console.info("[wf] pulled " + rows.length + " entry rows (paged)");
       if (!rows.length && (state.apps.length || state.study.length || Object.keys(entries).length)) {
         // empty cloud board + this device has data → seed cloud (never wipe local)
+        boardPulled = true;
         cloudPushInv(); cloudPushBoard(); Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); }); flushOutbox(); updateCloudStatus(); return;
       }
       var map = {}, remoteSubsBy = {};
@@ -2057,7 +2198,9 @@
         if (qk.indexOf("entry:") === 0) map[outbox[qk].row.item_key] = outbox[qk].row.payload;
         if (qk.indexOf("del:") === 0) { delete map[qk.slice(4)]; delete remoteSubsBy[qk.slice(4)]; }
       });
-      if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; delete map[BOARD_ITEM]; if ((b.u || 0) >= boardU) { if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; boardU = b.u || 0; } }
+      if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; SNAP.meta = deep(b.meta || {}); delete map[BOARD_ITEM]; if ((b.u || 0) >= boardU) { if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; boardU = b.u || 0; } }
+      var wasPulled = boardPulled; boardPulled = true;
+      if (!wasPulled && boardDirty) { boardDirty = false; cloudPushBoard(); }   // v100: a pre-pull edit goes up only now, on top of the real meta
       Object.keys(map).forEach(function (k) {                     // union-merge subtasks: remote ∪ local-current
         if (k === BOARD_ITEM) return;
         var remoteSubs = remoteSubsBy[k] || [];
@@ -2066,6 +2209,13 @@
         if (subsDiffer(remoteSubs, merged)) cloudPushEntry(k, map[k]);   // converge server; gate prevents push storms
       });
       entries = map; save();
+      SNAP.tl = map[TL_ITEM] ? deep(map[TL_ITEM]) : SNAP.tl; SNAP.ib = map[IB_ITEM] ? deep(map[IB_ITEM]) : SNAP.ib;   // v102
+      [TL_ITEM, IB_ITEM].forEach(function (hk) {   // v102: a Timeline / Inbox edit made before the pull is merged on top of the real list
+        if (!HELD[hk]) return; var f = blobField(hk), held = HELD[hk]; delete HELD[hk];
+        entries[hk] = Object.assign({}, entries[hk], { u: Date.now() }); entries[hk][f] = mergeById((map[hk] || {})[f], held[f]);
+        save(); cloudPushEntry(hk, entries[hk]);
+      });
+      setTimeout(autoExport, 1500);   // v102: daily backup file (desktop)
       // Only touch the DOM when the board actually changed — otherwise the 15s
       // poll / tab-return needlessly rebuilds everything and flashes. Animate the
       // entrance only on the first load, never on a routine background sync.
@@ -2082,7 +2232,10 @@
       var r = await sb.from("weekly_focus_inventory").select("apps,study,office,updated_at").eq("board_id", cloud.board).limit(1);
       if (r.error) throw r.error;
       invPulled = true;
-      var rows = r.data || []; if (!rows.length) return false;
+      var rows = r.data || [];
+      SNAP.inv = rows.length ? { apps: (rows[0].apps || []).length, study: (rows[0].study || []).length } : { apps: 0, study: 0 };   // v102
+      if (invDirty) { invDirty = false; toast("An app-list change made while loading wasn\u2019t saved \u2014 please redo it."); }
+      if (!rows.length) return false;
       var remoteTs = rows[0].updated_at || "";
       var hasInvPending = !!outbox["inv"];
       if (force || (!hasInvPending && (!invTs || remoteTs > invTs))) {
@@ -2459,6 +2612,7 @@
     if (!navigator.onLine) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Offline" + (n ? " \u00b7 " + n : ""); }
     else if (n) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Syncing " + n + "\u2026"; }
     else { el.className = "cloud-pill ok"; el.textContent = "\u2601 Synced"; }
+    el.title = "Board " + cloud.board + " \u00b7 " + (session.user.email || "signed in") + " \u2014 tap for details";   // v100: wrong account is spottable at a glance
   }
   function renderAuthUI() {
     var inEl = $("authSignedIn"), outEl = $("authSignedOut"); if (!inEl || !outEl) return;
@@ -2477,7 +2631,9 @@
     if (!cloudConfigured()) return "Cloud is off. Enter your project details above, then <b>Save connection</b>.";
     if (!signedIn()) return "Connected to board <b>" + esc(cloud.board) + "</b> \u2014 not signed in on this device yet. Send yourself a magic link below and open it <b>on this device</b>.";
     var n = pendingCount();
-    return "Syncing board <b>" + esc(cloud.board) + "</b> as <b>" + esc(session.user.email || "you") + "</b>." + (n ? " " + n + " change" + (n > 1 ? "s" : "") + " waiting to upload." : " Everything is up to date.");
+    var empty = !state.apps.length && !state.study.length && !(state.office || []).length && !Object.keys(entries).length;
+    return "Syncing board <b>" + esc(cloud.board) + "</b> as <b>" + esc(session.user.email || "you") + "</b>." + (n ? " " + n + " change" + (n > 1 ? "s" : "") + " waiting to upload." : " Everything is up to date.") +
+      (empty ? "<br><b>This board is empty for this account.</b> If you expected data here, you may be signed in with a different email than the one that holds it \u2014 sign out and sign back in with that email." : "");
   }
   function urlLooksRight(u) { return /^https:\/\/[a-z0-9-]+\.supabase\.(co|in|net)$/i.test(u); }
   async function testConnection() {
@@ -2542,9 +2698,10 @@
       });
     };
     $("cloudSignOut").onclick = async function () {
+      if (sb && syncReady() && navigator.onLine) { try { await flushOutbox(); } catch (e) {} }   // v100: upload queued edits before the session goes away
       if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
-      session = null; renderAuthUI(); updateCloudStatus();
-      cloudSetStatus("Signed out. Your local copy stays on this device; sync pauses until you sign in again.");
+      session = null; resetBoardState(); renderAll(); renderAuthUI(); updateCloudStatus();   // v100: never carry one account's board into the next
+      cloudSetStatus("Signed out. Sync pauses until you sign in again \u2014 your data stays in the cloud under the account you used.");
     };
   }
 
@@ -2699,6 +2856,8 @@
       if (!e.target.closest) return;
       var t = e.target.closest("[data-tkey]");
       if (t && t.getAttribute("draggable") === "true") { DRAG = { id: t.getAttribute("data-tkey"), type: "target", kind: null }; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", DRAG.id); } catch (x) {} t.classList.add("dragging"); return; }
+      var st = e.target.closest(".sph-t[data-key]");   // v101: an "Also in the sphere" tile drags like a column card
+      if (st) { var sid0 = st.getAttribute("data-key"); DRAG = { id: sid0, type: "item", kind: kindOf(sid0) }; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", sid0); } catch (x) {} st.classList.add("dragging"); return; }
       var it = e.target.closest(".item[data-key]") || e.target.closest(".brow[data-key]");
       if (it && it.getAttribute("draggable") === "true") {
         var id = it.getAttribute("data-key"); DRAG = { id: id, type: "item", kind: kindOf(id) };
@@ -2715,14 +2874,35 @@
 
     // The Five — drag to reorder
     var grid = $("fiveGrid");
-    grid.addEventListener("dragover", function (e) { if (DRAG.type !== "target") return; e.preventDefault(); });
+    grid.addEventListener("dragover", function (e) { if (DRAG.type !== "target" && DRAG.type !== "item") return; e.preventDefault(); });
     grid.addEventListener("drop", function (e) {
-      if (DRAG.type !== "target") return; e.preventDefault();
+      if (DRAG.type !== "target" && DRAG.type !== "item") return; e.preventDefault();
       var before = afterEl(grid, e.clientX, "x", ".tcard[data-tkey]");
-      var cur = targetOrder.slice(), from = cur.indexOf(DRAG.id); if (from < 0) return; cur.splice(from, 1);
+      var cur = targetOrder.slice(), from = cur.indexOf(DRAG.id);
+      if (from < 0) {   // v101: an "Also in the sphere" tile or a column card dropped into the top row → target at that slot
+        var at0 = before ? cur.indexOf(before.getAttribute("data-tkey")) : cur.length; if (at0 < 0) at0 = cur.length;
+        var dit = itemById(DRAG.id); if (!dit) return;
+        if (!isActive(dit)) patch(DRAG.id, { active: true });
+        sphereAdd(DRAG.id, at0); ENTER = false; renderAll();
+        var dix = targetOrder.indexOf(DRAG.id); toast(dit.name + (dix >= 0 ? " \u2192 target #" + (dix + 1) : " pulled into the sphere"));
+        return;
+      }
+      cur.splice(from, 1);
       var at = before ? cur.indexOf(before.getAttribute("data-tkey")) : cur.length; if (at < 0) at = cur.length;
       cur.splice(at, 0, DRAG.id); targetOrder = cur; save(); cloudPushBoard(); syncRanks(); renderFive(); renderCols();
     });
+
+    var smore = $("sphereMore");   // v101: drop a column card under the top row → into the sphere
+    if (smore) {
+      smore.addEventListener("dragover", function (e) { if (DRAG.type !== "item") return; e.preventDefault(); smore.classList.add("dropzone-hot"); });
+      smore.addEventListener("dragleave", function (e) { if (!smore.contains(e.relatedTarget)) smore.classList.remove("dropzone-hot"); });
+      smore.addEventListener("drop", function (e) {
+        if (DRAG.type !== "item") return; e.preventDefault(); smore.classList.remove("dropzone-hot");
+        var sit = itemById(DRAG.id); if (!sit) return;
+        if (!isActive(sit)) patch(DRAG.id, { active: true });
+        sphereAdd(DRAG.id); ENTER = false; renderAll(); toast(sit.name + " pulled into the sphere");
+      });
+    }
 
     // Active columns — drop to activate (if needed) + reorder
     [["appsActive", "app"], ["studyActive", "study"]].forEach(function (pair) {
@@ -2760,12 +2940,19 @@
      ============================================================ */
   function updateBoardUI() { var el = $("boardName"); if (el) el.textContent = cloud.board || "my-week"; }
 
+  /* v100: drop everything in memory that belongs to the current account/board. Used when switching
+     boards AND on sign-out / account change — otherwise the old account's data (incl. meta.cvault)
+     survives in memory and cloudPullEntries would seed it into the next account's empty board. */
+  function resetBoardState() {
+    state = { apps: [], study: [], office: [] }; itemIndex = {}; rebuildIndex();
+    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true; boardU = 0; lastCloudSig = ""; boardPulled = false; boardDirty = false;
+  }
+  var lastUid = null;   // v100: user id of the last pull — a different account must start from a clean board
   function switchBoard(name) {
     name = (name || "").trim(); if (!name || name === cloud.board) { closeBoardMenu(); return; }
     cloud.board = name;
     try { localStorage.setItem("wf2_active_board", name); } catch (e) {}
-    state = { apps: [], study: [], office: [] }; itemIndex = {}; rebuildIndex();
-    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true;
+    resetBoardState();
     ENTER = true; updateBoardUI(); refreshGroupLists(); renderAll(); updateCloudStatus(); closeBoardMenu();
     if (syncReady()) initialSync();           // pulls THIS board's inventory + entries
   }

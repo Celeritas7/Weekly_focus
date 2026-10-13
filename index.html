@@ -203,14 +203,15 @@
     <!-- ===================== WEEKLY PULSE ===================== -->
     <section class="pulse" id="pulse"></section>
 
-    <!-- ===================== THE FIVE ===================== -->
-    <section class="five">
+    <!-- ===================== SPHERE (v101 — was The Five) ===================== -->
+    <section class="five sphere">
       <div class="sec-head">
-        <span class="k">The Five</span>
-        <span class="sub">the targets that actually have to move this week</span>
+        <span class="k">&#9678; Sphere</span>
+        <span class="sub">top five by rank are this week&rsquo;s targets &middot; everything else stays below, faint</span>
         <span class="count" id="fiveCount">0/5</span>
       </div>
       <div class="five-grid" id="fiveGrid"></div>
+      <div id="sphereMore"></div>
     </section>
 
     <!-- ===================== COLUMNS ===================== -->
@@ -376,8 +377,8 @@
 <div class="modal-bg" id="pickModal">
   <div class="modal">
     <div class="modal-head">
-      <h3>Add a target</h3>
-      <p>Pick from what you've switched on this week &mdash; max five.</p>
+      <h3>Add to the sphere</h3>
+      <p>Tap to add or take out &mdash; no limit. The top five by rank are this week&rsquo;s targets.</p>
     </div>
     <div class="modal-body" id="pickBody"></div>
     <div class="modal-foot">
@@ -637,7 +638,8 @@
         </div>
         <div id="authSignedIn" style="display:none;">
           <p class="dhelp">Signed in as <b id="authWho">your account</b>.</p>
-          <div class="dbtns"><button class="tbtn primary" id="cloudPull">Pull from cloud</button><button class="tbtn" id="cloudSignOut">Sign out</button></div>
+          <div class="dbtns"><button class="tbtn primary" id="cloudPull">Pull from cloud</button><button class="tbtn" id="cloudSignOut">Sign out</button><button class="tbtn" id="cloudExport" title="Download everything on this board as a .json backup">Export board</button></div>
+          <label class="dauto" style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px;color:var(--mid);cursor:pointer;"><input type="checkbox" id="cloudAutoExport" style="width:16px;height:16px;accent-color:var(--brand);"> Daily backup on <b>this device</b> &mdash; saves a .json to Downloads on the first sync each day</label><div class="dbtns" style="display:none;"></div>
         </div>
         <p class="dstatus" id="cloudStatus">Cloud is off. Connect a project above to sync across devices.</p>
       </div>
