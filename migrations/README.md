@@ -34,4 +34,4 @@ Older SQL in `docs/` is history, not something to re-run.
 | Migration | Applied (UTC) | md5 after | Notes |
 |---|---|---|---|
 | `20261013_01_wf_keep_history_merged.sql` | 2026-10-13 ~15:00 | `212409a042cc1ad5bb18a07ed1a915a1` | Overwritten by 15:05 with STEP5 fix A (md5 `a0767ab0dc079df9670f58ae0a690001`) from outside this repo. |
-| `20261013_02_wf_keep_history_reapply.sql` | — | — | Pending. |
+| `20261013_02_wf_keep_history_reapply.sql` | 2026-10-13 ~15:12 | `212409a042cc1ad5bb18a07ed1a915a1` | Verified 15:14: live md5 matches; deleting `app:__histtest` wrote 1 history row (delete path works). **Next migration's step 0 checks `212409a042cc1ad5bb18a07ed1a915a1`.** |
