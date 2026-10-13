@@ -23,7 +23,7 @@ Scenario: device A (offline or stale) adds a login; device B adds an address and
 - `function saveOutbox() {}` (line 1935) is a no-op; `outbox` exists only in memory.
 - `flushOutbox` swallows failures (`catch (e) { continue; }`) and just retries later; nothing is persisted or surfaced.
 - `var boardU = 0` (line 62) at startup.
-Sequence: save a vault record → local `save()` succeeds, cloud push is queued → tab closed / reloaded / killed / signal lost before the push succeeds → on next load `boardU = 0`, so any remote `__board` row passes `u >= boardU` and **overwrites the local `meta`, discarding the unsent vault record**. This is the most likely cause of "I saved it and it was gone."
+Sequence: save a vault record → (correction, Oct 13: `save()` is a no-op, so nothing is kept locally at all) cloud push is queued → tab closed / reloaded / killed / signal lost before the push succeeds → on next load `boardU = 0`, so any remote `__board` row passes `u >= boardU` and **overwrites the local `meta`, discarding the unsent vault record**. This is the most likely cause of "I saved it and it was gone."
 
 ### 3. Delete is immediate, synced, and has no undo or history (MEDIUM)
 Lines 4319 and 4380: `confirm()` then `meta.cvault = vaultArr().filter(...)`, `saveChats()`. The deletion is pushed to the cloud straight away. No tombstone, no trash, no previous-version copy, no export/backup.
@@ -40,6 +40,9 @@ Line 2050: if the remote has no rows and the device has data, the device seeds t
 
 ### 7. Not data loss, but related: secrets stored in plaintext
 Passwords, card number + CVV, bank accounts and API keys are stored as plain JSON in Supabase with no client-side encryption. Protection relies on RLS only. (The app itself notes it is not a replacement for a password manager.)
+
+### 8. Push before first pull can wipe the whole board (HIGH — added Oct 13)
+`meta` starts as `{}` and is only filled by the first cloud pull. A board-level edit before that pull (slow or offline start) pushes `__board` with an almost empty `meta` and a fresh `u`, which wins everywhere. See `docs/handover-claude-design-sync-safety.md`.
 
 ## Recommended fixes (priority order)
 
