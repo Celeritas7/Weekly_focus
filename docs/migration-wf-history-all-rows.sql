@@ -1,3 +1,6 @@
+-- SUPERSEDED — do not run. Replaced by migrations/20261013_01_wf_keep_history_merged.sql
+-- (this version lacks the 'del' soft-delete rule). See migrations/README.md.
+
 -- WF — history for every row (Akatsuki review-2026-10-12-b1, fix A)
 -- wf_keep_history() used to return early for every item_key except __board/__timeline/__inbox,
 -- so per-record rows (app:*, code:*, ...) got no history. Also scopes the 30-day prune to the writing user.
