@@ -35,4 +35,4 @@ Older SQL in `docs/` is history, not something to re-run.
 |---|---|---|---|
 | `20261013_01_wf_keep_history_merged.sql` | 2026-10-13 ~15:00 | `212409a042cc1ad5bb18a07ed1a915a1` | Overwritten by 15:05 with STEP5 fix A (md5 `a0767ab0dc079df9670f58ae0a690001`) from outside this repo. |
 | `20261013_02_wf_keep_history_reapply.sql` | 2026-10-13 ~15:12 | `212409a042cc1ad5bb18a07ed1a915a1` | Verified 15:14: live md5 matches; deleting `app:__histtest` wrote 1 history row (delete path works). **Next migration's step 0 checks `212409a042cc1ad5bb18a07ed1a915a1`.** |
-| `20261013_03_wf_keep_history_reapply.sql` | — | — | Pending. Live was overwritten again by 15:55 with the v103 `__v:`/`__c:` version (md5 `171880dcbcdb6c4f2ffd2f3a0a179fce`). |
+| `20261013_03_wf_keep_history_reapply.sql` | 2026-10-13 ~16:00 | `212409a042cc1ad5bb18a07ed1a915a1` | Live had been overwritten by 15:55 with the v103 `__v:`/`__c:` version (md5 `171880dcbcdb6c4f2ffd2f3a0a179fce`). Verified 16:03. Saved SQL Editor snippets and local v102/v103 history SQL deleted; `history-trigger-v102.sql` removed from the repo. **Next migration's step 0 checks `212409a042cc1ad5bb18a07ed1a915a1`.** |

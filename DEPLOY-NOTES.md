@@ -6,7 +6,7 @@ Built on v101. Copy over `Weekly_focus/`, then reload twice:
 - `css/weekly-focus.css` (v102 rules appended at the end)
 - `sw.js` (cache → `weekly-focus-v102`)
 
-Then run `history-trigger-v102.sql` in Supabase → SQL Editor, one numbered block at a time.
+Database: no SQL ships with this build. The history trigger (`wf_keep_history()`) is owned by `migrations/` — see `migrations/README.md`. Do not paste history SQL from older builds.
 
 ## Protection
 1. **Shrink guard** — a save that would empty the Vault, Chats, Wishlist, Places, Routines or Dev links while the cloud copy still has items is blocked: the cloud copy is put back and a toast says so. Same for Timeline notes, Inbox and the app / study list.
