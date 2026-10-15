@@ -25,7 +25,7 @@ by hand in the SQL Editor or by an agent without a migration file committed firs
 
 | Object | Current migration | Notes |
 |---|---|---|
-| `public.wf_keep_history()` | `20261013_03_wf_keep_history_reapply.sql` (body from `_01`) | The only version. History for every `weekly_focus_entries` row; `del` flag always kept; cap 20 per key (100 for `__*`); per-user 30-day prune. |
+| `public.wf_keep_history()` | `20261015_01_wf_keep_history_records_always.sql` | The only version. History for every `weekly_focus_entries` row; `del` flag always kept; `__v:`/`__c:` records keep a snapshot on every change (no 10-minute throttle); cap 20 per key (100 for `__*`); per-user 30-day prune. |
 
 Older SQL in `docs/` is history, not something to re-run.
 
@@ -35,4 +35,5 @@ Older SQL in `docs/` is history, not something to re-run.
 |---|---|---|---|
 | `20261013_01_wf_keep_history_merged.sql` | 2026-10-13 ~15:00 | `212409a042cc1ad5bb18a07ed1a915a1` | Overwritten by 15:05 with STEP5 fix A (md5 `a0767ab0dc079df9670f58ae0a690001`) from outside this repo. |
 | `20261013_02_wf_keep_history_reapply.sql` | 2026-10-13 ~15:12 | `212409a042cc1ad5bb18a07ed1a915a1` | Verified 15:14: live md5 matches; deleting `app:__histtest` wrote 1 history row (delete path works). **Next migration's step 0 checks `212409a042cc1ad5bb18a07ed1a915a1`.** |
-| `20261013_03_wf_keep_history_reapply.sql` | 2026-10-13 ~16:00 | `212409a042cc1ad5bb18a07ed1a915a1` | Live had been overwritten by 15:55 with the v103 `__v:`/`__c:` version (md5 `171880dcbcdb6c4f2ffd2f3a0a179fce`). Verified 16:03. Saved SQL Editor snippets and local v102/v103 history SQL deleted; `history-trigger-v102.sql` removed from the repo. **Next migration's step 0 checks `212409a042cc1ad5bb18a07ed1a915a1`.** |
+| `20261013_03_wf_keep_history_reapply.sql` | 2026-10-13 ~16:00 | `212409a042cc1ad5bb18a07ed1a915a1` | Live had been overwritten by 15:55 with the v103 `__v:`/`__c:` version (md5 `171880dcbcdb6c4f2ffd2f3a0a179fce`). Verified 16:03. Saved SQL Editor snippets and local v102/v103 history SQL deleted; `history-trigger-v102.sql` removed from the repo. |
+| `20261015_01_wf_keep_history_records_always.sql` | 2026-10-15 ~12:55 | `30f98cc9f23d4200ef3dac5074cfa0a8` | Step 0 matched `212409a0…` (_03). A first reported run did not reach `General_apps` (live md5 unchanged); re-run there and verified 12:55:40: `records_always` and `has_cap` true. **Next migration's step 0 checks `30f98cc9f23d4200ef3dac5074cfa0a8`.** |
