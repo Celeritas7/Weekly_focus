@@ -56,7 +56,7 @@
   /* which board is selected is a tiny UI preference (NOT your data — that lives in
      Supabase). If it's ever evicted you just land back on the default board. */
   try { var _ab = localStorage.getItem("wf2_active_board"); if (_ab && window.WF_CONFIG) cloud.board = _ab; } catch (e) {}
-  var outbox = {};                  // in-memory write queue — never persisted to localStorage
+  var outbox = {};                  // v104: write queue, mirrored to localStorage per user + board (saveOutbox / loadOutbox)
   var flushing = false, sb = null, session = null, authSub = null;
   var lastCloudSig = "";            // signature of the last-rendered board — skip no-op re-renders
   var boardU = 0;                   // last local board write (ms) — stale pulls must not undo a fresh star
@@ -1990,7 +1990,28 @@
   function syncReady() { return !!(sb && cloudConfigured() && signedIn()); }
   function looksSecret(k) { return /^sb_secret_/i.test(k) || /service_role/i.test(k); }
   function saveCloud() {}    // connection is baked into config.js — nothing to persist
-  function saveOutbox() {}   // the outbox is in-memory only
+  /* v104 (R2): the outbox survives reloads. Stored per user + board BEFORE sending; an entry is removed only after the server
+     confirms it. Whole-document blobs (inventory, Timeline, Inbox) are NOT stored — replaying a stale copy days later could
+     overwrite newer edits from another device. The __board row IS stored: it carries the keys it changed (dk) and is merged per key. */
+  var OB_ERR = null, OB_SKIP = { inv: 1 };
+  function obUid() { if (session && session.user) return session.user.id; try { return localStorage.getItem("wf2_last_uid"); } catch (e) { return null; } }
+  function obKey() { var u = obUid(); return u && cloud && cloud.board ? "wf_outbox:" + u + ":" + cloud.board : null; }
+  function obKeep(q) { return !OB_SKIP[q] && q !== "entry:" + TL_ITEM && q !== "entry:" + IB_ITEM; }
+  function saveOutbox() {
+    var k = obKey(); if (!k) return;
+    var keep = {}; Object.keys(outbox).forEach(function (q) { if (obKeep(q)) keep[q] = outbox[q]; });
+    try { if (Object.keys(keep).length) localStorage.setItem(k, JSON.stringify(keep)); else localStorage.removeItem(k); }
+    catch (e) { OB_ERR = "this device couldn’t store unsent changes (" + ((e && e.name) || "storage") + ")"; }
+  }
+  function loadOutbox() {
+    var k = obKey(); if (!k) return;
+    try {
+      var s = JSON.parse(localStorage.getItem(k) || "{}") || {}, n = 0;
+      Object.keys(s).forEach(function (q) { if (!(q in outbox) && obKeep(q)) { outbox[q] = s[q]; n++; } });   // anything queued in memory this session is newer
+      if (n) console.info("[wf] v104: restored " + n + " unsent change" + (n > 1 ? "s" : "") + " from this device");
+    } catch (e) {}
+    saveOutbox();
+  }
 
   function ensureClient() {
     if (sb) return sb;
@@ -2005,7 +2026,7 @@
       session = sess || null;
       var uidNow = session && session.user ? session.user.id : null;
       if (event === "SIGNED_OUT" || (uidNow && lastUid && uidNow !== lastUid)) { resetBoardState(); ENTER = true; renderAll(); }   // v100
-      if (uidNow) lastUid = uidNow;
+      if (uidNow) { lastUid = uidNow; try { localStorage.setItem("wf2_last_uid", uidNow); } catch (e) {} }
       renderAuthUI(); updateCloudStatus();
       var cm = $("cloudModal"); if (cm && cm.classList.contains("open")) cloudSetStatus(cloudSummary());
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) Promise.resolve(initialSync()).then(akStart);
@@ -2018,8 +2039,8 @@
 
   function queue(qkey, op) { outbox[qkey] = op; saveOutbox(); flushOutbox(); updateCloudStatus(); }
   /* ---- v102 guards: never let one save empty a list the cloud still has. SNAP = last copy seen in the cloud. ---- */
-  var SNAP = { meta: null, inv: null, tl: null, ib: null }, HELD = {}, invDirty = false;
-  var GUARD_KEYS = { cvault: "Vault", cchats: "Chats", wish: "Wishlist", places: "Places", routines: "Routines", links: "Dev links" };
+  var SNAP = { meta: null, inv: null, tl: null, ib: null, t: null }, HELD = {}, invDirty = false;
+  var GUARD_KEYS = { wish: "Wishlist", places: "Places", routines: "Routines", links: "Dev links" };   // v103: Vault / Chats are per-record rows — guarded in recSync (no batch deletes), so deleting the last record is allowed
   function gLen(v) { return Array.isArray(v) ? v.length : (v && typeof v === "object") ? Object.keys(v).length : 0; }
   function deep(v) { try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; } }
   function gAllow() { return window.__wfAllowEmpty === true; }   // console override for a deliberate wipe
@@ -2033,8 +2054,8 @@
   /* v102: export the whole board to a .json file — a button in the Cloud panel + automatically once a day on desktop */
   function exportBoard(auto) {
     var day = new Date().toISOString().slice(0, 10);
-    var data = { exportedAt: nowISO(), build: "v102", board: cloud.board, account: session && session.user ? session.user.email : null,
-      targetOrder: targetOrder, meta: meta, entries: entries, inventory: { apps: state.apps, study: state.study, office: state.office || [] },
+    var data = { exportedAt: nowISO(), build: "v104", board: cloud.board, account: session && session.user ? session.user.email : null,
+      targetOrder: targetOrder, meta: meta, trash: TRASH, entries: entries, inventory: { apps: state.apps, study: state.study, office: state.office || [] },
       groups: (typeof FG !== "undefined" && FG) ? { groups: FG.groups, members: FG.map } : null };
     var blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
     var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "weekly-focus-" + cloud.board + "-" + day + ".json";
@@ -2047,7 +2068,28 @@
   function autoExportOn() {
     try { return localStorage.getItem("wf2_auto_export") === "1"; } catch (e) { return false; }   // off by default — tick it per device
   }
-  function paintAutoExport() { var cb = $("cloudAutoExport"); if (cb) cb.checked = autoExportOn(); }
+  function paintAutoExport() { var cb = $("cloudAutoExport"); if (cb) cb.checked = autoExportOn(); paintTrash(); }
+  /* v104 (R5): deleted Vault records + chats, restorable for 30 days. Lives under Daily backup in the Cloud panel. */
+  function trashTitle(t) { var r = (t && t.r) || {}; return String((r.f && r.f.t) || r.t || "Untitled"); }
+  function paintTrash() {
+    var cb = $("cloudAutoExport"), lab = cb && cb.closest("label"); if (!lab) return;
+    var host = $("recTrash");
+    if (!host) { host = document.createElement("div"); host.id = "recTrash"; host.style.cssText = "margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,.08);font-size:12.5px;color:var(--mid)"; lab.parentNode.insertBefore(host, lab.nextSibling); }
+    var ks = Object.keys(TRASH).sort(function (a, b) { return TRASH[b].del - TRASH[a].del; });
+    host.innerHTML = "<b>Deleted Vault items &amp; chats</b> — " + (ks.length ? "kept 30 days" : "none in the last 30 days.") + ks.map(function (k) {
+      var t = TRASH[k];
+      return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.n + " · " + trashTitle(t)) + '</span><span>' + esc(new Date(t.del).toLocaleDateString()) + '</span><button type="button" class="tbtn" data-rrest="' + esc(k) + '">Restore</button></div>';
+    }).join("");
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target && e.target.closest && e.target.closest("[data-rrest]"); if (!b) return;
+    var k = b.getAttribute("data-rrest"), t = TRASH[k]; if (!t || !t.r) return;
+    var K = k.indexOf("__v:") === 0 ? RECK[0] : RECK[1], id = k.slice(K.p.length);
+    if (!Array.isArray(meta[K.f])) meta[K.f] = [];
+    if (!meta[K.f].some(function (x) { return x && String(x.id) === id; })) meta[K.f].push(deep(t.r));
+    delete TRASH[k]; saveChats(); try { renderChats(); } catch (x) {}
+    paintTrash(); toast("Restored ✓ " + trashTitle(t));
+  });
   document.addEventListener("change", function (e) {
     if (!e.target || e.target.id !== "cloudAutoExport") return;
     try { localStorage.setItem("wf2_auto_export", e.target.checked ? "1" : "0"); } catch (x) {}
@@ -2089,12 +2131,88 @@
   }
   /* v100: never push the __board row before it has been pulled — an empty in-memory meta would overwrite
      chats, Vault, wishlist etc. in the cloud. The edit is held and pushed right after the first pull. */
-  var boardPulled = false, boardDirty = false;
-  function cloudPushBoard() {
-    if (!boardPulled) { boardDirty = true; return; }
+  var boardPulled = false, boardDirty = false, PRE_DK = {};   // v104 (R1): PRE_DK = board keys edited before the first pull, re-applied on top of it
+  function cloudPushBoard(force) {
+    if (!boardPulled) { boardDirty = true; Object.keys(meta).forEach(function (k) { if (k !== "cvault" && k !== "cchats") PRE_DK[k] = deep(meta[k]); }); return; }
     var hit = guardMeta(); if (hit.length) { save(); gBlocked(hit.join(", ")); }   // v102: emptied lists are put back from the cloud copy before saving
-    boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: meta, u: boardU });
-    SNAP.meta = deep(meta);
+    recSync();   // v103: Vault / Chats records go up as their own rows
+    /* v104 (R4): note WHICH top-level keys this device changed (dk). The next pull keeps only those local and takes every
+       other key from the cloud. Nothing changed → nothing is sent. */
+    var prevOp = outbox["entry:" + BOARD_ITEM], dk = {}, base = SNAP.meta || {};
+    ((prevOp && prevOp.dk) || []).forEach(function (k) { dk[k] = 1; });
+    Object.keys(meta).concat(Object.keys(base)).forEach(function (k) { if (k !== "cvault" && k !== "cchats" && JSON.stringify(meta[k]) !== JSON.stringify(base[k])) dk[k] = 1; });
+    if (JSON.stringify(targetOrder) !== JSON.stringify(SNAP.t || [])) dk.__t = 1;
+    if (!force && !Object.keys(dk).length) return;
+    boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: boardMetaOut(), u: boardU });
+    var bop = outbox["entry:" + BOARD_ITEM]; if (bop) { bop.dk = Object.keys(dk); saveOutbox(); }
+    SNAP.meta = deep(meta); SNAP.t = deep(targetOrder);
+  }
+  /* ---- v103: Vault + Chats — one row per record ("__v:<id>" / "__c:<id>"), so a save touches only the record changed.
+     Payload { r: record, u } or a tombstone { del: true, u } (purged after 30 days). REC_SIG = last copy of each record
+     seen in / sent to the cloud ("del" = tombstone). Order lives on the board as meta.vord / meta.cord. ---- */
+  var RECK = [{ p: "__v:", f: "cvault", o: "vord", n: "Vault" }, { p: "__c:", f: "cchats", o: "cord", n: "Chats" }];
+  var REC_SIG = {}, recMigrating = false, REC_TTL = 30 * 864e5, TRASH = {};   // v104: TRASH = soft-deleted records (restorable)
+  function recKey(k) { return typeof k === "string" && (k.indexOf("__v:") === 0 || k.indexOf("__c:") === 0); }
+  function boardMetaOut() {
+    if (recMigrating) return meta;   // old copies stay on the board until every record row is confirmed in the cloud
+    var m = Object.assign({}, meta); delete m.cvault; delete m.cchats; return m;
+  }
+  function recSync() {   // v104: also runs before the first pull — a record row is per key, so it can't overwrite anything else
+    var now = Date.now(), kept = [];
+    RECK.forEach(function (K) {
+      if (!Array.isArray(meta[K.f])) meta[K.f] = [];
+      var arr = meta[K.f], seen = {}, gone = [];
+      arr.forEach(function (x) {
+        if (!x || typeof x !== "object") return;
+        if (x.id == null || x.id === "") x.id = uid();
+        var k = K.p + x.id, s = JSON.stringify(x); seen[k] = 1;
+        if (REC_SIG[k] !== s) { REC_SIG[k] = s; cloudPushEntry(k, { r: deep(x), u: now }); }
+      });
+      Object.keys(REC_SIG).forEach(function (k) { if (k.indexOf(K.p) === 0 && !seen[k] && REC_SIG[k] !== "del") gone.push(k); });
+      if (gone.length > 1 && !gAllow()) {   // every delete in the app removes exactly one record — losing several in one save is a fault, so put them back
+        gone.forEach(function (k) { try { arr.push(JSON.parse(REC_SIG[k])); } catch (e) {} });
+        kept.push(gone.length + " " + K.n + " records");
+      } else gone.forEach(function (k) {   // v104 (R3): soft delete — the row keeps the record next to del, so it can be restored
+        var last = null; try { last = JSON.parse(REC_SIG[k]); } catch (e) {}
+        REC_SIG[k] = "del"; cloudPushEntry(k, { r: last, del: now, u: now }); if (last) TRASH[k] = { r: last, del: now, n: K.n };
+      });
+      meta[K.o] = arr.map(function (x) { return x && x.id; }).filter(function (v) { return v != null; });
+    });
+    if (kept.length) {
+      save(); console.warn("[wf] v103 guard blocked deleting " + kept.join(", ") + " in one save");
+      toast("Blocked: that save would have deleted " + kept.join(" and ") + " at once. They’re kept.");
+      setTimeout(function () { try { renderChats(); } catch (e) {} }, 0);
+    }
+  }
+  /* merge pulled record rows into meta.cvault / meta.cchats. local = this device's arrays, legacy = arrays still on an old __board */
+  function recApply(rows, local, legacy) {
+    var now = Date.now(), migrate = false; TRASH = {};
+    RECK.forEach(function (K) {
+      var byId = {}, loc = Array.isArray(local[K.f]) ? local[K.f] : [];
+      function fresh(x) { return x && x.id != null && !((K.p + x.id) in REC_SIG) && !((K.p + x.id) in rows); }
+      (Array.isArray(legacy[K.f]) ? legacy[K.f] : []).forEach(function (x) { if (fresh(x)) { byId[x.id] = x; migrate = true; } });
+      loc.forEach(function (x) { if (fresh(x)) byId[x.id] = x; });   // made on this device, not in the cloud yet
+      Object.keys(REC_SIG).forEach(function (k) { if (k.indexOf(K.p) === 0 && !(k in rows)) delete REC_SIG[k]; });
+      Object.keys(rows).forEach(function (k) {
+        if (k.indexOf(K.p) !== 0) return;
+        var p = rows[k] || {}, id = k.slice(K.p.length);
+        if (p.del) {
+          delete byId[id]; REC_SIG[k] = "del";
+          var dAt = typeof p.del === "number" ? p.del : (p.u || 0);
+          if (now - dAt > REC_TTL && !outbox["entry:" + k]) { delete REC_SIG[k]; cloudDeleteEntry(k); return; }
+          if (p.r && typeof p.r === "object") TRASH[k] = { r: p.r, del: dAt, n: K.n };
+          return;
+        }
+        if (!p.r || typeof p.r !== "object") return;
+        byId[id] = p.r; REC_SIG[k] = JSON.stringify(p.r);
+      });
+      var ord = Array.isArray(meta[K.o]) ? meta[K.o] : loc.map(function (x) { return x && x.id; }), pos = {};
+      ord.forEach(function (id, i) { if (id != null) pos[String(id)] = i; });
+      var list = Object.keys(byId).map(function (id, i) { return { x: byId[id], s: pos[id] != null ? pos[id] : 1e6 + i }; });
+      list.sort(function (a, b) { return a.s - b.s; });
+      meta[K.f] = list.map(function (o) { return o.x; });
+    });
+    if (migrate) { recMigrating = true; console.info("[wf] v103: moving Vault / Chats records off the board row into their own rows"); }
   }
   function cloudPushInv() {
     if (!cloudConfigured()) return;
@@ -2110,15 +2228,20 @@
     var uidv = session.user.id, keys = Object.keys(outbox);
     for (var i = 0; i < keys.length; i++) {
       var op = outbox[keys[i]];
+      if (!op || (keys[i] === "entry:" + BOARD_ITEM && !boardPulled) || (keys[i] === "inv" && !invPulled)) continue;   // v104 (R1): a whole-document write never goes up before its first pull
       try {
         var r;
         if (op.method === "delete") r = await sb.from(op.table).delete().match(Object.assign({ user_id: uidv }, op.match));
         else r = await sb.from(op.table).upsert(Object.assign({ user_id: uidv }, op.row), { onConflict: op.onConflict });
         if (r.error) throw r.error;
-        delete outbox[keys[i]]; saveOutbox();
-      } catch (e) { continue; }
+        if (outbox[keys[i]] === op) delete outbox[keys[i]];   // v104: a newer edit queued while this one was in flight stays queued
+        saveOutbox(); OB_ERR = null;
+      } catch (e) { if (navigator.onLine) { OB_ERR = String((e && (e.message || e.code)) || "upload failed"); console.warn("[wf] upload failed (" + keys[i] + "): " + OB_ERR); } continue; }
     }
     flushing = false; updateCloudStatus();
+    if (recMigrating && !Object.keys(outbox).some(function (k) { return k.indexOf("entry:__v:") === 0 || k.indexOf("entry:__c:") === 0; })) {
+      recMigrating = false; console.info("[wf] v103: all records are in their own rows — clearing the old copy off the board row"); cloudPushBoard(true);
+    }
   }
 
   function boardSig() { return JSON.stringify({ e: entries, t: targetOrder, m: meta }); }
@@ -2195,12 +2318,32 @@
       var map = {}, remoteSubsBy = {};
       rows.forEach(function (row) { var p = row.payload || {}; map[row.item_key] = p; remoteSubsBy[row.item_key] = normSubs(p.subtasks); });
       Object.keys(outbox).forEach(function (qk) {                 // pending local writes win (scalars); subtasks merged below
-        if (qk.indexOf("entry:") === 0) map[outbox[qk].row.item_key] = outbox[qk].row.payload;
+        if (qk.indexOf("entry:") === 0 && outbox[qk].row.item_key !== BOARD_ITEM) map[outbox[qk].row.item_key] = outbox[qk].row.payload;   // v104: the board row is merged per key below
         if (qk.indexOf("del:") === 0) { delete map[qk.slice(4)]; delete remoteSubsBy[qk.slice(4)]; }
       });
-      if (map[BOARD_ITEM]) { var b = map[BOARD_ITEM]; SNAP.meta = deep(b.meta || {}); delete map[BOARD_ITEM]; if ((b.u || 0) >= boardU) { if (Array.isArray(b.targetOrder)) targetOrder = b.targetOrder; if (b.meta) meta = b.meta; boardU = b.u || 0; } }
+      var recRows = {}, recLocal = { cvault: meta.cvault, cchats: meta.cchats }, recLegacy = {};   // v103
+      Object.keys(map).forEach(function (k) { if (recKey(k)) { recRows[k] = map[k]; delete map[k]; delete remoteSubsBy[k]; } });
+      if (map[BOARD_ITEM] && map[BOARD_ITEM].meta) recLegacy = { cvault: map[BOARD_ITEM].meta.cvault, cchats: map[BOARD_ITEM].meta.cchats };
+      if (map[BOARD_ITEM]) {   // v104 (R4): per top-level key — a key with an unsent local change keeps the local value, every other key takes the cloud's
+        var b = map[BOARD_ITEM], bRm = b.meta || {}, bPend = outbox["entry:" + BOARD_ITEM], bPm = (bPend && bPend.row && bPend.row.payload) || {}, bDk = {}, bNm = {};
+        ((bPend && bPend.dk) || []).forEach(function (k) { bDk[k] = 1; });
+        SNAP.meta = deep(bRm); SNAP.t = deep(Array.isArray(b.targetOrder) ? b.targetOrder : []); delete map[BOARD_ITEM];
+        Object.keys(bRm).forEach(function (k) { if (!bDk[k]) bNm[k] = bRm[k]; });
+        Object.keys(bDk).forEach(function (k) { if (k !== "__t" && bPm.meta && bPm.meta[k] !== undefined) bNm[k] = bPm.meta[k]; });
+        targetOrder = bDk.__t && Array.isArray(bPm.targetOrder) ? bPm.targetOrder : (Array.isArray(b.targetOrder) ? b.targetOrder : targetOrder);
+        meta = bNm; boardU = b.u || 0;
+      }
+      delete meta.cvault; delete meta.cchats; recApply(recRows, recLocal, recLegacy);   // v103
+      SNAP.meta = SNAP.meta || {}; SNAP.meta.cvault = deep(meta.cvault); SNAP.meta.cchats = deep(meta.cchats);
+      var bQ = outbox["entry:" + BOARD_ITEM];   // v104: the queued board write now carries the cloud's other keys, so it can't overwrite them
+      if (bQ && bQ.row) { bQ.row.payload = { targetOrder: targetOrder, meta: boardMetaOut(), u: Date.now() }; bQ.row.updated_at = nowISO(); saveOutbox(); }
+      if (!boardPulled && Object.keys(PRE_DK).length) {   // v104 (R1): a pre-pull edit lands on top of the pulled board — lists are merged, scalars keep the local value
+        Object.keys(PRE_DK).forEach(function (k) { var l = PRE_DK[k], c = meta[k]; meta[k] = (Array.isArray(l) && Array.isArray(c)) ? mergeById(c, l) : l; });
+        PRE_DK = {}; boardDirty = true;
+      }
       var wasPulled = boardPulled; boardPulled = true;
       if (!wasPulled && boardDirty) { boardDirty = false; cloudPushBoard(); }   // v100: a pre-pull edit goes up only now, on top of the real meta
+      recSync();   // v103: push records made here before the pull + any being moved off an old board row
       Object.keys(map).forEach(function (k) {                     // union-merge subtasks: remote ∪ local-current
         if (k === BOARD_ITEM) return;
         var remoteSubs = remoteSubsBy[k] || [];
@@ -2248,6 +2391,7 @@
     } catch (e) { return false; }
   }
   function initialSync() {
+    loadOutbox();   // v104: unsent changes from before a reload go up after the first pull
     // CLOUD-FIRST: a fresh device adopts the cloud copy; a device with local
     // data keeps it and seeds the cloud only if the board is empty.
     var fresh = !state.apps.length && !state.study.length && !state.office.length;
@@ -2610,9 +2754,11 @@
     if (!signedIn()) { el.className = "cloud-pill auth"; el.textContent = "\u2601 Sign in"; return; }
     var n = pendingCount();
     if (!navigator.onLine) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Offline" + (n ? " \u00b7 " + n : ""); }
+    else if (n && OB_ERR) { el.className = "cloud-pill warn"; el.textContent = "\u26a0 " + n + " not synced"; }   // v104
     else if (n) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Syncing " + n + "\u2026"; }
+    else if (!boardPulled) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Loading board\u2026"; }   // v104 (R1)
     else { el.className = "cloud-pill ok"; el.textContent = "\u2601 Synced"; }
-    el.title = "Board " + cloud.board + " \u00b7 " + (session.user.email || "signed in") + " \u2014 tap for details";   // v100: wrong account is spottable at a glance
+    el.title = "Board " + cloud.board + " \u00b7 " + (session.user.email || "signed in") + " \u2014 tap for details" + (OB_ERR && n ? " \u00b7 last error: " + OB_ERR : "");   // v100: wrong account is spottable at a glance
   }
   function renderAuthUI() {
     var inEl = $("authSignedIn"), outEl = $("authSignedOut"); if (!inEl || !outEl) return;
@@ -2624,6 +2770,10 @@
     setInterval(function () { if (document.visibilityState === "visible" && navigator.onLine && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); } }, 15000);
     window.addEventListener("online", function () { if (syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); } updateCloudStatus(); });
     window.addEventListener("offline", updateCloudStatus);
+    window.addEventListener("beforeunload", function (e) {   // v104: changes are kept on this device, but say so if they haven't reached the cloud
+      if (!cloudConfigured() || !pendingCount()) return;
+      flushOutbox(); e.preventDefault(); e.returnValue = "Changes not synced yet"; return e.returnValue;
+    });
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); } });
   }
   function cloudSetStatus(html, warn) { var el = $("cloudStatus"); if (!el) return; el.innerHTML = html; el.className = "dstatus" + (warn ? " warn" : ""); }
@@ -2632,7 +2782,7 @@
     if (!signedIn()) return "Connected to board <b>" + esc(cloud.board) + "</b> \u2014 not signed in on this device yet. Send yourself a magic link below and open it <b>on this device</b>.";
     var n = pendingCount();
     var empty = !state.apps.length && !state.study.length && !(state.office || []).length && !Object.keys(entries).length;
-    return "Syncing board <b>" + esc(cloud.board) + "</b> as <b>" + esc(session.user.email || "you") + "</b>." + (n ? " " + n + " change" + (n > 1 ? "s" : "") + " waiting to upload." : " Everything is up to date.") +
+    return "Syncing board <b>" + esc(cloud.board) + "</b> as <b>" + esc(session.user.email || "you") + "</b>." + (n ? " " + n + " change" + (n > 1 ? "s" : "") + " waiting to upload." : " Everything is up to date.") + (n && OB_ERR ? " Last error: <b>" + esc(OB_ERR) + "</b>" : "") +
       (empty ? "<br><b>This board is empty for this account.</b> If you expected data here, you may be signed in with a different email than the one that holds it \u2014 sign out and sign back in with that email." : "");
   }
   function urlLooksRight(u) { return /^https:\/\/[a-z0-9-]+\.supabase\.(co|in|net)$/i.test(u); }
@@ -2945,7 +3095,7 @@
      survives in memory and cloudPullEntries would seed it into the next account's empty board. */
   function resetBoardState() {
     state = { apps: [], study: [], office: [] }; itemIndex = {}; rebuildIndex();
-    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true; boardU = 0; lastCloudSig = ""; boardPulled = false; boardDirty = false;
+    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true; boardU = 0; lastCloudSig = ""; boardPulled = false; boardDirty = false; REC_SIG = {}; recMigrating = false; TRASH = {}; PRE_DK = {};
   }
   var lastUid = null;   // v100: user id of the last pull — a different account must start from a clean board
   function switchBoard(name) {
@@ -3824,7 +3974,11 @@
     out.sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
     return out;
   }
-  function saveChats() { save(); cloudPushBoard(); }
+  function saveChats() {   // v103: only the changed record goes up; the board row only when the order changed
+    save(); if (!cloudConfigured()) return;
+    if (!boardPulled) { recSync(); boardDirty = true; return; }   // v104: the record itself goes up now; the order waits for the pull
+    cloudPushBoard();   // v104: records go up via recSync; the board row only if a key on it (e.g. the order) actually changed
+  }
 
   /* ============================================================
      WISHLIST (v53) — "buy this at that shop". meta.wish rides on
@@ -4534,14 +4688,16 @@
         if (xrows.length) { f.x = xrows; any = true; } else { delete f.x; }
         if (!any) { closeVaultModal(); return; }
         var fold2 = VM_FOLD || null;
-        if (VM_ID) { vaultArr().forEach(function (x) { if (x.id === VM_ID) { x.f = f; x.fold = fold2; x.u = Date.now(); } }); }
+        var revived = false;   // v104
+        if (VM_ID && prevIt) { prevIt.f = f; prevIt.fold = fold2; prevIt.u = Date.now(); }
+        else if (VM_ID) { vaultArr().push({ id: VM_ID, cat: VM_CAT, f: f, fold: fold2, u: Date.now() }); revived = true; }
         else {
           vaultArr().push({ id: uid(), cat: VM_CAT, f: f, fold: fold2, u: Date.now() });
           var ret = VM_RET || "";
           if (/^@vaultf:[^:]*$/.test(ret)) ret += ":" + VM_CAT; else if (!/^@vault(f)?:/.test(ret)) ret = "@vault:" + VM_CAT;
           CHAT_VIEW = ret; saveChatView();
         }
-        saveChats(); closeVaultModal(); renderChats(); toast("Saved \u2713");
+        saveChats(); closeVaultModal(); renderChats(); toast(revived ? "Saved \u2713 \u2014 it had been deleted on another device, so it\u2019s back." : "Saved \u2713");
       }
     });
     if (vm) vm.addEventListener("input", function (e) {
