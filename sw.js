@@ -3,7 +3,10 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v104";
+const CACHE = "weekly-focus-v106";
+/* v105: the Supabase library is cached too. Without it the app had no client offline, so the
+   stored session could not be read and every offline open landed on the sign-in screen. */
+const SUPA = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
 const ASSETS = [
   "./", "./index.html",
   "./js/config.js", "./js/akatsuki-client.js", "./js/akatsuki-banner.js", "./js/wf-purchase-adapter.js", "./js/weekly-focus-app.js", "./js/info-feeds.js", "./js/wf-cc-bridge-v2.js",
@@ -13,7 +16,11 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(ASSETS).then(() => c.add(SUPA).catch(() => {})))   // the library is best-effort: a CDN hiccup must not block the install
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (e) => {
@@ -28,8 +35,22 @@ self.addEventListener("fetch", (e) => {
   const req = e.request;
   const url = new URL(req.url);
 
-  // Never intercept Supabase / cross-origin API or CDN calls — straight to network.
+  // v105: the Supabase library — cache-first, refreshed in the background when online.
+  if (url.href === SUPA) {
+    e.respondWith(
+      caches.match(SUPA).then((hit) => {
+        const net = fetch(req).then((r) => { if (r && (r.ok || r.type === "opaque")) { const cp = r.clone(); caches.open(CACHE).then((c) => c.put(SUPA, cp)); } return r; }).catch(() => hit);
+        return hit || net;
+      })
+    );
+    return;
+  }
+
+  // Never intercept Supabase / cross-origin API calls — straight to network.
   if (url.origin !== self.location.origin || url.pathname.includes("/rest/v1/")) return;
+
+  // v105: ?nocache= bypasses the cache entirely (the app's build check reads the live sw.js this way).
+  if (url.searchParams.has("nocache")) return;
 
   // The page itself: network-first (so new versions land), cache fallback offline.
   if (req.mode === "navigate") {

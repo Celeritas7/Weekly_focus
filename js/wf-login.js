@@ -2,7 +2,8 @@
    Uses window.__wfSb (the app's Supabase client). Locked = nothing but the login screen is visible.
    Session policy (v98.5): stays signed in. Every open renews the clock; you're only asked again after DAYS without opening the app.
    (Supabase refresh tokens never expire on their own; autoRefreshToken keeps the access token fresh.)
-   Vault PIN: 6 digits, SHA-256 hashed in localStorage, asked every session, relocks after 5 min idle. */
+   Vault PIN: 6 digits, SHA-256 hashed in localStorage, asked every session, relocks after 5 min idle.
+   v105: offline open — sw.js now caches the Supabase library, so __wfSb exists offline and the stored session passes the gate. */
 (function () {
   var DAYS = 365, IDLE_MS = 5 * 60 * 1000, PIN_LEN = 6;
   var K_AT = "wf_login_at", K_PIN = "wf_vault_pin";
@@ -83,6 +84,10 @@
 
   /* ---------------- session policy ---------------- */
   function expired() { var at = +ls(K_AT) || 0; return at > 0 && Date.now() - at > DAYS * 864e5; }
+  /* v105: offline, an expired access token can't be refreshed, so the library reports no session even though this device is
+     signed in. A stored session (wf2_sb_auth, the app's storageKey) for a device that isn't past DAYS opens the gate. */
+  function storedSession() { try { var j = JSON.parse(localStorage.getItem("wf2_sb_auth") || "null"); return j && j.user && j.refresh_token ? j : null; } catch (e) { return null; } }
+  function offlineKnown() { return !navigator.onLine && !expired() && !!storedSession(); }
   async function onAuth(event, sess) {
     if (event === "SIGNED_IN") { if (!ls(K_AT)) ls(K_AT, String(Date.now())); }
     if (sess && sess.user) {
@@ -91,6 +96,7 @@
       email = sess.user.email || email; hide(); paintProfile(sess); return;
     }
     if (event === "SIGNED_OUT") { ls(K_AT, null); ls(K_PIN, null); lockVault(); }
+    if (event === "INITIAL_SESSION" && offlineKnown()) { var st = storedSession(); email = (st.user && st.user.email) || email; hide(); return; }   // v105: offline open on the stored session
     if (screen !== "code") show(expired() ? "expired" : "signin");
   }
   function paintProfile(sess) {
@@ -156,8 +162,8 @@
   function boot() {
     ensureLogin(); guardVault();
     var n = 0, iv = setInterval(function () {
-      if (window.__wfSb) { clearInterval(iv); sb = window.__wfSb; sb.auth.onAuthStateChange(onAuth); sb.auth.getSession().then(function (r) { var s = r && r.data ? r.data.session : null; if (!s) onAuth("INITIAL_SESSION", null); }); return; }
-      if (++n > 60) { clearInterval(iv); show("signin", navigator.onLine ? "" : "You&rsquo;re offline and not signed in on this device.", !navigator.onLine); }
+      if (window.__wfSb) { clearInterval(iv); sb = window.__wfSb; sb.auth.onAuthStateChange(onAuth); sb.auth.getSession().then(function (r) { var s = r && r.data ? r.data.session : null; if (!s) onAuth("INITIAL_SESSION", null); }).catch(function () { onAuth("INITIAL_SESSION", null); }); return; }
+      if (++n > 60) { clearInterval(iv); show("signin", navigator.onLine ? "" : "You&rsquo;re offline and the sign-in library isn&rsquo;t stored on this device yet. Open the app once with signal — after that it opens offline.", !navigator.onLine); }   // v105
     }, 100);
     // Until the client answers, keep the app hidden so nothing flashes before the gate.
     document.body.classList.add("wf-locked");

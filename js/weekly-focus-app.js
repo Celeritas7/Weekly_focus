@@ -24,6 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
+  var APP_BUILD = "v106", BUILD_N = 106;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -2013,6 +2014,179 @@
     saveOutbox();
   }
 
+  /* v105: this device keeps a copy of the last board it pulled (per user + board, "wf_cache:<user>:<board>") so the app
+     opens offline with real content instead of an empty board. The Vault is NOT in it: its records only ever live in the
+     cloud and, while unsent, in the outbox. Unsent whole-document edits (app list, Timeline, Inbox, board keys edited
+     before the first pull) are kept in HELD ("wf_held:<user>:<board>") next to the cloud copy they were made on (base),
+     and merged three-way on top of the next pull — so a reload, offline or not, loses nothing. */
+  var HELD = {}, CONF = { inv: null, tl: null, ib: null, meta: null, t: null }, localLoaded = false;
+  function lsKey(p) { var u = obUid(); return u && cloud && cloud.board ? p + ":" + u + ":" + cloud.board : null; }
+  function cacheKey() { return lsKey("wf_cache"); }
+  function heldKey() { return lsKey("wf_held"); }
+  function heldSet(slot, v, baseV, sub) {   // the first write keeps the base it was made on; later writes only move the value
+    var h = sub ? (HELD[slot] = HELD[slot] || {}) : HELD, k = sub || slot;
+    if (!h[k]) h[k] = { v: deep(v), base: baseV == null ? null : deep(baseV) }; else h[k].v = deep(v);
+    saveHeld();
+  }
+  function heldClear(slot, sub) { if (sub) { if (HELD[slot]) delete HELD[slot][sub]; } else delete HELD[slot]; saveHeld(); }
+  function heldCount() { var n = 0; ["inv", "tl", "ib"].forEach(function (x) { if (HELD[x]) n++; }); return n + Object.keys(HELD.dk || {}).length; }
+  function heldPending() {   // held edits not also represented by a queued upload
+    var n = 0; if (HELD.inv && !outbox.inv) n++; if (HELD.tl && !outbox["entry:" + TL_ITEM]) n++; if (HELD.ib && !outbox["entry:" + IB_ITEM]) n++;
+    return n + Object.keys(HELD.dk || {}).length;
+  }
+  function saveHeld() {
+    var k = heldKey(); if (!k) return;
+    try { if (heldCount()) localStorage.setItem(k, JSON.stringify(HELD)); else localStorage.removeItem(k); }
+    catch (e) { OB_ERR = "this device couldn’t store unsent changes (" + ((e && e.name) || "storage") + ")"; }
+  }
+  function idOf(x) { return x && typeof x === "object" && x.id != null ? "i:" + x.id : "j:" + JSON.stringify(x); }
+  /* three-way list merge: start from the cloud list; drop what this device deleted, add what it added, replace what it edited (when the cloud still has the version it edited) */
+  function merge3(base, local, remote) {
+    if (!Array.isArray(local)) return remote;
+    base = Array.isArray(base) ? base : []; remote = Array.isArray(remote) ? remote : [];
+    var B = {}, L = {}, Lord = []; base.forEach(function (x) { B[idOf(x)] = x; }); local.forEach(function (x) { var k = idOf(x); L[k] = x; Lord.push(k); });
+    var out = [], seen = {};
+    remote.forEach(function (x) {
+      var k = idOf(x); if (seen[k]) return; seen[k] = 1;
+      if (k in B && !(k in L)) return;
+      if (k in L && k in B && JSON.stringify(L[k]) !== JSON.stringify(B[k]) && JSON.stringify(x) === JSON.stringify(B[k])) out.push(L[k]); else out.push(x);
+    });
+    Lord.forEach(function (k) { if (!(k in B) && !seen[k]) { out.push(L[k]); seen[k] = 1; } });
+    return out;
+  }
+  function cacheOut() {
+    var m = Object.assign({}, CONF.meta || SNAP.meta || {}); delete m.cvault; m.cchats = deep(meta.cchats || []);
+    var sig = {}, tr = {}, en = {};
+    Object.keys(REC_SIG).forEach(function (k) { if (k.indexOf("__c:") === 0) sig[k] = REC_SIG[k]; });
+    Object.keys(TRASH).forEach(function (k) { if (k.indexOf("__c:") === 0) tr[k] = TRASH[k]; });
+    Object.keys(entries).forEach(function (k) { if (!recKey(k)) en[k] = entries[k]; });
+    if (CONF.tl) en[TL_ITEM] = CONF.tl; if (CONF.ib) en[IB_ITEM] = CONF.ib;
+    var inv = CONF.inv || { apps: state.apps, study: state.study, office: state.office || [] };
+    return { v: 1, at: Date.now(), build: APP_BUILD, inv: inv, invTs: invTs, entries: en, meta: m, t: CONF.t || SNAP.t || targetOrder, sig: sig, trash: tr };
+  }
+  var cacheT = null;
+  function saveCache() { clearTimeout(cacheT); cacheT = setTimeout(saveCacheNow, 800); }   // debounced: flushOutbox runs per keystroke
+  function saveCacheNow() {
+    clearTimeout(cacheT); cacheT = null;
+    var k = cacheKey(); if (!k || !boardPulled || !invPulled) return;
+    try { localStorage.setItem(k, JSON.stringify(cacheOut())); } catch (e) { console.warn("[wf] v105: couldn’t store this device’s copy of the board (" + ((e && e.name) || "storage") + ")"); }
+  }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden" && cacheT) saveCacheNow(); });
+  window.addEventListener("pagehide", function () { if (cacheT) saveCacheNow(); });
+  /* v105: offline with an EXPIRED token the library answers "no session" (it can't refresh), which used to mean the sign-in
+     screen. If this device holds a stored session for a known user, the app opens on its local copy instead and the real
+     session comes back with the first refresh once online. */
+  function storedUid() { try { var j = JSON.parse(localStorage.getItem("wf2_sb_auth") || "null"); return j && j.user && j.refresh_token ? j.user.id : null; } catch (e) { return null; } }
+  function offlineKnown() { return !signedIn() && !navigator.onLine && !!storedUid(); }
+  var synced0 = false, offlineOpened = false;
+  function offlineLocalOpen() {
+    if (offlineOpened || localLoaded) return; offlineOpened = true;
+    var u = storedUid(); if (!u) return;
+    lastUid = u; try { localStorage.setItem("wf2_last_uid", u); } catch (e) {}
+    loadOutbox(); localLoaded = true;
+    if (loadLocal()) { ENTER = true; refreshGroupLists(); renderAll(); try { renderChats(); } catch (e) {} }
+    updateCloudStatus(); console.info("[wf] v105: offline open with an expired session — showing this device’s copy; sync resumes when the token refreshes online");
+  }
+  function loadLocal() {   // on open, before any pull: the last pulled copy + this device's unsent edits on top
+    var k = cacheKey(), hk = heldKey(); if (!k) return false;
+    var c = null, h = null;
+    try { c = JSON.parse(localStorage.getItem(k) || "null"); } catch (e) {}
+    try { h = JSON.parse(localStorage.getItem(hk) || "null"); } catch (e) {}
+    HELD = (h && typeof h === "object") ? h : {};
+    if (!c || c.v !== 1) { if (heldCount()) { applyHeld(); applyOutboxLocal(); return true; } return false; }
+    var ce = c.entries || {};
+    CONF.inv = deep(c.inv); CONF.tl = ce[TL_ITEM] ? deep(ce[TL_ITEM]) : null; CONF.ib = ce[IB_ITEM] ? deep(ce[IB_ITEM]) : null; CONF.meta = deep(c.meta || {}); CONF.t = deep(Array.isArray(c.t) ? c.t : []);
+    state.apps = (c.inv && c.inv.apps) || []; state.study = (c.inv && c.inv.study) || []; state.office = (c.inv && c.inv.office) || []; rebuildIndex(); invTs = c.invTs || "";
+    entries = ce; meta = c.meta || {}; delete meta.cvault; targetOrder = deep(CONF.t);
+    SNAP.meta = deep(meta); SNAP.t = deep(targetOrder); SNAP.tl = CONF.tl ? deep(CONF.tl) : null; SNAP.ib = CONF.ib ? deep(CONF.ib) : null; SNAP.inv = { apps: state.apps.length, study: state.study.length };
+    REC_SIG = Object.assign({}, c.sig || {}); TRASH = Object.assign({}, c.trash || {});
+    SEEN.ent = Object.keys(ce).length > 0 || Object.keys(CONF.meta || {}).length > 0; SEEN.inv = state.apps.length > 0 || state.study.length > 0;   // v106
+    applyHeld(); applyOutboxLocal();
+    console.info("[wf] v105: opened from this device’s copy (" + new Date(c.at).toLocaleString() + ")" + (heldCount() ? " with " + heldCount() + " unsent edit(s) on top" : ""));
+    return true;
+  }
+  function applyHeld() {
+    if (HELD.inv && HELD.inv.v) { var iv = HELD.inv.v; state.apps = iv.apps || []; state.study = iv.study || []; state.office = iv.office || []; rebuildIndex(); }
+    if (HELD.tl && HELD.tl.v) entries[TL_ITEM] = deep(HELD.tl.v);
+    if (HELD.ib && HELD.ib.v) entries[IB_ITEM] = deep(HELD.ib.v);
+    Object.keys(HELD.dk || {}).forEach(function (k) { if (k === "__t") targetOrder = deep(HELD.dk[k].v); else meta[k] = deep(HELD.dk[k].v); });
+  }
+  /* unsent per-key rows (the outbox) are shown too: item entries, chats and Vault records added or deleted offline, board keys this device changed */
+  function applyOutboxLocal() {
+    Object.keys(outbox).forEach(function (q) {
+      var op = outbox[q]; if (!op) return;
+      if (q.indexOf("del:") === 0) { delete entries[q.slice(4)]; return; }
+      if (q.indexOf("entry:") !== 0 || !op.row) return;
+      var k = op.row.item_key, p = op.row.payload || {};
+      if (k === BOARD_ITEM) { (op.dk || []).forEach(function (dk) { if (dk === "__t") { if (Array.isArray(p.targetOrder)) targetOrder = deep(p.targetOrder); } else if (p.meta && p.meta[dk] !== undefined) meta[dk] = deep(p.meta[dk]); }); return; }
+      if (recKey(k)) {
+        var K = k.indexOf("__v:") === 0 ? RECK[0] : RECK[1], id = k.slice(K.p.length);
+        if (!Array.isArray(meta[K.f])) meta[K.f] = [];
+        meta[K.f] = meta[K.f].filter(function (x) { return !(x && String(x.id) === id); });
+        if (p.del) { REC_SIG[k] = "del"; if (p.r) TRASH[k] = { r: p.r, del: p.del, n: K.n }; }
+        else if (p.r) { meta[K.f].push(deep(p.r)); REC_SIG[k] = JSON.stringify(p.r); }
+        return;
+      }
+      if (k === TL_ITEM || k === IB_ITEM) return;   // never in the outbox — HELD carries them
+      entries[k] = deep(p);
+    });
+  }
+
+  /* v105: old-build guard. (1) The board row carries the build that wrote it (b); a device running an OLDER build than the
+     one that last saved the board stops uploading whole documents (board row, app list) until it updates — an old build
+     doesn't know the newer shape and would flatten it. (2) When online, sw.js on the server is compared with this file;
+     a newer build shows an Update bar (this is what kept v104 invisible behind a cached v102.1). */
+  var STALE = false, UPD_AT = 0, STALE_T = 0;
+  function staleToast(m) { if (Date.now() - STALE_T < 30000) return; STALE_T = Date.now(); toast(m); }
+  function buildNum(x) { var m = /v(\d+)/.exec(String(x || "")); return m ? +m[1] : 0; }
+  function buildBar(msg) {
+    var b = $("wfBuildBar");
+    if (!b) { b = document.createElement("div"); b.id = "wfBuildBar"; b.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:9000;margin:0 auto;max-width:560px;padding:10px 12px 10px 16px;border-radius:12px;background:#161620;color:#fff;font-size:13px;line-height:1.4;display:flex;gap:12px;align-items:center;box-shadow:0 8px 28px rgba(0,0,0,.28)"; document.body.appendChild(b); }
+    b.innerHTML = '<span style="flex:1;min-width:0">' + msg + '</span><button type="button" class="tbtn primary" id="wfBuildGo">Update</button>';
+    $("wfBuildGo").onclick = function () { b.textContent = "Updating\u2026"; updateNow(); };
+  }
+  function updateNow() {
+    var did = false, done = function () { if (did) return; did = true; location.reload(); };
+    if (!("serviceWorker" in navigator)) return done();
+    navigator.serviceWorker.getRegistration().then(function (r) {
+      if (!r) return done();
+      return r.update().then(function () { var w = r.installing || r.waiting; if (!w) return done(); w.addEventListener("statechange", function () { if (w.state === "activated" || w.state === "redundant") done(); }); setTimeout(done, 8000); });
+    }).catch(done);
+  }
+  function checkBuild(force) {
+    if (!navigator.onLine || location.protocol.indexOf("http") !== 0) return;
+    if (!force && Date.now() - UPD_AT < 3600e3) return; UPD_AT = Date.now();
+    fetch("sw.js?nocache=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; }).then(function (t) {
+      var n = buildNum((/weekly-focus-v[\d.-]+/.exec(t) || [""])[0]);
+      if (n > BUILD_N) buildBar("Weekly Focus v" + n + " is on the server \u2014 this device still runs " + APP_BUILD + ".");
+    }).catch(function () {});
+  }
+  function noteBoardBuild(b) {
+    var n = buildNum(b); if (n <= BUILD_N || STALE) return;
+    STALE = true; console.warn("[wf] v105 guard: the board was last saved by v" + n + "; this device runs " + APP_BUILD + " — board and app-list uploads are paused until it updates");
+    buildBar("This device runs " + APP_BUILD + ", but your board was last saved by v" + n + ". Board and app-list edits stay on this device until it updates."); updateCloudStatus();
+  }
+  /* v106: an EMPTY answer for a board this device has already seen is never trusted. It is exactly what a read without a
+     valid sign-in looks like (row-level security returns no rows and no error), e.g. the first read after coming back
+     online before the token has refreshed. v105 took it as a new board: it re-uploaded every row from this device's copy
+     (the "⚠ 99 not synced") and merged unsent app-list edits against an empty list. Now: keep this device's copy, upload
+     nothing, refresh the sign-in, and the next pull decides. */
+  var EMPTY_T = 0, FA_T = 0, SEEN = { ent: false, inv: false };   // SEEN: this board has returned real rows before (pull or local copy) — only then is an empty answer suspicious
+  function boardKnown(what) { return what === "inv" ? SEEN.inv : SEEN.ent; }
+  function emptyWarn(what) {
+    console.warn("[wf] v106: the cloud answered an empty " + what + " for a board this device has seen \u2014 not trusted. Keeping this device\u2019s copy; nothing uploaded.");
+    if (Date.now() - EMPTY_T > 60000) { EMPTY_T = Date.now(); toast("The cloud answered with an empty board \u2014 keeping this device\u2019s copy and retrying."); }
+    freshAuth(true);
+  }
+  /* v106: never read or write with an expired token. Called before every pull. */
+  async function freshAuth(force) {
+    if (!sb || !session || !navigator.onLine) return;
+    var exp = (session.expires_at || 0) * 1000;
+    if (force && Date.now() - FA_T < 60000) force = false;   // a forced refresh at most once a minute
+    if (force || (exp && exp < Date.now() + 60000)) { FA_T = Date.now(); try { var r = await sb.auth.refreshSession(); if (r && r.data && r.data.session) session = r.data.session; } catch (e) {} }
+  }
+  function syncNow() { return freshAuth().then(function () { if (!syncReady()) return; flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); }); }
+
   function ensureClient() {
     if (sb) return sb;
     if (!cloudConfigured() || typeof window.supabase === "undefined") return null;
@@ -2030,7 +2204,8 @@
       renderAuthUI(); updateCloudStatus();
       var cm = $("cloudModal"); if (cm && cm.classList.contains("open")) cloudSetStatus(cloudSummary());
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && syncReady()) Promise.resolve(initialSync()).then(akStart);
-      else if (event === "TOKEN_REFRESHED" && syncReady()) flushOutbox();
+      else if (event === "TOKEN_REFRESHED" && syncReady()) { if (!synced0) Promise.resolve(initialSync()).then(akStart); else flushOutbox(); }   // v105: an offline open with an expired token syncs here, once the token refreshes
+      else if (event === "INITIAL_SESSION" && !uidNow && !navigator.onLine && storedUid()) offlineLocalOpen();   // v105
     });
     authSub = sub && sub.data ? sub.data.subscription : null;
     return sb;
@@ -2039,7 +2214,7 @@
 
   function queue(qkey, op) { outbox[qkey] = op; saveOutbox(); flushOutbox(); updateCloudStatus(); }
   /* ---- v102 guards: never let one save empty a list the cloud still has. SNAP = last copy seen in the cloud. ---- */
-  var SNAP = { meta: null, inv: null, tl: null, ib: null, t: null }, HELD = {}, invDirty = false;
+  var SNAP = { meta: null, inv: null, tl: null, ib: null, t: null };
   var GUARD_KEYS = { wish: "Wishlist", places: "Places", routines: "Routines", links: "Dev links" };   // v103: Vault / Chats are per-record rows — guarded in recSync (no batch deletes), so deleting the last record is allowed
   function gLen(v) { return Array.isArray(v) ? v.length : (v && typeof v === "object") ? Object.keys(v).length : 0; }
   function deep(v) { try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; } }
@@ -2054,7 +2229,7 @@
   /* v102: export the whole board to a .json file — a button in the Cloud panel + automatically once a day on desktop */
   function exportBoard(auto) {
     var day = new Date().toISOString().slice(0, 10);
-    var data = { exportedAt: nowISO(), build: "v104", board: cloud.board, account: session && session.user ? session.user.email : null,
+    var data = { exportedAt: nowISO(), build: APP_BUILD, board: cloud.board, account: session && session.user ? session.user.email : null,
       targetOrder: targetOrder, meta: meta, trash: TRASH, entries: entries, inventory: { apps: state.apps, study: state.study, office: state.office || [] },
       groups: (typeof FG !== "undefined" && FG) ? { groups: FG.groups, members: FG.map } : null };
     var blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
@@ -2076,7 +2251,7 @@
     var host = $("recTrash");
     if (!host) { host = document.createElement("div"); host.id = "recTrash"; host.style.cssText = "margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,.08);font-size:12.5px;color:var(--mid)"; lab.parentNode.insertBefore(host, lab.nextSibling); }
     var ks = Object.keys(TRASH).sort(function (a, b) { return TRASH[b].del - TRASH[a].del; });
-    host.innerHTML = "<b>Deleted Vault items &amp; chats</b> — " + (ks.length ? "kept 30 days" : "none in the last 30 days.") + ks.map(function (k) {
+    host.innerHTML = "<b>Deleted Vault items &amp; chats</b> — " + (ks.length ? "kept 30 days" : boardPulled ? "none in the last 30 days." : "loads with the next sync.") + ks.map(function (k) {
       var t = TRASH[k];
       return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.n + " · " + trashTitle(t)) + '</span><span>' + esc(new Date(t.del).toLocaleDateString()) + '</span><button type="button" class="tbtn" data-rrest="' + esc(k) + '">Restore</button></div>';
     }).join("");
@@ -2116,10 +2291,12 @@
   function cloudPushEntry(key, payload) {
     if (!cloudConfigured()) return;
     if (key === TL_ITEM || key === IB_ITEM) {   // v102: Timeline / Inbox — held until pulled, and never emptied by one save
-      if (!boardPulled) { HELD[key] = deep(payload); return; }
+      var hs = key === TL_ITEM ? "tl" : "ib";
+      if (!boardPulled) { heldSet(hs, payload, CONF[hs]); updateCloudStatus(); return; }   // v105: kept on this device, merged on top of the first pull
       var f = blobField(key), snap = key === TL_ITEM ? SNAP.tl : SNAP.ib;
       if (snap && gLen(snap[f]) > 0 && gLen(payload && payload[f]) === 0 && !gAllow()) { entries[key] = deep(snap); save(); gBlocked(key === TL_ITEM ? "Timeline notes" : "Inbox"); return; }
       if (key === TL_ITEM) SNAP.tl = deep(payload); else SNAP.ib = deep(payload);
+      heldSet(hs, payload, CONF[hs]);   // v105: survives a reload until the upload is confirmed (the outbox never stores these)
     }
     if (rmItemKey(key)) rmSoon();
     queue("entry:" + key, { table: "weekly_focus_entries", onConflict: "user_id,board_id,item_key", row: { board_id: cloud.board, item_key: key, payload: payload, updated_at: nowISO() } });
@@ -2131,9 +2308,15 @@
   }
   /* v100: never push the __board row before it has been pulled — an empty in-memory meta would overwrite
      chats, Vault, wishlist etc. in the cloud. The edit is held and pushed right after the first pull. */
-  var boardPulled = false, boardDirty = false, PRE_DK = {};   // v104 (R1): PRE_DK = board keys edited before the first pull, re-applied on top of it
+  var boardPulled = false, boardDirty = false;   // v105: board keys edited before the first pull live in HELD.dk (persisted), re-applied on top of the pull
   function cloudPushBoard(force) {
-    if (!boardPulled) { boardDirty = true; Object.keys(meta).forEach(function (k) { if (k !== "cvault" && k !== "cchats") PRE_DK[k] = deep(meta[k]); }); return; }
+    if (!boardPulled) {
+      boardDirty = true; var cm = CONF.meta || {};
+      Object.keys(meta).forEach(function (k) { if (k !== "cvault" && k !== "cchats" && k !== "vord" && k !== "cord" && JSON.stringify(meta[k]) !== JSON.stringify(cm[k])) heldSet("dk", meta[k], cm[k], k); });
+      if (JSON.stringify(targetOrder) !== JSON.stringify(CONF.t || SNAP.t || [])) heldSet("dk", targetOrder, CONF.t || SNAP.t || [], "__t");
+      updateCloudStatus(); return;
+    }
+    if (STALE) { recSync(); staleToast("This device runs an older build than the one that last saved this board \u2014 board edits wait here until you update."); return; }   // v105 guard: records are per key and still go up
     var hit = guardMeta(); if (hit.length) { save(); gBlocked(hit.join(", ")); }   // v102: emptied lists are put back from the cloud copy before saving
     recSync();   // v103: Vault / Chats records go up as their own rows
     /* v104 (R4): note WHICH top-level keys this device changed (dk). The next pull keeps only those local and takes every
@@ -2143,7 +2326,7 @@
     Object.keys(meta).concat(Object.keys(base)).forEach(function (k) { if (k !== "cvault" && k !== "cchats" && JSON.stringify(meta[k]) !== JSON.stringify(base[k])) dk[k] = 1; });
     if (JSON.stringify(targetOrder) !== JSON.stringify(SNAP.t || [])) dk.__t = 1;
     if (!force && !Object.keys(dk).length) return;
-    boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: boardMetaOut(), u: boardU });
+    boardU = Date.now(); cloudPushEntry(BOARD_ITEM, { targetOrder: targetOrder, meta: boardMetaOut(), u: boardU, b: APP_BUILD });
     var bop = outbox["entry:" + BOARD_ITEM]; if (bop) { bop.dk = Object.keys(dk); saveOutbox(); }
     SNAP.meta = deep(meta); SNAP.t = deep(targetOrder);
   }
@@ -2216,10 +2399,12 @@
   }
   function cloudPushInv() {
     if (!cloudConfigured()) return;
-    if (!invPulled) { invDirty = true; return; }   // v102: before the first pull the list is empty in memory — never push that
+    if (!invPulled) { heldSet("inv", { apps: state.apps, study: state.study, office: state.office || [] }, CONF.inv); updateCloudStatus(); return; }   // v105: kept on this device, merged three-way on top of the first pull (was: lost + "please redo")
+    if (STALE) { heldSet("inv", { apps: state.apps, study: state.study, office: state.office || [] }, CONF.inv); staleToast("Older build \u2014 the app list stays on this device until you update."); return; }
     if (SNAP.inv && !gAllow() && ((SNAP.inv.apps > 0 && !state.apps.length) || (SNAP.inv.study > 0 && !state.study.length))) { gBlocked("your app / study list"); cloudPullInventory(true); return; }
     SNAP.inv = { apps: state.apps.length, study: state.study.length };
     queue("inv", { table: "weekly_focus_inventory", onConflict: "user_id,board_id", row: { board_id: cloud.board, apps: state.apps, study: state.study, office: state.office || [], updated_at: invTs || nowISO() } });
+    heldSet("inv", { apps: state.apps, study: state.study, office: state.office || [] }, CONF.inv);   // v105: survives a reload until confirmed
   }
 
   async function flushOutbox() {
@@ -2229,16 +2414,20 @@
     for (var i = 0; i < keys.length; i++) {
       var op = outbox[keys[i]];
       if (!op || (keys[i] === "entry:" + BOARD_ITEM && !boardPulled) || (keys[i] === "inv" && !invPulled)) continue;   // v104 (R1): a whole-document write never goes up before its first pull
+      if (STALE && (keys[i] === "entry:" + BOARD_ITEM || keys[i] === "inv")) continue;   // v105: an older build never overwrites a board a newer one saved
       try {
         var r;
         if (op.method === "delete") r = await sb.from(op.table).delete().match(Object.assign({ user_id: uidv }, op.match));
         else r = await sb.from(op.table).upsert(Object.assign({ user_id: uidv }, op.row), { onConflict: op.onConflict });
         if (r.error) throw r.error;
         if (outbox[keys[i]] === op) delete outbox[keys[i]];   // v104: a newer edit queued while this one was in flight stays queued
+        if (keys[i] === "inv") { CONF.inv = { apps: deep(op.row.apps), study: deep(op.row.study), office: deep(op.row.office || []) }; if (!outbox.inv) heldClear("inv"); }   // v105: confirmed → it is the cloud copy now
+        else if (keys[i] === "entry:" + TL_ITEM || keys[i] === "entry:" + IB_ITEM) { var hs2 = keys[i] === "entry:" + TL_ITEM ? "tl" : "ib"; CONF[hs2] = deep(op.row.payload); if (!outbox[keys[i]]) heldClear(hs2); }
+        else if (keys[i] === "entry:" + BOARD_ITEM) { CONF.meta = deep((op.row.payload && op.row.payload.meta) || {}); CONF.t = deep((op.row.payload && op.row.payload.targetOrder) || []); }
         saveOutbox(); OB_ERR = null;
       } catch (e) { if (navigator.onLine) { OB_ERR = String((e && (e.message || e.code)) || "upload failed"); console.warn("[wf] upload failed (" + keys[i] + "): " + OB_ERR); } continue; }
     }
-    flushing = false; updateCloudStatus();
+    flushing = false; updateCloudStatus(); saveCache();
     if (recMigrating && !Object.keys(outbox).some(function (k) { return k.indexOf("entry:__v:") === 0 || k.indexOf("entry:__c:") === 0; })) {
       recMigrating = false; console.info("[wf] v103: all records are in their own rows — clearing the old copy off the board row"); cloudPushBoard(true);
     }
@@ -2310,13 +2499,11 @@
         from += PAGE;
       }
       if (rows.length >= PAGE) console.info("[wf] pulled " + rows.length + " entry rows (paged)");
-      if (!rows.length && (state.apps.length || state.study.length || Object.keys(entries).length)) {
-        // empty cloud board + this device has data → seed cloud (never wipe local)
-        boardPulled = true;
-        cloudPushInv(); cloudPushBoard(); Object.keys(entries).forEach(function (k) { cloudPushEntry(k, entries[k]); }); flushOutbox(); updateCloudStatus(); return;
-      }
+      if (rows.length) SEEN.ent = true;   // v106
+      if (!rows.length && boardKnown("ent")) { emptyWarn("board"); updateCloudStatus(); return; }   // v106: was "seed the cloud from this device" \u2014 that re-uploaded every row over the cloud
       var map = {}, remoteSubsBy = {};
       rows.forEach(function (row) { var p = row.payload || {}; map[row.item_key] = p; remoteSubsBy[row.item_key] = normSubs(p.subtasks); });
+      var REM = {}; REM[TL_ITEM] = map[TL_ITEM] ? deep(map[TL_ITEM]) : null; REM[IB_ITEM] = map[IB_ITEM] ? deep(map[IB_ITEM]) : null;   // v105: the cloud copy, before local overlays
       Object.keys(outbox).forEach(function (qk) {                 // pending local writes win (scalars); subtasks merged below
         if (qk.indexOf("entry:") === 0 && outbox[qk].row.item_key !== BOARD_ITEM) map[outbox[qk].row.item_key] = outbox[qk].row.payload;   // v104: the board row is merged per key below
         if (qk.indexOf("del:") === 0) { delete map[qk.slice(4)]; delete remoteSubsBy[qk.slice(4)]; }
@@ -2328,6 +2515,7 @@
         var b = map[BOARD_ITEM], bRm = b.meta || {}, bPend = outbox["entry:" + BOARD_ITEM], bPm = (bPend && bPend.row && bPend.row.payload) || {}, bDk = {}, bNm = {};
         ((bPend && bPend.dk) || []).forEach(function (k) { bDk[k] = 1; });
         SNAP.meta = deep(bRm); SNAP.t = deep(Array.isArray(b.targetOrder) ? b.targetOrder : []); delete map[BOARD_ITEM];
+        CONF.meta = deep(bRm); CONF.t = deep(SNAP.t); noteBoardBuild(b.b);   // v105
         Object.keys(bRm).forEach(function (k) { if (!bDk[k]) bNm[k] = bRm[k]; });
         Object.keys(bDk).forEach(function (k) { if (k !== "__t" && bPm.meta && bPm.meta[k] !== undefined) bNm[k] = bPm.meta[k]; });
         targetOrder = bDk.__t && Array.isArray(bPm.targetOrder) ? bPm.targetOrder : (Array.isArray(b.targetOrder) ? b.targetOrder : targetOrder);
@@ -2337,10 +2525,12 @@
       SNAP.meta = SNAP.meta || {}; SNAP.meta.cvault = deep(meta.cvault); SNAP.meta.cchats = deep(meta.cchats);
       var bQ = outbox["entry:" + BOARD_ITEM];   // v104: the queued board write now carries the cloud's other keys, so it can't overwrite them
       if (bQ && bQ.row) { bQ.row.payload = { targetOrder: targetOrder, meta: boardMetaOut(), u: Date.now() }; bQ.row.updated_at = nowISO(); saveOutbox(); }
-      if (!boardPulled && Object.keys(PRE_DK).length) {   // v104 (R1): a pre-pull edit lands on top of the pulled board — lists are merged, scalars keep the local value
-        Object.keys(PRE_DK).forEach(function (k) { var l = PRE_DK[k], c = meta[k]; meta[k] = (Array.isArray(l) && Array.isArray(c)) ? mergeById(c, l) : l; });
-        PRE_DK = {}; boardDirty = true;
+      CONF.meta = CONF.meta || {};
+      if (!boardPulled && HELD.dk && Object.keys(HELD.dk).length) {   // v105: a pre-pull edit lands on top of the pulled board — lists merge three-way, scalars keep the local value
+        Object.keys(HELD.dk).forEach(function (k) { var h = HELD.dk[k], l = h.v, c = k === "__t" ? targetOrder : meta[k], m = (Array.isArray(l) && Array.isArray(c)) ? merge3(h.base, l, c) : l; if (k === "__t") targetOrder = m; else meta[k] = m; });
+        delete HELD.dk; saveHeld(); boardDirty = true;
       }
+      var cmo = $("cloudModal"); if (cmo && cmo.classList.contains("open")) setTimeout(paintTrash, 0);   // v105: the Deleted list refreshes while the panel is open
       var wasPulled = boardPulled; boardPulled = true;
       if (!wasPulled && boardDirty) { boardDirty = false; cloudPushBoard(); }   // v100: a pre-pull edit goes up only now, on top of the real meta
       recSync();   // v103: push records made here before the pull + any being moved off an old board row
@@ -2353,11 +2543,15 @@
       });
       entries = map; save();
       SNAP.tl = map[TL_ITEM] ? deep(map[TL_ITEM]) : SNAP.tl; SNAP.ib = map[IB_ITEM] ? deep(map[IB_ITEM]) : SNAP.ib;   // v102
-      [TL_ITEM, IB_ITEM].forEach(function (hk) {   // v102: a Timeline / Inbox edit made before the pull is merged on top of the real list
-        if (!HELD[hk]) return; var f = blobField(hk), held = HELD[hk]; delete HELD[hk];
-        entries[hk] = Object.assign({}, entries[hk], { u: Date.now() }); entries[hk][f] = mergeById((map[hk] || {})[f], held[f]);
-        save(); cloudPushEntry(hk, entries[hk]);
+      [TL_ITEM, IB_ITEM].forEach(function (hk) {   // v105: an unsent Timeline / Inbox edit (pre-pull, or from before a reload) is merged three-way on top of the cloud list
+        var hs = hk === TL_ITEM ? "tl" : "ib", f = blobField(hk);
+        CONF[hs] = REM[hk];
+        if (!HELD[hs] || outbox["entry:" + hk]) return;
+        var held = HELD[hs], merged = merge3((held.base || {})[f], (held.v || {})[f], (REM[hk] || {})[f]);
+        entries[hk] = Object.assign({}, REM[hk], held.v, { u: Date.now() }); entries[hk][f] = merged;
+        heldClear(hs); save(); cloudPushEntry(hk, entries[hk]);
       });
+      saveCache();   // v105
       setTimeout(autoExport, 1500);   // v102: daily backup file (desktop)
       // Only touch the DOM when the board actually changed — otherwise the 15s
       // poll / tab-return needlessly rebuilds everything and flashes. Animate the
@@ -2374,11 +2568,19 @@
     try {
       var r = await sb.from("weekly_focus_inventory").select("apps,study,office,updated_at").eq("board_id", cloud.board).limit(1);
       if (r.error) throw r.error;
+      if (!(r.data || []).length && boardKnown("inv")) { emptyWarn("app list"); return false; }
+      if ((r.data || []).length && (((r.data[0].apps || []).length) || ((r.data[0].study || []).length))) SEEN.inv = true;   // v106   // v106: never merge unsent edits against an untrusted empty list
       invPulled = true;
       var rows = r.data || [];
       SNAP.inv = rows.length ? { apps: (rows[0].apps || []).length, study: (rows[0].study || []).length } : { apps: 0, study: 0 };   // v102
-      if (invDirty) { invDirty = false; toast("An app-list change made while loading wasn\u2019t saved \u2014 please redo it."); }
-      if (!rows.length) return false;
+      CONF.inv = rows.length ? { apps: deep(rows[0].apps || []), study: deep(rows[0].study || []), office: deep(rows[0].office || []) } : { apps: [], study: [], office: [] };   // v105
+      if (HELD.inv && !outbox.inv && !STALE) {   // v105: unsent app-list edits (pre-pull, or from before a reload) land on top of the cloud list, three-way
+        var hv = HELD.inv.v || {}, hb = HELD.inv.base || {};
+        setInventory(merge3(hb.apps, hv.apps, CONF.inv.apps), merge3(hb.study, hv.study, CONF.inv.study), false);
+        state.office = merge3(hb.office, hv.office, CONF.inv.office); rebuildIndex(); heldClear("inv");
+        invTs = nowISO(); cloudPushInv(); ENTER = true; syncRender(); refreshGroupLists(); saveCache(); return true;
+      }
+      if (!rows.length) { saveCache(); return false; }
       var remoteTs = rows[0].updated_at || "";
       var hasInvPending = !!outbox["inv"];
       if (force || (!hasInvPending && (!invTs || remoteTs > invTs))) {
@@ -2387,15 +2589,20 @@
         invTs = remoteTs || nowISO();
         ENTER = true; syncRender(); refreshGroupLists();
       }
-      return true;
+      saveCache(); return true;
     } catch (e) { return false; }
   }
   function initialSync() {
+    synced0 = true;
     loadOutbox();   // v104: unsent changes from before a reload go up after the first pull
+    if (!localLoaded) {   // v105: show this device's copy right away (offline too); the pull below replaces it
+      localLoaded = true;
+      if (loadLocal()) { ENTER = true; refreshGroupLists(); renderAll(); try { renderChats(); } catch (e) {} updateCloudStatus(); }
+    }
     // CLOUD-FIRST: a fresh device adopts the cloud copy; a device with local
     // data keeps it and seeds the cloud only if the board is empty.
     var fresh = !state.apps.length && !state.study.length && !state.office.length;
-    return cloudPullInventory(fresh).then(cloudPullEntries).then(cloudPullGroups).then(flushOutbox);
+    return freshAuth().then(function () { return cloudPullInventory(fresh); }).then(cloudPullEntries).then(cloudPullGroups).then(flushOutbox);   // v106: fresh token before the first read
   }
   /* ---- Akatsuki R010 · v86: requests live on the Wishlist (Routines tab) ----------------------
      IN  (Cost -> WF): request.created/changed land as wish items, id 'cost_' + request id, shop = preferred_shop
@@ -2745,13 +2952,16 @@
     akLog("seq " + r.seq + " " + r.kind + " applied to " + k + " / " + hit.id); akRender();
     return { reply: { status: "applied", at: at } };
   }
-  function pendingCount() { return Object.keys(outbox).length; }
+  function pendingCount() { return Object.keys(outbox).length + heldPending(); }   // v105: held whole-document edits count too
   function updateCloudStatus() {
     var el = $("cloudPill"); if (!el) return;
     var banner = $("signinBanner");
-    if (banner) banner.style.display = (cloudConfigured() && !signedIn()) ? "" : "none";
+    if (banner) banner.style.display = (cloudConfigured() && !signedIn() && !offlineKnown()) ? "" : "none";
     if (!cloudConfigured()) { el.className = "cloud-pill off"; el.textContent = "\u2601 Cloud off"; return; }
-    if (!signedIn()) { el.className = "cloud-pill auth"; el.textContent = "\u2601 Sign in"; return; }
+    if (!signedIn()) {
+      if (offlineKnown()) { var n0 = pendingCount(); el.className = "cloud-pill warn"; el.textContent = "\u2601 Offline" + (n0 ? " \u00b7 " + n0 : ""); el.title = "Offline \u2014 showing this device\u2019s copy. Sync resumes when you\u2019re back online."; return; }   // v105
+      el.className = "cloud-pill auth"; el.textContent = "\u2601 Sign in"; return;
+    }
     var n = pendingCount();
     if (!navigator.onLine) { el.className = "cloud-pill warn"; el.textContent = "\u2601 Offline" + (n ? " \u00b7 " + n : ""); }
     else if (n && OB_ERR) { el.className = "cloud-pill warn"; el.textContent = "\u26a0 " + n + " not synced"; }   // v104
@@ -2767,14 +2977,18 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    setInterval(function () { if (document.visibilityState === "visible" && navigator.onLine && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); } }, 15000);
-    window.addEventListener("online", function () { if (syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); } updateCloudStatus(); });
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 empty-read guard";   // v105
+    checkBuild(true);
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
+    window.addEventListener("online", function () { checkBuild(false); });
+    setInterval(function () { if (document.visibilityState === "visible" && navigator.onLine && syncReady()) syncNow(); }, 15000);
+    window.addEventListener("online", function () { if (syncReady()) syncNow(); else if (sb && storedUid()) { try { sb.auth.getSession(); } catch (e) {} } updateCloudStatus(); });   // v105: getSession() refreshes an expired token → TOKEN_REFRESHED → first sync
     window.addEventListener("offline", updateCloudStatus);
     window.addEventListener("beforeunload", function (e) {   // v104: changes are kept on this device, but say so if they haven't reached the cloud
       if (!cloudConfigured() || !pendingCount()) return;
       flushOutbox(); e.preventDefault(); e.returnValue = "Changes not synced yet"; return e.returnValue;
     });
-    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && syncReady()) { flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); } });
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && syncReady()) syncNow(); });
   }
   function cloudSetStatus(html, warn) { var el = $("cloudStatus"); if (!el) return; el.innerHTML = html; el.className = "dstatus" + (warn ? " warn" : ""); }
   function cloudSummary() {
@@ -2814,11 +3028,12 @@
   }
   function fillCloud() {}   // connection fields are gone — the build is pre-wired via config.js
   function wireCloud() {
-    var _bc = $("btnCloud"); if (_bc) _bc.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); };
-    var _cp = $("cloudPill"); if (_cp) _cp.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); };
+    function openCloudPanel() { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); paintAutoExport(); }   // v105: every way in paints the Deleted list too
+    var _bc = $("btnCloud"); if (_bc) _bc.onclick = openCloudPanel;
+    var _cp = $("cloudPill"); if (_cp) _cp.onclick = openCloudPanel;
     $("cloudClose").onclick = function () { $("cloudModal").classList.remove("open"); };
     $("cloudModal").addEventListener("click", function (e) { if (e.target === this) this.classList.remove("open"); });
-    var bsi = $("bannerSignIn"); if (bsi) bsi.onclick = function () { $("cloudModal").classList.add("open"); renderAuthUI(); updateCloudStatus(); cloudSetStatus(cloudSummary()); var ce = $("cfEmail"); if (ce) ce.focus(); };
+    var bsi = $("bannerSignIn"); if (bsi) bsi.onclick = function () { openCloudPanel(); var ce = $("cfEmail"); if (ce) ce.focus(); };
     $("cloudSignIn").onclick = async function () {
       ensureClient(); if (!sb) { cloudSetStatus("Couldn\u2019t load the Supabase client (offline?). Check your connection and try again.", true); return; }
       var email = ($("cfEmail").value || "").trim();
@@ -2849,7 +3064,13 @@
     };
     $("cloudSignOut").onclick = async function () {
       if (sb && syncReady() && navigator.onLine) { try { await flushOutbox(); } catch (e) {} }   // v100: upload queued edits before the session goes away
+      var n = pendingCount();   // v105: never sign out over unsent changes without saying so
+      if (n && !confirm(n + (n > 1 ? " changes haven\u2019t" : " change hasn\u2019t") + " reached the cloud yet" + (navigator.onLine ? "" : " (you\u2019re offline)") + ".\n\nSigning out now discards " + (n > 1 ? "them" : "it") + " on this device. Sign out anyway?")) {
+        cloudSetStatus("Still signed in. " + n + " change" + (n > 1 ? "s" : "") + " waiting to upload \u2014 " + (navigator.onLine ? "retrying now." : "they go up when you\u2019re back online."), true); flushOutbox(); return;
+      }
+      var gone = [obKey(), heldKey(), cacheKey()];   // v105: this account's local copy and queue leave with it
       if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
+      gone.forEach(function (k) { try { if (k) localStorage.removeItem(k); } catch (e) {} });
       session = null; resetBoardState(); renderAll(); renderAuthUI(); updateCloudStatus();   // v100: never carry one account's board into the next
       cloudSetStatus("Signed out. Sync pauses until you sign in again \u2014 your data stays in the cloud under the account you used.");
     };
@@ -3095,7 +3316,7 @@
      survives in memory and cloudPullEntries would seed it into the next account's empty board. */
   function resetBoardState() {
     state = { apps: [], study: [], office: [] }; itemIndex = {}; rebuildIndex();
-    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true; boardU = 0; lastCloudSig = ""; boardPulled = false; boardDirty = false; REC_SIG = {}; recMigrating = false; TRASH = {}; PRE_DK = {};
+    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true; boardU = 0; lastCloudSig = ""; boardPulled = false; boardDirty = false; REC_SIG = {}; recMigrating = false; TRASH = {}; HELD = {}; CONF = { inv: null, tl: null, ib: null, meta: null, t: null }; localLoaded = false; STALE = false; SEEN = { ent: false, inv: false };   // v105 / v106
   }
   var lastUid = null;   // v100: user id of the last pull — a different account must start from a clean board
   function switchBoard(name) {
@@ -4375,7 +4596,7 @@
         return '<button type="button" class="chat-fcard' + (on ? "" : " empty") + '" data-cfold="' + (scoped ? '@vaultf:' + esc(fold) + ':' : '@vault:') + cc.k + '"' + st + '><span class="cf-emo">' + cc.emo + '</span><span class="cf-name">' + esc(cc.l) + '</span><span class="cf-count"' + cst + '>' + (on ? n + (n === 1 ? " item" : " items") : "empty") + '</span></button>';
       }).join("") + '</li>';
       h += scoped ? '<li class="vault-note">Only records filed under <b>' + esc(fLabel) + '</b>. The Vault card on the Chats home still shows everything.</li>'
-        : '<li class="vault-note">Stored with the rest of your board \u2014 this device plus your cloud sync. Keep truly critical secrets in a dedicated password manager.</li>';
+        : '<li class="vault-note">' + (boardPulled ? 'Kept only in the cloud, never on this device. Keep truly critical secrets in a dedicated password manager.' : navigator.onLine ? 'Loading the Vault from the cloud\u2026' : 'You\u2019re offline. The Vault is never kept on this device, so it fills in once you have signal. Records you add now are kept and sent then.') + '</li>';
       return h;
     }
     var rows = inCat(c.k).slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
