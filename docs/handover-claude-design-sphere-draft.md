@@ -14,6 +14,7 @@ Replace `openPicker()` / `#pickModal` with a full-screen **Sphere Draft** view, 
 Layout (see prototype):
 - **Left: the orrery.** Inner disc with **5 numbered slots** (The Five, rank 1 at the top, clockwise) and an outer dashed **orbit ring** for extras ("Also in the sphere"). Centre shows `n/5`.
 - **Right: the table.** Every active item as a card. Filter: All / Apps / Study / Office. Sort: Priority first (default) / Most open tasks / Longest untouched / A–Z. Search.
+- **By category (on by default, toggle remembered per device):** the table is split into sections by `item.group`, each with a heading (colour dot, name, count). Sections appear in the order of their best card under the current sort (A–Z sorts them by name), and cards inside a section follow the sort. Grouped cards drop the crumb, since the heading already names the category. Use the app's `catColor()` for the dot where it has one; otherwise a stable hue from the name.
 - **Under the orrery:** week-load meter, orbit chips (tap = send back), Auto-fill the Five, Undo.
 - **Phone:** orrery on top, table below, plus a sticky top bar (5 mini slots + orbit count) that appears when the orrery scrolls out of view; tapping it scrolls back.
 

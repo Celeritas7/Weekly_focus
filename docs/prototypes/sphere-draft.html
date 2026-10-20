@@ -137,7 +137,15 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
 .tools input, .tools select { border: 1px solid var(--hair); background: var(--card); border-radius: 10px; padding: 7px 10px; font-size: 13px; min-width: 0; }
 .tools input { width: 150px; }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.grid { display: flex; flex-direction: column; gap: 24px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.cat { display: flex; flex-direction: column; gap: 10px; }
+.cat-h { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--ink); }
+.cat-h i { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: var(--cc); }
+.cat-h span { color: var(--faint); font-weight: 700; letter-spacing: 0; }
+.cat-h::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--hair); }
+.tog { border: 1px solid var(--hair); background: var(--card); border-radius: 10px; padding: 7px 11px; font-size: 13px; font-weight: 700; color: var(--mid); cursor: pointer; }
+.tog[aria-pressed="true"] { background: var(--brand-soft); border-color: var(--brand-line); color: var(--brand); }
 .card { position: relative; background: var(--card); border: 1px solid var(--hair); border-radius: 14px; padding: 12px 13px 11px; display: flex; flex-direction: column; gap: 7px; cursor: pointer; min-width: 0; text-align: left; box-shadow: 0 1px 2px rgba(20,20,40,.04); transition: transform .15s, border-color .15s, box-shadow .15s; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .card::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--pc, transparent); }
 .card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--brand-line); }
@@ -221,6 +229,7 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
           <label class="sr" for="q" hidden>Find</label>
           <input id="q" type="search" placeholder="Find…" autocomplete="off">
           <label for="sort" hidden>Sort</label>
+          <button type="button" class="tog" id="grp" aria-pressed="true">By category</button>
           <select id="sort" aria-label="Sort">
             <option value="pri">Priority first</option>
             <option value="open">Most open tasks</option>
@@ -266,7 +275,8 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
   var BY = {}; ITEMS.forEach(function (it) { BY[it.id] = it; });
   var START = { five: ["app:wf", "app:ak"], orbit: [] };
 
-  var S = { five: [], orbit: [] }, hist = [], kindF = "all", sortBy = "pri", q = "";
+  var S = { five: [], orbit: [] }, hist = [], kindF = "all", sortBy = "pri", q = "", GROUP = true;
+  try { GROUP = localStorage.getItem(KEY + "-group") !== "0"; } catch (e) {}
   var $ = function (id) { return document.getElementById(id); };
   var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -348,17 +358,29 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
   }
   function ageTxt(d) { return d === 0 ? "today" : d === 1 ? "1 day ago" : d + " days ago"; }
 
+  function catHue(g) { var h = 0; for (var i = 0; i < g.length; i++) h = (h * 31 + g.charCodeAt(i)) % 360; return h; }
+  /* categories appear in the order of their best card under the current sort (A–Z sorts them by name) */
+  function groupedHtml(list, card) {
+    var order = [], by = {};
+    list.forEach(function (it) { if (!by[it.group]) { by[it.group] = []; order.push(it.group); } by[it.group].push(it); });
+    if (sortBy === "az") order.sort(function (a, b) { return a.localeCompare(b); });
+    return order.map(function (g) {
+      return '<section class="cat" style="--cc:oklch(0.64 0.13 ' + catHue(g) + ')" aria-label="' + esc(g) + '"><h3 class="cat-h"><i></i>' + esc(g) + ' <span>' + by[g].length + '</span></h3><div class="cards">' + by[g].map(card).join("") + '</div></section>';
+    }).join("");
+  }
   function renderPool() {
     var list = ITEMS.filter(function (it) { return !where(it.id) && (kindF === "all" || it.kind === kindF) && (!q || (it.name + " " + it.group).toLowerCase().indexOf(q) >= 0); });
-    var html = sorted(list).map(function (it) {
+    var cardHtml = function (it) {
       var w = where(it.id), open = it.total - it.done, pct = it.total ? Math.round(it.done / it.total * 100) : 0, p = PRI[it.pri];
       return '<div class="card" role="button" tabindex="0" data-k="' + esc(it.id) + '" data-act="toggle" style="--kc:' + KIND[it.kind].c + ';--pc:' + p.c + '" aria-label="Pull ' + esc(it.name) + ' into the sphere">' +
-        '<div class="c-top"><span class="c-kind">' + KIND[it.kind].l + ' <span>· ' + esc(it.group) + '</span></span>' + (p.l ? '<span class="c-pri">' + p.l + '</span>' : '') + '</div>' +
+        '<div class="c-top"><span class="c-kind">' + KIND[it.kind].l + (GROUP ? '' : ' <span>· ' + esc(it.group) + '</span>') + '</span>' + (p.l ? '<span class="c-pri">' + p.l + '</span>' : '') + '</div>' +
         '<div class="c-name">' + esc(it.name) + '</div>' +
         (it.next ? '<div class="c-next">Next: ' + esc(it.next) + '</div>' : '<div class="c-next none">No open subtasks</div>') +
         '<div class="c-foot">' + (it.total ? '<span class="c-bar"><i style="width:' + pct + '%"></i></span><span>' + it.done + '/' + it.total + '</span>' : '<span class="c-bar"></span><span>—</span>') +
         '<span class="c-age' + (it.age >= 14 ? " stale" : "") + '" title="Last touched">' + ageTxt(it.age) + '</span></div></div>';
-    }).join("");
+    };
+    var ordered = sorted(list);
+    var html = !ordered.length ? "" : GROUP ? groupedHtml(ordered, cardHtml) : '<div class="cards">' + ordered.map(cardHtml).join("") + '</div>';
     $("grid").innerHTML = html || '<div class="empty-pool">' + (q || kindF !== "all" ? "Nothing matches. Clear the search or pick another filter." : "Everything is in the sphere. Tap a planet to send it back.") + '</div>';
     var left = ITEMS.filter(function (x) { return !where(x.id); });
     document.querySelectorAll(".seg button").forEach(function (b) { var kd = b.getAttribute("data-kind"); var n = kd === "all" ? left.length : left.filter(function (x) { return x.kind === kd; }).length; b.textContent = (kd === "all" ? "All" : KIND[kd].l === "App" ? "Apps" : KIND[kd].l) + " " + n; b.setAttribute("aria-pressed", kindF === kd ? "true" : "false"); });
@@ -452,6 +474,7 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
     picks.forEach(function (it, j) { setTimeout(function () { act(it.id, "add"); }, reduce ? 0 : j * 220); });
   });
   document.querySelector(".seg").addEventListener("click", function (e) { var b = e.target.closest("button[data-kind]"); if (!b) return; kindF = b.getAttribute("data-kind"); renderPool(); });
+  $("grp").addEventListener("click", function () { GROUP = !GROUP; this.setAttribute("aria-pressed", GROUP ? "true" : "false"); try { localStorage.setItem(KEY + "-group", GROUP ? "1" : "0"); } catch (e) {} renderPool(); });
   $("sort").addEventListener("change", function () { sortBy = this.value; renderPool(); });
   $("q").addEventListener("input", function () { q = this.value.trim().toLowerCase(); renderPool(); });
 
@@ -497,6 +520,7 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
   $("hud").addEventListener("click", function () { sphere.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" }); });
   if ("IntersectionObserver" in window) new IntersectionObserver(function (es) { $("hud").hidden = es[0].isIntersecting; }, { threshold: 0.15 }).observe(sphere);
   function boot(data) {
+    $("grp").setAttribute("aria-pressed", GROUP ? "true" : "false");
     S = data && data.S ? clean(data.S) : load();
     render(); lastFull = S.five.length === MAX; sphere.classList.toggle("lit", lastFull);
   }
