@@ -58,7 +58,17 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
 .tally b { color: var(--brand); }
 
 .stage { display: grid; grid-template-columns: minmax(300px, 430px) minmax(0, 1fr); gap: 28px; align-items: start; }
-@media (max-width: 860px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 860px) {
+  .stage { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .stage > .orrery { display: contents; }
+  .stage .sphere { order: 0; margin-bottom: 8px; }
+  .stage .pool { order: 1; }
+  .stage .load { order: 2; }
+  .stage .actions { order: 3; }
+}
+.howto { margin-top: 26px; color: var(--mid); font-size: 12.5px; }
+.howto summary { cursor: pointer; font-weight: 700; color: var(--brand); }
+.howto .hint { margin-top: 8px; }
 
 /* ---- orrery ---- */
 .orrery { display: flex; flex-direction: column; gap: 14px; }
@@ -201,7 +211,6 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
         <button class="btn" id="undo" type="button" disabled>Undo</button>
         <button class="btn" id="reset" type="button">Reset example</button>
       </div>
-      <p class="hint">Tap a card to pull it in. Drag it onto a number to rank it, or onto the dashed ring to keep it in orbit. Tap a planet to send it back. On a phone, press and hold to drag. Keys on a focused card: <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit, <kbd>Del</kbd> send back.</p>
     </section>
 
     <section class="pool" id="pool" data-drop="pool" aria-label="All apps and topics">
@@ -228,6 +237,10 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
       <p class="note">Example apps and topics. In Weekly Focus this table shows your own active items.</p>
     </section>
   </div>
+  <details class="howto">
+    <summary>How to play</summary>
+    <p class="hint">Tap a card to pull it in. Drag it onto a number to rank it, or onto the dashed ring to keep it in orbit. Tap a planet to send it back. On a phone, press and hold to drag. Keys on a focused card: <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit, <kbd>Del</kbd> send back.</p>
+  </details>
 </div>
 
 <script>
