@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v106", BUILD_N = 106;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v107", BUILD_N = 107;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -510,6 +510,7 @@
   function renderAll() {
     pruneTargets(); if (targetOrder.length < MAX_TARGETS && (boardPulled || !cloudConfigured()) && sphereFill()) { save(); cloudPushBoard(); }   // v101: a free target slot pulls up the next sphere item
     renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome(); if (FGS.open) { paintFgsTabs(); paintFgsList(); }
+    if (window.WFSphereDraft && window.WFSphereDraft.isOpen()) window.WFSphereDraft.refresh();   // v107: a sync pull while the draft is open
     if (ENTER) { ENTER = false; setTimeout(function () { var ns = document.querySelectorAll(".wf-enter"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("wf-enter"); }, 720); }
     lastCloudSig = boardSig();
   }
@@ -1598,6 +1599,7 @@
      TARGET PICKER
      ============================================================ */
   function openPicker() {
+    if (window.WFSphereDraft) { window.WFSphereDraft.open(SD_HOST); return; }   // v107: the Sphere Draft replaces this list when its script is loaded
     var body = $("pickBody"); body.innerHTML = "";
     var rows = [];
     activeItems("app").forEach(function (a) { if (isSpecialItem(a)) return; rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
@@ -1615,8 +1617,57 @@
     });
     $("pickModal").classList.add("open");
   }
-  function closePicker() { $("pickModal").classList.remove("open"); }
+  function closePicker() { $("pickModal").classList.remove("open"); if (window.WFSphereDraft) window.WFSphereDraft.close(); }
   function catColor(cat) { return ({ "General Purpose": "var(--cat-gp)", "Mechanical": "var(--cat-mech)", "Language Study": "var(--cat-lang)" })[cat] || "var(--cat-other)"; }
+
+  /* ---- v107 · Sphere Draft host (js/wf-sphere-draft.js draws the game; these are the only moves it can make).
+     Every move goes through the sphere's own functions, then renderAll(): membership stays per item (entries[id].sph),
+     The Five stay targetOrder on __board, so sync (v104) needs nothing new. ---- */
+  var SD_PRI = { H: "high", M: "medium", L: "low" };
+  function sdRows() {
+    var now = Date.now(), rows = [];
+    ["app", "study", "office"].forEach(function (kind) {
+      activeItems(kind).forEach(function (it) {
+        if (isSpecialItem(it)) return;
+        var pr = subProgress(it.id), last = 0;
+        visibleSubs(subs(it.id)).forEach(function (s) { if (s.u > last) last = s.u; });
+        rows.push({ id: it.id, kind: kind, name: it.name, group: (it.group || "").trim() || "Unsorted",
+          pri: SD_PRI[getEntry(it.id).pri] || "", done: pr ? pr.done : 0, total: pr ? pr.total : 0, next: nextSub(it.id),
+          age: last ? Math.max(0, Math.floor((now - last) / 864e5)) : null });
+      });
+    });
+    return rows;
+  }
+  function sdCommit() { save(); cloudPushBoard(); syncRanks(); renderAll(); }
+  var SD_HOST = {
+    max: MAX_TARGETS,
+    rows: sdRows,
+    state: function () { return { five: targetOrder.slice(), orbit: sphereExtras() }; },
+    add: function (k) { if (inSphere(k)) return; sphereAdd(k); renderAll(); },
+    /* slot i (0-based): a target moves within the Five; anything else is placed there and the last target drops to orbit */
+    place: function (k, i) {
+      var from = targetOrder.indexOf(k);
+      if (from >= 0) { if (from === i) return; targetOrder.splice(from, 1); targetOrder.splice(Math.min(i, targetOrder.length), 0, k); sdCommit(); return; }
+      sphereAdd(k, Math.min(i, targetOrder.length)); renderAll();
+    },
+    /* orbit: a target only leaves the Five when an orbit item can take its slot (a free slot always pulls the next one up) */
+    orbit: function (k) {
+      if (!inSphere(k)) { var free = targetOrder.length < MAX_TARGETS; sphereAdd(k); renderAll(); return free ? "five" : "orbit"; }
+      if (!isTarget(k)) return "orbit";
+      var sub = sphereExtras()[0]; if (!sub) return "stuck";
+      targetOrder.splice(targetOrder.indexOf(k), 1); targetOrder.push(sub);
+      sphFlag(k); if (entries[k] && entries[k].targetDone) patch(k, { targetDone: false });
+      if (kindOf(k) === "app") patch(k, { rank: 9999 });   // after every other app, so the rank list agrees
+      sdCommit(); return "orbit";
+    },
+    back: function (k) { if (!inSphere(k)) return; sphereRemove(k); renderAll(); },
+    snapshot: function () { var sph = {}; sdRows().forEach(function (r) { sph[r.id] = getEntry(r.id).sph === true; }); return { five: targetOrder.slice(), sph: sph }; },
+    restore: function (s) {
+      Object.keys(s.sph).forEach(function (k) { var want = s.sph[k], has = getEntry(k).sph === true; if (want !== has && itemById(k)) patch(k, { sph: want }); });
+      targetOrder = s.five.filter(function (k) { var it = itemById(k); return it && isActive(it); });
+      sdCommit();
+    }
+  };
 
   /* ============================================================
      ADD-ITEM MODAL
@@ -2977,7 +3028,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 empty-read guard";   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 sphere draft";   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });

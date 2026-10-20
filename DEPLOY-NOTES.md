@@ -1,3 +1,26 @@
+# v107 — Sphere Draft · built on v106 (v106 was never deployed, so this upload carries both)
+
+Upload these five files, then reload twice on every device:
+- `index.html` (loads the two new files)
+- `js/weekly-focus-app.js` (v106 changes + the Sphere Draft hook)
+- `js/wf-sphere-draft.js` (new)
+- `css/wf-sphere-draft.css` (new)
+- `sw.js` (cache → `weekly-focus-v107`, caches the new files for offline)
+
+**No SQL ships with this build.** The history function `wf_keep_history()` is owned by the repo (`migrations/`). Never paste SQL that redefines it.
+
+## What changed
+**+ Add to sphere** (the empty slot in The Five, and the tile under "Also in the sphere") now opens the **Sphere Draft**: every active app, study topic and office task on one table, grouped by category; tap to pull one in, drag onto a number to rank it, onto the ring for orbit; week-load meter; Auto-fill; Undo. A picked card leaves the table. Moves go through the existing sphere functions, so storage and sync are unchanged. If `wf-sphere-draft.js` is missing, the old list opens instead.
+
+## Check after upload
+1. Footer reads **build v107 · opens offline · sphere draft**.
+2. Tap **+ Add to sphere** → the draft opens. Tap 2 cards → they become targets #1 and #2 on the board behind it (close with **Done** or **Esc** to see).
+3. Fill The Five, tap a 6th → it shows under "Also in the sphere" on the board.
+4. On a second device, the same Five appear after sync.
+5. Then run the v106 checks below (they were never run on a deployed build).
+
+---
+
 # v106 — empty-read guard · local only, not deployed
 
 Built on v105 (live 18 Oct). Upload only these two files, then reload twice on every device:

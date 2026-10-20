@@ -1,5 +1,7 @@
 # Handover to Claude Design — Sphere Draft (game-style "Add to sphere")
 
+> **Status: built by Claude Code in v107.** Code: `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, plus the `SD_HOST` block next to `openPicker()` in `js/weekly-focus-app.js`. Don't rebuild it; to change it, edit those files. The rest of this note is the design record.
+
 **Prototype (playable):** https://claude.ai/artifact/HpMazVRWEE1TL1pv6KgUaW
 **Source:** `docs/prototypes/sphere-draft.html` (self-contained HTML/CSS/JS, example data, uses the app's own tokens: Helvetica, brand purple, priority colours).
 
