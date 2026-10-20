@@ -29,7 +29,7 @@ Layout (see prototype):
 | "N days ago" (amber at 14+ days) | newest `subs(k)[].u`; omit the chip if no timestamps |
 | Badge `#n` / `Orbit` when picked | `targetOrder.indexOf(k)` / `inSphere(k)` |
 
-Picked cards **stay on the table** (marked), so the whole picture is always visible.
+A picked card **leaves the table**: it is now a planet in the orrery (and a chip in the orbit list). The table only shows what is still up for selection, and the filter counts (All / Apps / Study / Office) count only those. When nothing is left, the table says "Everything is in the sphere. Tap a planet to send it back." Sending an item back puts its card back on the table.
 
 ### Moves → existing functions
 

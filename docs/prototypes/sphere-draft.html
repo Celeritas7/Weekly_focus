@@ -141,7 +141,6 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
 .card { position: relative; background: var(--card); border: 1px solid var(--hair); border-radius: 14px; padding: 12px 13px 11px; display: flex; flex-direction: column; gap: 7px; cursor: pointer; min-width: 0; text-align: left; box-shadow: 0 1px 2px rgba(20,20,40,.04); transition: transform .15s, border-color .15s, box-shadow .15s; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .card::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--pc, transparent); }
 .card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--brand-line); }
-.card.picked { background: var(--brand-soft); border-color: var(--brand-line); }
 .card.dragging { opacity: .35; }
 .c-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .c-kind { color: var(--kc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -154,9 +153,6 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
 .c-bar { flex: 1 1 auto; height: 5px; border-radius: 3px; background: var(--hair); overflow: hidden; }
 .c-bar i { display: block; height: 100%; background: var(--kc); border-radius: 3px; }
 .c-age.stale { color: var(--warn); font-weight: 700; }
-.badge { position: absolute; top: -8px; right: 10px; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; box-shadow: 0 0 0 2px var(--canvas); }
-.badge.five { background: var(--gold); color: #2a2205; }
-.badge.orb { background: var(--brand); color: var(--canvas); }
 .empty-pool { color: var(--mid); font-size: 14px; padding: 30px 4px; }
 .note { margin-top: 16px; font-size: 12px; color: var(--faint); }
 
@@ -353,19 +349,19 @@ h1 { margin: 4px 0 0; font-size: clamp(26px, 4vw, 34px); font-weight: 800; lette
   function ageTxt(d) { return d === 0 ? "today" : d === 1 ? "1 day ago" : d + " days ago"; }
 
   function renderPool() {
-    var list = ITEMS.filter(function (it) { return (kindF === "all" || it.kind === kindF) && (!q || (it.name + " " + it.group).toLowerCase().indexOf(q) >= 0); });
+    var list = ITEMS.filter(function (it) { return !where(it.id) && (kindF === "all" || it.kind === kindF) && (!q || (it.name + " " + it.group).toLowerCase().indexOf(q) >= 0); });
     var html = sorted(list).map(function (it) {
       var w = where(it.id), open = it.total - it.done, pct = it.total ? Math.round(it.done / it.total * 100) : 0, p = PRI[it.pri];
-      var badge = w ? (w.orbit ? '<span class="badge orb">Orbit</span>' : '<span class="badge five">#' + (w.five + 1) + '</span>') : "";
-      return '<div class="card' + (w ? " picked" : "") + '" role="button" tabindex="0" data-k="' + esc(it.id) + '" data-act="toggle" aria-pressed="' + (w ? "true" : "false") + '" style="--kc:' + KIND[it.kind].c + ';--pc:' + p.c + '" aria-label="' + esc(it.name) + (w ? (w.orbit ? ", in orbit" : ", target " + (w.five + 1)) : "") + '">' + badge +
+      return '<div class="card" role="button" tabindex="0" data-k="' + esc(it.id) + '" data-act="toggle" style="--kc:' + KIND[it.kind].c + ';--pc:' + p.c + '" aria-label="Pull ' + esc(it.name) + ' into the sphere">' +
         '<div class="c-top"><span class="c-kind">' + KIND[it.kind].l + ' <span>· ' + esc(it.group) + '</span></span>' + (p.l ? '<span class="c-pri">' + p.l + '</span>' : '') + '</div>' +
         '<div class="c-name">' + esc(it.name) + '</div>' +
         (it.next ? '<div class="c-next">Next: ' + esc(it.next) + '</div>' : '<div class="c-next none">No open subtasks</div>') +
         '<div class="c-foot">' + (it.total ? '<span class="c-bar"><i style="width:' + pct + '%"></i></span><span>' + it.done + '/' + it.total + '</span>' : '<span class="c-bar"></span><span>—</span>') +
         '<span class="c-age' + (it.age >= 14 ? " stale" : "") + '" title="Last touched">' + ageTxt(it.age) + '</span></div></div>';
     }).join("");
-    $("grid").innerHTML = html || '<div class="empty-pool">Nothing matches. Clear the search or pick another filter.</div>';
-    document.querySelectorAll(".seg button").forEach(function (b) { var kd = b.getAttribute("data-kind"); var n = kd === "all" ? ITEMS.length : ITEMS.filter(function (x) { return x.kind === kd; }).length; b.textContent = (kd === "all" ? "All" : KIND[kd].l === "App" ? "Apps" : KIND[kd].l) + " " + n; b.setAttribute("aria-pressed", kindF === kd ? "true" : "false"); });
+    $("grid").innerHTML = html || '<div class="empty-pool">' + (q || kindF !== "all" ? "Nothing matches. Clear the search or pick another filter." : "Everything is in the sphere. Tap a planet to send it back.") + '</div>';
+    var left = ITEMS.filter(function (x) { return !where(x.id); });
+    document.querySelectorAll(".seg button").forEach(function (b) { var kd = b.getAttribute("data-kind"); var n = kd === "all" ? left.length : left.filter(function (x) { return x.kind === kd; }).length; b.textContent = (kd === "all" ? "All" : KIND[kd].l === "App" ? "Apps" : KIND[kd].l) + " " + n; b.setAttribute("aria-pressed", kindF === kd ? "true" : "false"); });
     $("tFive").textContent = S.five.length + "/" + MAX;
     $("tOrbit").textContent = S.orbit.length;
     $("tPool").textContent = ITEMS.length - S.five.length - S.orbit.length;
