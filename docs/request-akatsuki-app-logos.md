@@ -66,6 +66,12 @@ Following "an owner declared per shared path before the first write":
 4. Offer "Set logo" (upload or emoji) for apps without one, written through the agreed path.
 5. Until this exists, WF falls back to reading logos from live sites itself.
 
+## Akatsuki's own logo
+
+- Akatsuki registers **itself** in the identity table (`app_key = 'akatsuki'`, its live site as `home_url`), so the sync stores its logo like any other app's.
+- WF shows Akatsuki at the **core of its sphere** (v108). Once the store exists, the core shows Akatsuki's logo inside the red moon.
+- Each app keeps its **own** favicon and home-screen icon in its own repo. The repo is the source the sync copies from, and an app must still open offline. The store is for showing **other** apps' logos.
+
 ## Decisions for Akatsuki
 1. Bucket name, path layout and public read: OK?
 2. New `akatsuki_app_identity` table, or columns on `akatsuki_apps` (which would then need all 69 apps)?
