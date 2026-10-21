@@ -1,3 +1,26 @@
+# v115 — shared logos live (Akatsuki R038) · built on v114
+
+Upload these three files, then reload twice on every device:
+- `js/wf-logos.js`
+- `js/weekly-focus-app.js` (build number and footer only)
+- `sw.js` (cache → `weekly-focus-v115`)
+
+**No SQL ships with this build.** The logo store (bucket `akatsuki-logos`, view `akatsuki_app_logos`, RPC `akatsuki_app_identity_upsert`, edge function `akatsuki-logo-sync`) was built and applied by Akatsuki as hub migration R038.
+
+## What changed
+- The logo sync accepts at most 40 apps per call. WF now sends the apps it registers in calls of 40.
+- Nothing else: v109 was already built against R038's names. On the first signed-in load WF registers every app in the store, asks the sync to copy the hosted apps' icons, and shows them.
+
+## Notes
+- An app's site icon is stored only if it is a square PNG or WebP of 64 KB or less. Otherwise the store has no logo for it and WF keeps reading the icon from the live site.
+- All "Commonplace …" cards link into the one Commonplace site, so they share its logo. "KG chart" and "Mechanical - GD&T" both link to KG_chart_new and share that logo too.
+
+## Check after upload
+1. Footer reads **build v115 · opens offline · shared logos**.
+2. Open WF once while signed in, then wait a minute and reload: planets and bubbles show logos, and the red core shows Akatsuki's.
+
+---
+
 # v114 — compact filters on phones · built on v113
 
 Upload these four files, then reload twice on every device:
