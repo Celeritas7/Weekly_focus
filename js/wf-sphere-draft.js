@@ -25,6 +25,15 @@
   function catCol(g) { return CAT[g] || "oklch(0.62 0.13 " + hue(g) + ")"; }
   function score(it) { return PRI[it.pri].w * 100 + Math.min(it.total - it.done, 9) * 3 - Math.min(it.age == null ? 30 : it.age, 30) * 0.1; }
   function ageTxt(d) { return d == null ? "no activity yet" : d === 0 ? "today" : d === 1 ? "1 day ago" : d + " days ago"; }
+  function short(name) { var w = String(name).replace(/[_\-]+/g, " ").trim().split(/\s+/)[0] || ""; return w.length > 8 ? w.slice(0, 7) + "…" : w; }
+  /* v109: what sits inside a planet. Logo → the image (name kept as a hidden fallback if it fails to load); emoji; else the name itself */
+  function face(it, mode) {
+    var L = it.logo, nm = mode === "planet" ? it.name : mode === "moon" ? short(it.name) : mono(it.name);
+    var txt = '<span class="sd-face-name">' + esc(nm) + '</span>';
+    if (L && L.url) return '<img class="sd-face-img" src="' + esc(L.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' + txt.replace('sd-face-name"', 'sd-face-name sd-alt"');
+    if (L && L.emoji) return '<span class="sd-face-emo">' + esc(L.emoji) + '</span>';
+    return txt;
+  }
   function sel(k) { return window.CSS && CSS.escape ? CSS.escape(k) : String(k).replace(/"/g, '\\"'); }
 
   var ST = { five: [], orbit: [] };
@@ -76,7 +85,7 @@
       if (it) {
         el.type = "button"; el.setAttribute("data-sdk", k); el.setAttribute("data-sd", "back"); el.style.setProperty("--kc", KIND[it.kind].c);
         el.setAttribute("aria-label", "Target " + (i + 1) + ": " + it.name + ". Send back to the table");
-        el.innerHTML = '<span class="sd-rk">' + (i + 1) + '</span><span class="sd-mono">' + esc(mono(it.name)) + '</span><span class="sd-nm">' + esc(it.name) + '</span>';
+        el.title = it.name; el.innerHTML = '<span class="sd-rk">' + (i + 1) + '</span>' + face(it, "planet");
       } else { el.setAttribute("aria-label", "Empty target slot " + (i + 1)); el.textContent = i + 1; }
       sp.appendChild(el);
     }
@@ -86,7 +95,7 @@
       m.type = "button"; m.className = "sd-moon" + (landing === k ? " sd-landed" : "");
       m.setAttribute("data-sdk", k); m.setAttribute("data-sd", "back"); m.setAttribute("data-sddrop", "orbit");
       m.style.setProperty("--kc", KIND[it.kind].c); m.setAttribute("aria-label", "In orbit: " + it.name + ". Send back to the table"); m.title = it.name;
-      m.textContent = mono(it.name); pos(m, n <= 5 ? gaps[j] : 18 + j * 360 / n, 47);
+      m.innerHTML = face(it, "moon"); pos(m, n <= 5 ? gaps[j] : 18 + j * 360 / n, 47);
       sp.appendChild(m);
     });
     $("sdCoreN").innerHTML = ST.five.length + "<small>/" + MAX + "</small>";
@@ -96,7 +105,7 @@
     sp.classList.toggle("sd-has-core", on); cm.hidden = !on;
     if (on) {
       cm.setAttribute("aria-label", c.name + ", core of the sphere: " + c.open + " open. Open it");
-      cm.innerHTML = '<span class="sd-cm-k">Core</span><span class="sd-cm-n">' + esc(c.name) + '</span><span class="sd-cm-o">' + c.open + ' open</span>' + (c.next ? '<span class="sd-cm-x">' + esc(c.next) + '</span>' : '');
+      cm.innerHTML = (c.logo && c.logo.url ? '<span class="sd-cm-logo"><img src="' + esc(c.logo.url) + '" alt="" referrerpolicy="no-referrer"></span>' : c.logo && c.logo.emoji ? '<span class="sd-cm-logo sd-cm-emo">' + esc(c.logo.emoji) + '</span>' : '<span class="sd-cm-k">Core</span>') + '<span class="sd-cm-n">' + esc(c.name) + '</span><span class="sd-cm-o">' + c.open + ' open</span>' + (c.next ? '<span class="sd-cm-x">' + esc(c.next) + '</span>' : '');
     }
   }
   var ORBIT_CAP = 3;
@@ -126,7 +135,7 @@
     var p = PRI[it.pri] || PRI[""], pct = it.total ? Math.round(it.done / it.total * 100) : 0;
     return '<div class="sd-card" role="button" tabindex="0" data-sdk="' + esc(it.id) + '" data-sd="toggle" style="--kc:' + KIND[it.kind].c + ';--pc:' + p.c + '" aria-label="Pull ' + esc(it.name) + ' into the sphere">' +
       '<div class="sd-c-top"><span class="sd-c-kind">' + KIND[it.kind].l + (GROUP ? '' : ' <span>· ' + esc(it.group) + '</span>') + '</span>' + (p.l ? '<span class="sd-c-pri">' + p.l + '</span>' : '') + '</div>' +
-      '<div class="sd-c-name">' + esc(it.name) + '</div>' +
+      '<div class="sd-c-name">' + (it.logo && it.logo.url ? '<img class="sd-c-logo" src="' + esc(it.logo.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' : it.logo && it.logo.emoji ? '<span class="sd-c-logo sd-c-emo">' + esc(it.logo.emoji) + '</span>' : '') + '<span>' + esc(it.name) + '</span></div>' +
       (it.next ? '<div class="sd-c-next">Next: ' + esc(it.next) + '</div>' : '<div class="sd-c-next sd-none">No open subtasks</div>') +
       '<div class="sd-c-foot">' + (it.total ? '<span class="sd-c-bar"><i style="width:' + pct + '%"></i></span><span>' + it.done + '/' + it.total + '</span>' : '<span class="sd-c-bar"></span><span>—</span>') +
       '<span class="sd-c-age' + (it.age != null && it.age >= 14 ? " sd-stale" : "") + '" title="Last touched">' + ageTxt(it.age) + '</span></div></div>';
@@ -154,7 +163,7 @@
     $("sdT5").textContent = ST.five.length + "/" + H.max; $("sdTO").textContent = ST.orbit.length; $("sdTP").textContent = left.length;
   }
   function renderHud() {
-    var d = ""; for (var i = 0; i < H.max; i++) { var k = ST.five[i], it = k && BY[k]; d += it ? '<i class="sd-on" style="--kc:' + KIND[it.kind].c + '">' + esc(mono(it.name)) + '</i>' : '<i>' + (i + 1) + '</i>'; }
+    var d = ""; for (var i = 0; i < H.max; i++) { var k = ST.five[i], it = k && BY[k]; d += it ? '<i class="sd-on" style="--kc:' + KIND[it.kind].c + '">' + (it.logo && it.logo.url ? '<img src="' + esc(it.logo.url) + '" alt="" referrerpolicy="no-referrer">' : it.logo && it.logo.emoji ? esc(it.logo.emoji) : esc(mono(it.name))) + '</i>' : '<i>' + (i + 1) + '</i>'; }
     $("sdHudDots").innerHTML = d; $("sdHudO").textContent = ST.five.length + "/" + H.max + " · orbit " + ST.orbit.length;
   }
   function render(landing) { pull(); renderSphere(landing); renderLoad(); renderPool(); renderHud(); }
@@ -164,7 +173,7 @@
     var to = $("sdSphere").querySelector('[data-sdk="' + sel(k) + '"]'); if (!to || !fromRect || reduce) return;
     var tr = to.getBoundingClientRect(), it = BY[k], f = document.createElement("div"), size = tr.width;
     f.className = "sd-flyer"; f.style.width = f.style.height = size + "px"; f.style.setProperty("--kc", KIND[it.kind].c);
-    f.style.fontSize = Math.max(11, size * 0.26) + "px"; f.textContent = mono(it.name);
+    f.style.fontSize = Math.max(11, size * 0.26) + "px"; if (it.logo && it.logo.url) f.innerHTML = '<img src="' + esc(it.logo.url) + '" alt="" referrerpolicy="no-referrer">'; else if (it.logo && it.logo.emoji) f.textContent = it.logo.emoji; else f.textContent = mono(it.name);
     root.appendChild(f); to.style.visibility = "hidden";
     var fx = fromRect.left + fromRect.width / 2 - size / 2, fy = fromRect.top + fromRect.height / 2 - size / 2;
     var an = f.animate([{ transform: "translate(" + fx + "px," + fy + "px) scale(.7)", opacity: .6 }, { transform: "translate(" + tr.left + "px," + tr.top + "px) scale(1)", opacity: 1 }], { duration: 460, easing: "cubic-bezier(.2,.8,.2,1)" });
@@ -238,6 +247,10 @@
       else return;
       var next = root.querySelector(".sd-card[data-sdk]"); if (next) next.focus();
     });
+    root.addEventListener("error", function (e) {
+      var t = e.target; if (!t || t.tagName !== "IMG") return;
+      var host = t.parentNode; t.remove(); if (host && host.classList) host.classList.add("sd-noimg");
+    }, true);
     $("sdUndo").addEventListener("click", undo);
     $("sdAuto").addEventListener("click", function () {
       var picks = sorted(ROWS.filter(function (r) { return !where(r.id); })).slice(0, H.max - ST.five.length);

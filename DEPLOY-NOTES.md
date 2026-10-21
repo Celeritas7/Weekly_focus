@@ -1,3 +1,28 @@
+# v109 — app logos · built on v108
+
+Upload these six files, then reload twice on every device:
+- `index.html` (loads `js/wf-logos.js`)
+- `js/wf-logos.js` (new)
+- `js/weekly-focus-app.js`
+- `js/wf-sphere-draft.js`
+- `css/wf-sphere-draft.css`
+- `sw.js` (cache → `weekly-focus-v109`)
+
+**No SQL ships with this build.** The logo store is Akatsuki's (hub migration **R038**); WF only reads it and seeds it through Akatsuki's RPC.
+
+## What changed
+- Planets in the Sphere Draft show the app's **logo**; an app without one shows its **name** inside the planet (no label underneath, so the sphere is more compact). Orbit planets: logo or a short name. Cards on the table get a small logo. The Akatsuki core shows its logo in the red moon and in the core bar.
+- **Where logos come from**, in order: Akatsuki's shared store (`akatsuki_app_logos`: uploaded, emoji or synced from the app's site) → the app's own GitHub Pages site (home-screen icon, else the largest manifest icon ≤ 512 px, else its browser icon), remembered on this device for a week → no logo.
+- **Until R038 is live**, the store isn't there and WF quietly uses the live sites. No errors, nothing to do.
+- **Once R038 is live**, WF sends each app (name + live link) to Akatsuki once, using Akatsuki's key rule (Pages repo name, or a slug of the name), then only apps that are new or renamed. New hosted apps trigger Akatsuki's logo sync.
+
+## Check after upload
+1. Footer reads **build v109 · opens offline · app logos**.
+2. Open **+ Add to sphere**: apps with a github.io link in Quick links show their logo within a few seconds; others show their name.
+3. After R038 lands: reload once; Akatsuki's `akatsuki_app_identity` gets one row per app; a day later (or after the sync runs) the hosted apps' logos come from the store.
+
+---
+
 # v108 — Akatsuki is the core of the sphere · built on v107
 
 Upload these four files, then reload twice on every device:
