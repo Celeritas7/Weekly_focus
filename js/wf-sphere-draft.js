@@ -45,7 +45,8 @@
         '<div class="sd-stage">' +
           '<section class="sd-orrery" aria-label="Your sphere">' +
             '<div class="sd-sphere" id="sdSphere"><div class="sd-orbit" data-sddrop="orbit"></div><div class="sd-disc" data-sddrop="center"></div>' +
-              '<div class="sd-core"><div class="sd-n" id="sdCoreN">0<small>/5</small></div><div class="sd-l" id="sdCoreL">targets set</div></div><canvas id="sdFx" aria-hidden="true"></canvas></div>' +
+              '<div class="sd-core"><div class="sd-n" id="sdCoreN">0<small>/5</small></div><div class="sd-l" id="sdCoreL">targets set</div></div>' +
+              '<button type="button" class="sd-coremoon" id="sdCoreMoon" data-sd="core" hidden></button><canvas id="sdFx" aria-hidden="true"></canvas></div>' +
             '<div class="sd-load"><div class="sd-load-h"><span class="sd-t">Week load</span><span class="sd-v" id="sdLoadV">Light</span></div><div class="sd-segs" id="sdSegs" aria-hidden="true"></div><div class="sd-chips" id="sdChips"></div></div>' +
             '<div class="sd-actions"><button class="sd-btn sd-primary" id="sdAuto" type="button">Auto-fill the Five</button><button class="sd-btn" id="sdUndo" type="button" disabled>Undo</button></div>' +
           '</section>' +
@@ -90,6 +91,13 @@
     });
     $("sdCoreN").innerHTML = ST.five.length + "<small>/" + MAX + "</small>";
     $("sdCoreL").textContent = ST.five.length === MAX ? "Your Five are set" : "targets set";
+    /* v108: Akatsuki is the core. While it has open tasks the centre becomes its red moon; otherwise the count shows */
+    var c = H.core ? H.core() : null, cm = $("sdCoreMoon"), on = !!(c && c.open);
+    sp.classList.toggle("sd-has-core", on); cm.hidden = !on;
+    if (on) {
+      cm.setAttribute("aria-label", c.name + ", core of the sphere: " + c.open + " open. Open it");
+      cm.innerHTML = '<span class="sd-cm-k">Core</span><span class="sd-cm-n">' + esc(c.name) + '</span><span class="sd-cm-o">' + c.open + ' open</span>' + (c.next ? '<span class="sd-cm-x">' + esc(c.next) + '</span>' : '');
+    }
   }
   var ORBIT_CAP = 3;
   function renderLoad() {
@@ -219,6 +227,7 @@
       else if (a === "back") act(k, "back");
       else if (a === "undo") undo();
       else if (a === "close") close();
+      else if (a === "core" && H.openCore) H.openCore();
     });
     root.addEventListener("keydown", function (e) {
       var c = e.target.closest && e.target.closest(".sd-card[data-sdk]"); if (!c) return;

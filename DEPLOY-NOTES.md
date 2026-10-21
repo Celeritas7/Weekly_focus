@@ -1,3 +1,28 @@
+# v108 — Akatsuki is the core of the sphere · built on v107
+
+Upload these four files, then reload twice on every device:
+- `js/weekly-focus-app.js`
+- `js/wf-sphere-draft.js`
+- `css/wf-sphere-draft.css`
+- `sw.js` (cache → `weekly-focus-v108`)
+
+`index.html` is unchanged from v107. **No SQL ships with this build.** `wf_keep_history()` is owned by `migrations/`.
+
+## What changed
+The app card named **Akatsuki** is the core of the sphere: always in it, never one of the Five, never in orbit, never on the Sphere Draft's table, and it has no rank.
+- While Akatsuki has **open subtasks**, a red **Core · Akatsuki** bar shows on **Today** (above Build) and on the **Week** tab (above the Five), with the next task and the open count. Tap it to open the Akatsuki card. With no open subtasks the bar is hidden.
+- In the **Sphere Draft**, the centre becomes Akatsuki's red moon while it has open subtasks; tap it to open the card. Otherwise the centre shows the n/5 count.
+- If Akatsuki was one of the Five, it leaves its slot on first load and the next sphere item moves up.
+- Its ◎ button and the rank picker say it is the core and change nothing.
+
+## Check after upload
+1. Footer reads **build v108 · opens offline · Akatsuki core**.
+2. Akatsuki is no longer in the Five; the Five are refilled.
+3. Add a subtask to Akatsuki → the red bar appears on Today and Week. Tick it done → the bar disappears.
+4. Open **+ Add to sphere** → the red moon is in the centre; Akatsuki is not on the table.
+
+---
+
 # v107 — Sphere Draft · built on v106 (v106 was never deployed, so this upload carries both)
 
 Upload these five files, then reload twice on every device:
