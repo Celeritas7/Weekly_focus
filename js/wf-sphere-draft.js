@@ -105,11 +105,13 @@
     $("sdCoreN").innerHTML = ST.five.length + "<small>/" + MAX + "</small>";
     $("sdCoreL").textContent = ST.five.length === MAX ? "Your Five are set" : "targets set";
     /* v108: Akatsuki is the core. While it has open tasks the centre becomes its red moon; otherwise the count shows */
-    var c = H.core ? H.core() : null, cm = $("sdCoreMoon"), on = !!(c && c.open);
-    sp.classList.toggle("sd-has-core", on); cm.hidden = !on;
+    /* v112: Akatsuki is always the centre. Bright red while it has open tasks; dimmed ("All clear") when it has none */
+    var c = H.core ? H.core() : null, cm = $("sdCoreMoon"), on = !!c, dim = on && !c.open;
+    sp.classList.toggle("sd-has-core", on); cm.hidden = !on; cm.classList.toggle("sd-dim", dim);
     if (on) {
-      cm.setAttribute("aria-label", c.name + ", core of the sphere: " + c.open + " open. Open it");
-      cm.innerHTML = (c.logo && c.logo.url ? '<span class="sd-cm-logo"><img src="' + esc(c.logo.url) + '" alt="" referrerpolicy="no-referrer"></span>' : c.logo && c.logo.emoji ? '<span class="sd-cm-logo sd-cm-emo">' + esc(c.logo.emoji) + '</span>' : '<span class="sd-cm-k">Core</span>') + '<span class="sd-cm-n">' + esc(c.name) + '</span><span class="sd-cm-o">' + c.open + ' open</span>' + (c.next ? '<span class="sd-cm-x">' + esc(c.next) + '</span>' : '');
+      cm.setAttribute("aria-label", c.name + ", core of the sphere: " + (c.open ? c.open + " open" : "all clear") + ". Open it");
+      cm.innerHTML = (c.logo && c.logo.url ? '<span class="sd-cm-logo"><img src="' + esc(c.logo.url) + '" alt="" referrerpolicy="no-referrer"></span>' : c.logo && c.logo.emoji ? '<span class="sd-cm-logo sd-cm-emo">' + esc(c.logo.emoji) + '</span>' : '<span class="sd-cm-k">Core</span>') +
+        '<span class="sd-cm-n">' + esc(c.name) + '</span><span class="sd-cm-o">' + (c.open ? c.open + ' open' : 'All clear') + '</span>' + (c.open && c.next ? '<span class="sd-cm-x">' + esc(c.next) + '</span>' : '');
     }
   }
   var ORBIT_CAP = 3;
