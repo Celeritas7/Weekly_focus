@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v109", BUILD_N = 109;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v110", BUILD_N = 110;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1666,7 +1666,9 @@
         visibleSubs(subs(it.id)).forEach(function (s) { if (s.u > last) last = s.u; });
         rows.push({ id: it.id, kind: kind, name: it.name, group: (it.group || "").trim() || "Unsorted",
           pri: SD_PRI[getEntry(it.id).pri] || "", done: pr ? pr.done : 0, total: pr ? pr.total : 0, next: nextSub(it.id),
-          age: last ? Math.max(0, Math.floor((now - last) / 864e5)) : null, logo: window.WFLogos ? window.WFLogos.logoFor(it) : null });
+          age: last ? Math.max(0, Math.floor((now - last) / 864e5)) : null, logo: window.WFLogos ? window.WFLogos.logoFor(it) : null,
+          open: activeSubs(subs(it.id)).filter(function (x) { return !x.done; }).map(function (x) { return x.t || ""; }).slice(0, 40),
+          notes: typeof getEntry(it.id).notes === "string" ? getEntry(it.id).notes.slice(0, 1200) : "" });
       });
     });
     return rows;
@@ -1676,6 +1678,7 @@
     max: MAX_TARGETS,
     core: function () { var k = coreId(); if (!k) return null; var o = coreOpen(); return { id: k, name: labelFor(k).name, open: o.length, next: o.length ? (o[0].t || "") : "", logo: window.WFLogos ? window.WFLogos.logoFor(itemById(k)) : null }; },
     openCore: function () { var k = coreId(); if (!k) return; closePicker(); openBuildSheet(k); },
+    openCard: function (k) { if (!itemById(k)) return; closePicker(); openBuildSheet(k); },
     rows: sdRows,
     state: function () { return { five: targetOrder.slice(), orbit: sphereExtras() }; },
     add: function (k) { if (inSphere(k)) return; sphereAdd(k); renderAll(); },
@@ -3065,7 +3068,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 app logos";   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 sphere bubbles";   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });

@@ -4,6 +4,8 @@
 >
 > **v109:** logos via `js/wf-logos.js` (`WFLogos.logoFor(item)`): Akatsuki's store first, the app's live site as fallback. Planets show a logo or the name, never a two-letter monogram.
 >
+> **v110:** the table shows bubbles only; tapping a bubble or a planet opens a details window (`openInfo()` in `wf-sphere-draft.js`) with the add / place / send-back actions.
+>
 > **Status: built by Claude Code in v107.** Code: `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, plus the `SD_HOST` block next to `openPicker()` in `js/weekly-focus-app.js`. Don't rebuild it; to change it, edit those files. The rest of this note is the design record.
 
 **Prototype (playable):** https://claude.ai/artifact/HpMazVRWEE1TL1pv6KgUaW
