@@ -1,3 +1,24 @@
+# v111 — an emptied slot stays empty · built on v110
+
+Upload these two files, then reload twice on every device:
+- `js/weekly-focus-app.js`
+- `sw.js` (cache → `weekly-focus-v111`)
+
+Everything else is unchanged from v110. **No SQL ships with this build.**
+
+## What changed
+- Taking an app out of the Five (send back, ◎, ×, drag to orbit) **leaves its slot empty**. Nothing moves up from orbit by itself any more; you fill the slot when you choose. The Five stay in order, so the free slot is the last one.
+- **Ranks**: the Five are 1–5 with gaps allowed; orbit apps follow from 6; apps outside the sphere come after them. An app outside the Five never shows a target rank.
+- **Rank picker**: ranking an app 1–5 puts it in the Five at that place (a full Five drops its last app to orbit); it never pulls other apps in. Ranking a target 6+ takes it out and leaves the slot empty.
+- **Today · Build**: Must / Can show only real targets; **Will · next in line** is the first orbit app.
+
+## Check after upload
+1. Footer reads **build v111 · opens offline · slots stay empty**.
+2. Send a target back → the Five show 4 and an empty slot; orbit is unchanged.
+3. Rank an orbit app #2 → it lands at #2; nothing else joins the Five.
+
+---
+
 # v110 — sphere bubbles · built on v109
 
 Upload these four files, then reload twice on every device:

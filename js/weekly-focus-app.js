@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v110", BUILD_N = 110;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v111", BUILD_N = 111;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -294,25 +294,31 @@
   function rankedApps() {
     var five = targetOrder.filter(function (k) { return kindOf(k) === "app"; });
     var rest = flatSortActive(activeItems("app")).map(function (a) { return a.id; }).filter(function (k) { return five.indexOf(k) < 0 && !isCore(k); });
-    rest.sort(function (a, b) { var ra = getEntry(a).rank, rb = getEntry(b).rank, na = typeof ra === "number", nb = typeof rb === "number"; if (na && nb) return ra - rb; if (na) return -1; if (nb) return 1; return 0; });
+    rest.sort(function (a, b) { var sa = getEntry(a).sph === true ? 0 : 1, sb = getEntry(b).sph === true ? 0 : 1; if (sa !== sb) return sa - sb;   // v111: orbit apps come before apps outside the sphere
+      var ra = getEntry(a).rank, rb = getEntry(b).rank, na = typeof ra === "number", nb = typeof rb === "number"; if (na && nb) return ra - rb; if (na) return -1; if (nb) return 1; return 0; });
     return five.concat(rest);
   }
   /* explicit rank: 1-5 lands in The Five at that slot; 6+ orders the rest. Persisted as entries[id].rank
      (per-item Supabase row) so it can be edited from Claude / SQL too. The Five order is targetOrder on __board. */
+  /* v111: an emptied slot stays empty. Ranks 1-5 are the Five's apps in order (gaps allowed); everything else is 6, 7, …
+     so an app outside the Five never shows a target rank. setRank only reorders: it never pulls a new app into the Five. */
+  function fiveApps() { return targetOrder.filter(function (k) { return kindOf(k) === "app"; }); }
   function setRank(id, n) {
     if (isCore(id)) { toast(labelFor(id).name + " is the core of the sphere \u2014 it has no rank"); return; }
-    var list = rankedApps().filter(function (k) { return k !== id; });
-    n = Math.max(1, Math.min(list.length + 1, Math.round(n) || 1));
-    list.splice(n - 1, 0, id);
-    var appsInFive = list.slice(0, MAX_TARGETS), others = targetOrder.filter(function (k) { return kindOf(k) !== "app"; });
+    n = Math.max(1, Math.round(n) || 1);
+    var five = fiveApps().filter(function (k) { return k !== id; }), nonApps = targetOrder.filter(function (k) { return kindOf(k) !== "app"; });
+    var rest = rankedApps().filter(function (k) { return k !== id && five.indexOf(k) < 0; });
     targetOrder.forEach(sphFlag);   // v101: whoever gets pushed out of the five stays in the sphere
-    var wasDone = {}; targetOrder.forEach(function (k) { wasDone[k] = targetDone(k); });
-    targetOrder = appsInFive.concat(others).slice(0, MAX_TARGETS); appsInFive.forEach(sphFlag);   // v101: a ranked target stays in the sphere when it drops to 6+
-    list.forEach(function (k, i) { var e = getEntry(k); if (e.rank !== i + 1) patch(k, { rank: i + 1 }); if (i >= MAX_TARGETS && e.targetDone) patch(k, { targetDone: false }); });
+    if (n <= MAX_TARGETS) five.splice(Math.min(n - 1, five.length), 0, id);
+    else rest.splice(Math.min(n - MAX_TARGETS - 1, rest.length), 0, id);
+    while (five.length + nonApps.length > MAX_TARGETS) rest.unshift(five.pop());   // a full Five drops its last app to 6
+    targetOrder = five.concat(nonApps); five.forEach(sphFlag);
+    five.forEach(function (k, i) { if (getEntry(k).rank !== i + 1) patch(k, { rank: i + 1 }); });
+    rest.forEach(function (k, j) { var e = getEntry(k); if (e.rank !== MAX_TARGETS + 1 + j) patch(k, { rank: MAX_TARGETS + 1 + j }); if (e.targetDone) patch(k, { targetDone: false }); });
     save(); cloudPushBoard(); renderAll();
-    var role = rankRole(n); toast(labelFor(id).name + " \u2192 #" + n + (role ? " \u00b7 " + role : ""));
+    var r = rankOf(id), role = rankRole(r); toast(labelFor(id).name + " \u2192 #" + r + (role ? " \u00b7 " + role : ""));
   }
-  function syncRanks() { rankedApps().forEach(function (k, i) { if (getEntry(k).rank !== i + 1) patch(k, { rank: i + 1 }); }); }
+  function syncRanks() { var nf = fiveApps().length; rankedApps().forEach(function (k, i) { var r = i < nf ? i + 1 : MAX_TARGETS + 1 + (i - nf); if (getEntry(k).rank !== r) patch(k, { rank: r }); }); }
   function fgCreate(name) {
     var ord = FG.groups.reduce(function (m, g) { return Math.max(m, g.ord || 0); }, 0) + 1;
     var g = { id: "g_" + uid(), name: name, note: null, hue: null, ord: ord, focus: false, archived_at: null };
@@ -452,7 +458,7 @@
     for (var i = 1; i <= n; i++) out += '<button type="button" class="rp-b' + (i === cur ? " on" : "") + (i === 1 ? " must" : i === 6 ? " will" : "") + '" data-rank="' + i + '">' + i + '</button>';
     return out + '</div><span class="rp-h">1 Must \u00b7 2\u20135 Can \u00b7 6 Will</span></div>';
   }
-  function rankOf(id) { var i = rankedApps().indexOf(id); return i < 0 ? 0 : i + 1; }
+  function rankOf(id) { var nf = fiveApps().length, i = rankedApps().indexOf(id); return i < 0 ? 0 : i < nf ? i + 1 : MAX_TARGETS + 1 + (i - nf); }
   function rankRole(r) { return r === 1 ? "Must" : r >= 2 && r <= 5 ? "Can" : r === 6 ? "Will" : ""; }
   function willId() { return rankedApps()[5] || null; }
   function rankBadge(id) {
@@ -474,7 +480,6 @@
   }
   function sphereCount() { return targetOrder.length + sphereExtras().length; }
   function sphereOn() { return targetOrder.length > 0 || sphereExtras().length > 0; }
-  function sphereFill() { var ex = sphereExtras(), ch = false; while (targetOrder.length < MAX_TARGETS && ex.length) { targetOrder.push(ex.shift()); ch = true; } return ch; }   // a free target slot pulls up the next-ranked sphere item
   function sphereAdd(k, at) {
     if (isCore(k)) return false;
     if (isTarget(k) || (inSphere(k) && typeof at !== "number")) return false;
@@ -487,7 +492,6 @@
   function sphereRemove(k) {
     if (isCore(k)) return;
     removeTarget(k); if (getEntry(k).sph) patch(k, { sph: false });
-    if (sphereFill()) { save(); cloudPushBoard(); }
     syncRanks();
   }
   function sphTile(k) {
@@ -519,7 +523,6 @@
 
   function renderAll() {
     var hadCore = targetOrder.some(isCore); pruneTargets(); if (hadCore && (boardPulled || !cloudConfigured())) { save(); cloudPushBoard(); }
-    if (targetOrder.length < MAX_TARGETS && (boardPulled || !cloudConfigured()) && sphereFill()) { save(); cloudPushBoard(); }   // v101: a free target slot pulls up the next sphere item
     renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome(); if (FGS.open) { paintFgsTabs(); paintFgsList(); }
     if (window.WFSphereDraft && window.WFSphereDraft.isOpen()) window.WFSphereDraft.refresh();   // v107: a sync pull while the draft is open
     if (ENTER) { ENTER = false; setTimeout(function () { var ns = document.querySelectorAll(".wf-enter"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("wf-enter"); }, 720); }
@@ -1692,8 +1695,7 @@
     orbit: function (k) {
       if (!inSphere(k)) { var free = targetOrder.length < MAX_TARGETS; sphereAdd(k); renderAll(); return free ? "five" : "orbit"; }
       if (!isTarget(k)) return "orbit";
-      var sub = sphereExtras()[0]; if (!sub) return "stuck";
-      targetOrder.splice(targetOrder.indexOf(k), 1); targetOrder.push(sub);
+      targetOrder.splice(targetOrder.indexOf(k), 1);   // v111: its slot stays empty
       sphFlag(k); if (entries[k] && entries[k].targetDone) patch(k, { targetDone: false });
       if (kindOf(k) === "app") patch(k, { rank: 9999 });   // after every other app, so the rank list agrees
       sdCommit(); return "orbit";
@@ -3068,7 +3070,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 sphere bubbles";   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 slots stay empty";   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -3843,7 +3845,8 @@
       renderStudyBand(); return;
     }
     if ($("buildCount")) $("buildCount").textContent = "#1 of " + ranked.length;
-    var m0 = ranked[0], cans = ranked.slice(1, 5), will = ranked[5] || null;
+    var fiveA = fiveApps(), m0 = fiveA[0], cans = fiveA.slice(1, 5), will = ranked[fiveA.length] || null;   // v111: empty slots stay empty
+    if (!m0) { host.innerHTML = '<div class="bb-none">No targets this week \u2014 open the Week tab and add apps to the sphere.</div>'; renderStudyBand(); return; }
     var pr = subProgress(m0), nx = nextSub(m0), done0 = targetDone(m0);
     var h = '<div class="btile bhero' + (done0 ? " done" : "") + '" role="button" tabindex="0" style="--h:' + bHue(m0) + ';--fill:' + bFill(m0) + '%" data-hact="bopen" data-hkey="' + esc(m0) + '">' +
       '<span class="bt-rk big">1</span>' +
@@ -3853,7 +3856,7 @@
       '<button type="button" class="bt-b go" data-hact="bopen" data-hkey="' + esc(m0) + '">Open</button>' +
       '<button type="button" class="bt-b hold" data-hact="bhold" data-hkey="' + esc(m0) + '" title="Park it for 24 hours \u2014 it returns at this rank">Hold 24h</button></div></div>';
     if (cans.length) h += '<div class="bb-cans">' + cans.map(function (id, i) { return bTile(id, { rank: i + 2, role: "Can" }); }).join("") + '</div>';
-    if (will) h += '<div class="bb-will" data-hact="bopen" data-hkey="' + esc(will) + '"><span class="bb-wrk">6</span><span class="bb-wtx">Will \u00b7 <b>' + esc(labelFor(will).name) + '</b>' + (nextSub(will) ? ' \u2014 ' + esc(nextSub(will)) : '') + '</span><span class="bb-wt">moves up when a slot frees</span></div>';
+    if (will) h += '<div class="bb-will" data-hact="bopen" data-hkey="' + esc(will) + '"><span class="bb-wrk">6</span><span class="bb-wtx">Will \u00b7 <b>' + esc(labelFor(will).name) + '</b>' + (nextSub(will) ? ' \u2014 ' + esc(nextSub(will)) : '') + '</span><span class="bb-wt">next in line</span></div>';
     host.innerHTML = h;
     renderStudyBand();
   }
