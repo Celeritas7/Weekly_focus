@@ -1,3 +1,24 @@
+# v113 — review fixes · built on v112
+
+Upload these three files, then reload twice on every device:
+- `js/weekly-focus-app.js`
+- `js/wf-logos.js`
+- `sw.js` (cache → `weekly-focus-v113`)
+
+Everything else is unchanged from v112. **No SQL ships with this build.**
+
+## What changed (a review of v107–v112, nothing new to use)
+1. **Service worker:** pages and icons of the *other* apps on celeritas7.github.io are no longer cached by Weekly Focus. The logo fallback reads them, and the old rule cached them for good, so a changed logo on a sibling site would not have shown until the next Weekly Focus deploy.
+2. **Logo store:** a failed read of Akatsuki's store (network error) is retried after a minute, not on every redraw.
+3. **Today · Build:** "Will · next in line" only ever shows an orbit app; with an empty orbit it is hidden instead of showing an app outside the sphere.
+4. The Akatsuki lookup is cached per app-list change (it ran inside every rank sort).
+
+## Check after upload
+1. Footer reads **build v113 · opens offline · review fixes**.
+2. Today tab with nothing in orbit: no "Will" row.
+
+---
+
 # v112 — Akatsuki always at the centre · built on v111
 
 Upload these four files, then reload twice on every device:

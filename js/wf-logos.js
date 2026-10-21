@@ -12,7 +12,7 @@
   "use strict";
   var VIEW = "akatsuki_app_logos", RPC = "akatsuki_app_identity_upsert", SYNC = "akatsuki-logo-sync";
   var SITE_KEY = "wf_logo_site_v1", SEED_KEY = "wf_logo_seed_v2", WEEK = 7 * 864e5, DAY = 864e5;
-  var STORE = {}, storeState = "unknown", storeAt = 0, SITE = {}, pending = {}, subs = [], seeding = false;
+  var STORE = {}, storeState = "unknown", storeAt = 0, nextTry = 0, SITE = {}, pending = {}, subs = [], seeding = false;
   try { SITE = JSON.parse(localStorage.getItem(SITE_KEY) || "{}") || {}; } catch (e) { SITE = {}; }
   function saveSite() { try { localStorage.setItem(SITE_KEY, JSON.stringify(SITE)); } catch (e) {} }
   function changed() { subs.forEach(function (f) { try { f(); } catch (e) {} }); }
@@ -37,16 +37,17 @@
     var sb = client();
     if (!sb || storeState === "missing" || storeState === "loading") return Promise.resolve();
     if (!force && storeState === "ok" && Date.now() - storeAt < 10 * 60e3) return Promise.resolve();
+    if (!force && Date.now() < nextTry) return Promise.resolve();   // a failed read is retried after a minute, not on every render
     storeState = "loading";
     return sb.from(VIEW).select("app_key,name,home_url,logo_url,logo_source,emoji").then(function (r) {
       if (r.error) {   // R038 not live yet → use live sites; anything else → try again later
         var c = String(r.error.code || ""), m = String(r.error.message || "");
         storeState = (c === "42P01" || c === "PGRST205" || /does not exist|could not find/i.test(m)) ? "missing" : "unknown";
-        return;
+        nextTry = Date.now() + 60e3; return;
       }
       var next = {}; (r.data || []).forEach(function (row) { next[row.app_key] = row; });
       STORE = next; storeState = "ok"; storeAt = Date.now(); changed();
-    }, function () { storeState = "unknown"; });
+    }, function () { storeState = "unknown"; nextTry = Date.now() + 60e3; });
   }
 
   /* ---- seeding: send each app (name + home_url) once; after that only apps that are new or changed.
