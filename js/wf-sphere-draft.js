@@ -25,11 +25,13 @@
   function catCol(g) { return CAT[g] || "oklch(0.62 0.13 " + hue(g) + ")"; }
   function score(it) { return PRI[it.pri].w * 100 + Math.min(it.total - it.done, 9) * 3 - Math.min(it.age == null ? 30 : it.age, 30) * 0.1; }
   function ageTxt(d) { return d == null ? "no activity yet" : d === 0 ? "today" : d === 1 ? "1 day ago" : d + " days ago"; }
+  /* a long single word shrinks to fit its circle instead of breaking mid-word */
+  function fit(t) { var n = Math.max.apply(null, String(t).split(/\s+/).map(function (w) { return w.length; })); return n > 11 ? " sd-fit2" : n > 8 ? " sd-fit1" : ""; }
   function short(name) { var w = String(name).replace(/[_\-]+/g, " ").trim().split(/\s+/)[0] || ""; return w.length > 8 ? w.slice(0, 7) + "…" : w; }
   /* v109: what sits inside a planet. Logo → the image (name kept as a hidden fallback if it fails to load); emoji; else the name itself */
   function face(it, mode) {
     var L = it.logo, nm = mode === "planet" ? it.name : mode === "moon" ? short(it.name) : mono(it.name);
-    var txt = '<span class="sd-face-name">' + esc(nm) + '</span>';
+    var txt = '<span class="sd-face-name' + fit(nm) + '">' + esc(nm) + '</span>';
     if (L && L.url) return '<img class="sd-face-img" src="' + esc(L.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' + txt.replace('sd-face-name"', 'sd-face-name sd-alt"');
     if (L && L.emoji) return '<span class="sd-face-emo">' + esc(L.emoji) + '</span>';
     return txt;
@@ -63,11 +65,13 @@
             '<div class="sd-bar"><div class="sd-seg" id="sdSeg" role="group" aria-label="Show"><button type="button" data-kind="all"></button><button type="button" data-kind="app"></button><button type="button" data-kind="study"></button><button type="button" data-kind="office"></button></div>' +
               '<div class="sd-tools"><input id="sdQ" type="search" placeholder="Find…" autocomplete="off" aria-label="Find"><button type="button" class="sd-tog" id="sdGrp">By category</button>' +
               '<select id="sdSort" aria-label="Sort"><option value="pri">Priority first</option><option value="open">Most open tasks</option><option value="stale">Longest untouched</option><option value="az">A–Z</option></select></div></div>' +
+            '<div class="sd-legend" aria-hidden="true"><span><i style="--pc:var(--pri-h)"></i>High</span><span><i style="--pc:var(--pri-m)"></i>Medium</span><span><i style="--pc:var(--pri-l)"></i>Low</span><span class="sd-legend-tip">Tap a bubble for details</span></div>' +
             '<div class="sd-grid" id="sdGrid"></div>' +
           '</section>' +
         '</div>' +
-        '<details class="sd-howto"><summary>How to play</summary><p>Tap a card to pull it in. Drag it onto a number to rank it, or onto the dashed ring to keep it in orbit. Tap a planet to send it back. On a phone, press and hold to drag. Keys on a focused card: <kbd>Enter</kbd> pull in, <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit. <kbd>Esc</kbd> closes.</p></details>' +
+        '<details class="sd-howto"><summary>How to play</summary><p>Tap a bubble to read its details and add it in one tap. The ring colour is its priority. Drag a bubble onto a number to rank it, or onto the dashed ring for orbit; on a phone, press and hold to drag. Tap a planet to see it or send it back. Keys on a focused bubble: <kbd>Enter</kbd> details, <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit. <kbd>Esc</kbd> closes.</p></details>' +
       '</div>' +
+      '<div class="sd-info" id="sdInfo" data-sd="infoclose" hidden><div class="sd-info-card" id="sdInfoCard" data-sd="stay" role="dialog" aria-modal="true" aria-labelledby="sdInfoT"></div></div>' +
       '<div class="sd-toast" id="sdToast" role="status" hidden></div>';
     document.body.appendChild(root);
     wire();
@@ -83,8 +87,8 @@
       el.className = "sd-slot " + (it ? "sd-full" : "sd-empty") + (it && landing === k ? " sd-landed" : "");
       el.setAttribute("data-sddrop", "slot"); el.setAttribute("data-i", i); pos(el, i * 360 / MAX, 34);
       if (it) {
-        el.type = "button"; el.setAttribute("data-sdk", k); el.setAttribute("data-sd", "back"); el.style.setProperty("--kc", KIND[it.kind].c);
-        el.setAttribute("aria-label", "Target " + (i + 1) + ": " + it.name + ". Send back to the table");
+        el.type = "button"; el.setAttribute("data-sdk", k); el.setAttribute("data-sd", "info"); el.style.setProperty("--kc", KIND[it.kind].c);
+        el.setAttribute("aria-label", "Target " + (i + 1) + ": " + it.name + ". Show details");
         el.title = it.name; el.innerHTML = '<span class="sd-rk">' + (i + 1) + '</span>' + face(it, "planet");
       } else { el.setAttribute("aria-label", "Empty target slot " + (i + 1)); el.textContent = i + 1; }
       sp.appendChild(el);
@@ -93,8 +97,8 @@
     ST.orbit.forEach(function (k, j) {
       var it = BY[k], m = document.createElement("button");
       m.type = "button"; m.className = "sd-moon" + (landing === k ? " sd-landed" : "");
-      m.setAttribute("data-sdk", k); m.setAttribute("data-sd", "back"); m.setAttribute("data-sddrop", "orbit");
-      m.style.setProperty("--kc", KIND[it.kind].c); m.setAttribute("aria-label", "In orbit: " + it.name + ". Send back to the table"); m.title = it.name;
+      m.setAttribute("data-sdk", k); m.setAttribute("data-sd", "info"); m.setAttribute("data-sddrop", "orbit");
+      m.style.setProperty("--kc", KIND[it.kind].c); m.setAttribute("aria-label", "In orbit: " + it.name + ". Show details"); m.title = it.name;
       m.innerHTML = face(it, "moon"); pos(m, n <= 5 ? gaps[j] : 18 + j * 360 / n, 47);
       sp.appendChild(m);
     });
@@ -131,21 +135,20 @@
     }[sortBy] || function () { return 0; };
     return list.slice().sort(f);
   }
+  /* v110: the table is just bubbles: logo (or name) inside, priority as the ring colour. Tap one for its details. */
   function cardHtml(it) {
-    var p = PRI[it.pri] || PRI[""], pct = it.total ? Math.round(it.done / it.total * 100) : 0;
-    return '<div class="sd-card" role="button" tabindex="0" data-sdk="' + esc(it.id) + '" data-sd="toggle" style="--kc:' + KIND[it.kind].c + ';--pc:' + p.c + '" aria-label="Pull ' + esc(it.name) + ' into the sphere">' +
-      '<div class="sd-c-top"><span class="sd-c-kind">' + KIND[it.kind].l + (GROUP ? '' : ' <span>· ' + esc(it.group) + '</span>') + '</span>' + (p.l ? '<span class="sd-c-pri">' + p.l + '</span>' : '') + '</div>' +
-      '<div class="sd-c-name">' + (it.logo && it.logo.url ? '<img class="sd-c-logo" src="' + esc(it.logo.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' : it.logo && it.logo.emoji ? '<span class="sd-c-logo sd-c-emo">' + esc(it.logo.emoji) + '</span>' : '') + '<span>' + esc(it.name) + '</span></div>' +
-      (it.next ? '<div class="sd-c-next">Next: ' + esc(it.next) + '</div>' : '<div class="sd-c-next sd-none">No open subtasks</div>') +
-      '<div class="sd-c-foot">' + (it.total ? '<span class="sd-c-bar"><i style="width:' + pct + '%"></i></span><span>' + it.done + '/' + it.total + '</span>' : '<span class="sd-c-bar"></span><span>—</span>') +
-      '<span class="sd-c-age' + (it.age != null && it.age >= 14 ? " sd-stale" : "") + '" title="Last touched">' + ageTxt(it.age) + '</span></div></div>';
+    var p = PRI[it.pri] || PRI[""], L = it.logo, nameIn = '<span class="sd-face-name' + fit(it.name) + '">' + esc(it.name) + '</span>';
+    var inner = L && L.url ? '<img class="sd-bub-img" src="' + esc(L.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' + nameIn.replace('sd-face-name"', 'sd-face-name sd-alt"')
+      : L && L.emoji ? '<span class="sd-bub-emo">' + esc(L.emoji) + '</span>' : nameIn;
+    return '<button type="button" class="sd-bub" data-sdk="' + esc(it.id) + '" data-sd="info" style="--kc:' + KIND[it.kind].c + ';--pc:' + (p.l ? p.c : "var(--hair)") + '" title="' + esc(it.name) + '" aria-label="' + esc(it.name) + (p.l ? ", " + p.l + " priority" : "") + '. Show details">' +
+      '<span class="sd-bub-c">' + inner + '</span>' + (L ? '<span class="sd-bub-l">' + esc(it.name) + '</span>' : '') + '</button>';
   }
   function groupedHtml(list) {
     var order = [], by = {};
     list.forEach(function (it) { if (!by[it.group]) { by[it.group] = []; order.push(it.group); } by[it.group].push(it); });
     if (sortBy === "az") order.sort(function (a, b) { return a.localeCompare(b); });
     return order.map(function (g) {
-      return '<section class="sd-cat" style="--cc:' + catCol(g) + '" aria-label="' + esc(g) + '"><h3 class="sd-cat-h"><i></i>' + esc(g) + ' <span>' + by[g].length + '</span></h3><div class="sd-cards">' + by[g].map(cardHtml).join("") + '</div></section>';
+      return '<section class="sd-cat" style="--cc:' + catCol(g) + '" aria-label="' + esc(g) + '"><h3 class="sd-cat-h"><i></i>' + esc(g) + ' <span>' + by[g].length + '</span></h3><div class="sd-bubs">' + by[g].map(cardHtml).join("") + '</div></section>';
     }).join("");
   }
   function renderPool() {
@@ -153,7 +156,7 @@
     var list = sorted(left.filter(function (it) { return (kindF === "all" || it.kind === kindF) && (!q || (it.name + " " + it.group).toLowerCase().indexOf(q) >= 0); }));
     $("sdGrid").innerHTML = !list.length
       ? '<div class="sd-empty-pool">' + (q || kindF !== "all" ? "Nothing matches. Clear the search or pick another filter." : ROWS.length ? "Everything is in the sphere. Tap a planet to send it back." : "No active items yet. Switch on an app or topic on the board first.") + '</div>'
-      : GROUP ? groupedHtml(list) : '<div class="sd-cards">' + list.map(cardHtml).join("") + '</div>';
+      : GROUP ? groupedHtml(list) : '<div class="sd-bubs">' + list.map(cardHtml).join("") + '</div>';
     root.querySelectorAll("#sdSeg button").forEach(function (b) {
       var kd = b.getAttribute("data-kind"), n = kd === "all" ? left.length : left.filter(function (x) { return x.kind === kd; }).length;
       b.textContent = (kd === "all" ? "All" : kd === "app" ? "Apps" : KIND[kd].l) + " " + n; b.setAttribute("aria-pressed", kindF === kd ? "true" : "false");
@@ -201,10 +204,42 @@
     t.hidden = false; toastT = setTimeout(function () { t.hidden = true; }, 3600);
   }
 
+  /* ---------------- details window (v110) ---------------- */
+  var INFO = null, infoFrom = null;
+  function openInfo(k) {
+    var it = BY[k]; if (!it) return;
+    INFO = k; infoFrom = document.activeElement;
+    var w = where(k), p = PRI[it.pri] || PRI[""], L = it.logo, MAX = H.max, free = ST.five.length < MAX, i;
+    var pct = it.total ? Math.round(it.done / it.total * 100) : 0;
+    var logo = L && L.url ? '<img src="' + esc(L.url) + '" alt="" referrerpolicy="no-referrer">' : L && L.emoji ? '<span class="sd-ih-emo">' + esc(L.emoji) + '</span>' : '<span class="sd-ih-mono">' + esc(mono(it.name)) + '</span>';
+    var status = w ? (w.orbit ? "In orbit" : "Target #" + (w.five + 1)) : "On the table";
+    var slots = ""; for (i = 0; i < MAX; i++) slots += '<button type="button" class="sd-slotbtn' + (w && w.five === i ? " sd-cur" : "") + '" data-sd="slot" data-i="' + i + '" aria-label="Make it target ' + (i + 1) + '">' + (i + 1) + '</button>';
+    slots += '<button type="button" class="sd-slotbtn sd-orbbtn' + (w && w.orbit ? " sd-cur" : "") + '" data-sd="orbit">Orbit</button>';
+    var primary = w ? '<button type="button" class="sd-btn sd-big" data-sd="back">Send back to the table</button>'
+      : '<button type="button" class="sd-btn sd-primary sd-big" data-sd="add">' + (free ? "Add as #" + (ST.five.length + 1) : "Add to orbit") + '</button>';
+    var tasks = (it.open || []).length ? '<ul class="sd-tasks">' + it.open.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join("") + '</ul>' : '<p class="sd-none-txt">No open subtasks.</p>';
+    $("sdInfoCard").innerHTML =
+      '<div class="sd-ih"><span class="sd-ih-logo" style="--pc:' + (p.l ? p.c : "var(--hair)") + ';--kc:' + KIND[it.kind].c + '">' + logo + '</span>' +
+        '<div class="sd-ih-t"><h3 id="sdInfoT">' + esc(it.name) + '</h3><div class="sd-ih-m">' + KIND[it.kind].l + ' · ' + esc(it.group) + (p.l ? ' · <b style="color:' + p.c + '">' + p.l + '</b>' : '') + '</div><div class="sd-ih-s">' + status + '</div></div>' +
+        '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
+      '<div class="sd-ip">' + (it.total ? '<span class="sd-ip-bar"><i style="width:' + pct + '%;background:' + KIND[it.kind].c + '"></i></span><span>' + it.done + '/' + it.total + ' done</span>' : '<span>No subtasks yet</span>') +
+        '<span class="sd-ip-age' + (it.age != null && it.age >= 14 ? " sd-stale" : "") + '">' + ageTxt(it.age) + '</span></div>' +
+      '<div class="sd-isec"><h4>Open tasks <span>' + (it.open || []).length + '</span></h4>' + tasks + '</div>' +
+      (it.notes ? '<div class="sd-isec"><h4>Notes</h4><p class="sd-notes">' + esc(it.notes) + '</p></div>' : '') +
+      '<div class="sd-iact">' + primary + '<div class="sd-iplace"><span>' + (w ? "Move it to" : "Or place it at") + '</span><div class="sd-slots">' + slots + '</div></div></div>' +
+      (H.openCard ? '<button type="button" class="sd-link" data-sd="card">Open the full card to edit</button>' : '');
+    $("sdInfo").hidden = false;
+    var b = $("sdInfoCard").querySelector(".sd-big"); if (b) b.focus({ preventScroll: true });
+  }
+  function closeInfo() {
+    if (!INFO) return; INFO = null; $("sdInfo").hidden = true;
+    if (infoFrom && infoFrom.focus && document.contains(infoFrom)) try { infoFrom.focus({ preventScroll: true }); } catch (e) {}
+  }
+
   /* ---------------- moves ---------------- */
   function act(k, how, i) {
     if (!BY[k]) return;
-    var src = root.querySelector('.sd-card[data-sdk="' + sel(k) + '"]'), from = src ? src.getBoundingClientRect() : null;
+    var src = root.querySelector('.sd-bub[data-sdk="' + sel(k) + '"] .sd-bub-c'), from = src ? src.getBoundingClientRect() : null;
     var before = where(k), name = BY[k].name, snap = H.snapshot(), sig = JSON.stringify(H.state()), res;
     if (how === "add") H.add(k);
     else if (how === "slot") H.place(k, i);
@@ -232,20 +267,27 @@
       if (suppressClick) { suppressClick = false; e.preventDefault(); return; }
       var el = e.target.closest("[data-sd]"); if (!el) return;
       var a = el.getAttribute("data-sd"), k = el.getAttribute("data-sdk");
-      if (a === "toggle") act(k, where(k) ? "back" : "add");
-      else if (a === "back") act(k, "back");
+      var ik = INFO;   // buttons inside the details window act on the item it shows
+      if (a === "info") openInfo(k);
+      else if (a === "infoclose") closeInfo();
+      else if (a === "add") { closeInfo(); act(ik, "add"); }
+      else if (a === "slot") { closeInfo(); act(ik, "slot", +el.getAttribute("data-i")); }
+      else if (a === "orbit") { closeInfo(); act(ik, "orbit"); }
+      else if (a === "card") { closeInfo(); if (H.openCard) H.openCard(ik); }
+      else if (a === "back") { if (k) act(k, "back"); else { closeInfo(); act(ik, "back"); } }
       else if (a === "undo") undo();
       else if (a === "close") close();
       else if (a === "core" && H.openCore) H.openCore();
     });
     root.addEventListener("keydown", function (e) {
-      var c = e.target.closest && e.target.closest(".sd-card[data-sdk]"); if (!c) return;
+      if (e.key === "Escape" && INFO) { e.stopPropagation(); closeInfo(); return; }
+      var c = e.target.closest && e.target.closest(".sd-bub[data-sdk]"); if (!c) return;
       var k = c.getAttribute("data-sdk");
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(k, "add"); }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openInfo(k); return; }
       else if (/^[1-9]$/.test(e.key) && +e.key <= H.max) act(k, "slot", +e.key - 1);
       else if (e.key === "o" || e.key === "O") act(k, "orbit");
       else return;
-      var next = root.querySelector(".sd-card[data-sdk]"); if (next) next.focus();
+      var next = root.querySelector(".sd-bub[data-sdk]"); if (next) next.focus();
     });
     root.addEventListener("error", function (e) {
       var t = e.target; if (!t || t.tagName !== "IMG") return;
@@ -265,7 +307,7 @@
 
     root.addEventListener("pointerdown", function (e) {
       if (e.button > 0) return;
-      var src = e.target.closest("[data-sdk]"); if (!src || src.classList.contains("sd-chip")) return;
+      var src = e.target.closest("[data-sdk]"); if (!src || src.classList.contains("sd-chip") || src.closest(".sd-info")) return;
       drag = { k: src.getAttribute("data-sdk"), src: src, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, on: false, touch: e.pointerType === "touch" };
       if (drag.touch) drag.timer = setTimeout(function () { if (drag) start(); }, 280);
     });
@@ -316,7 +358,7 @@
   }
   function close() {
     if (!isOpen) return;
-    isOpen = false; root.hidden = true; $("sdToast").hidden = true; document.documentElement.classList.remove("sd-lock");
+    closeInfo(); isOpen = false; root.hidden = true; $("sdToast").hidden = true; document.documentElement.classList.remove("sd-lock");
     if (io) io.disconnect();
     if (lastFocus && lastFocus.focus) try { lastFocus.focus({ preventScroll: true }); } catch (e) {}
   }

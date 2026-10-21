@@ -1,3 +1,26 @@
+# v110 — sphere bubbles · built on v109
+
+Upload these four files, then reload twice on every device:
+- `js/weekly-focus-app.js`
+- `js/wf-sphere-draft.js`
+- `css/wf-sphere-draft.css`
+- `sw.js` (cache → `weekly-focus-v110`)
+
+`index.html` and `js/wf-logos.js` are unchanged from v109. **No SQL ships with this build.**
+
+## What changed (Sphere Draft)
+- The table is **just bubbles**: logo (or the name) inside, the ring colour is the priority (red High, amber Medium, green Low), grouped by category. A legend sits under the filters.
+- **Tap a bubble** → a details window (bottom sheet on a phone): name, category, priority, progress, last touched, every open task, notes. One big button **Add as #n** (or **Add to orbit** when the Five are full), plus **1–5 / Orbit** to place it exactly, and **Open the full card to edit**.
+- **Tap a planet** in the sphere → the same window with **Send back to the table** and **Move it to 1–5 / Orbit**.
+- **Esc** closes the window first, then the draft. Dragging and the 1–5 / O keys still work.
+
+## Check after upload
+1. Footer reads **build v110 · opens offline · sphere bubbles**.
+2. **+ Add to sphere** → bubbles only. Tap one → its tasks and notes are readable; **Add as #1** puts it in the sphere and closes the window.
+3. Tap a planet → **Send back to the table** returns it.
+
+---
+
 # v109 — app logos · built on v108
 
 Upload these six files, then reload twice on every device:
