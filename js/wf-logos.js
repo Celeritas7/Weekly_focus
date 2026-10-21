@@ -1,5 +1,5 @@
 /* ============================================================
-   Weekly Focus v115 — app logos (v109; R038 live since v115)
+   Weekly Focus v116 — app logos (v109; R038 live since v115)
    Source of truth: Akatsuki's shared store (hub migration R038):
      view  akatsuki_app_logos  (app_key, name, home_url, logo_url, logo_source, emoji, …)
      RPC   akatsuki_app_identity_upsert(p jsonb)   — WF seeds a row per app (name, home_url)
@@ -57,8 +57,9 @@
     var sent = {}; try { sent = JSON.parse(localStorage.getItem(SEED_KEY) || "{}") || {}; } catch (e) { sent = {}; }
     var by = {};
     (items || []).forEach(function (it) {
-      var k = keyFor(it); if (!k || by[k]) return;
+      var k = keyFor(it); if (!k) return;
       var row = { app_key: k, name: it.name }, h = homeOf(it.links); if (h) row.home_url = h;
+      if (by[k] && (by[k].home_url || !h)) return;   // two cards, one key: keep the one that links to the live site
       by[k] = row;
     });
     var rows = Object.keys(by).map(function (k) { return by[k]; }).filter(function (r) { return sent[r.app_key] !== r.name + "|" + (r.home_url || ""); });

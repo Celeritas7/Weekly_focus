@@ -1,3 +1,23 @@
+# v116 — logo registration fix · built on v115
+
+Upload these three files, then reload twice on every device:
+- `js/wf-logos.js`
+- `js/weekly-focus-app.js` (build number only)
+- `sw.js` (cache → `weekly-focus-v116`)
+
+**No SQL ships with this build.**
+
+## What changed
+When two cards map to the same app in the logo store, WF now registers the one that links to the live site. Before, the first card won, so "Food_department_advanced" (no links) hid the address of "Food department". On the next load WF updates that row and asks the sync for its logo.
+
+## Known issue (hub side, reported to Akatsuki)
+The `akatsuki-logo-sync` function rejects the browser's CORS preflight (OPTIONS → 405), so WF's call to it is blocked. Akatsuki's daily sync and its one full sync still fill the logos. Until then WF shows icons from the live sites.
+
+## Check after upload
+1. Footer reads **build v116 · opens offline · shared logos**.
+
+---
+
 # v115 — shared logos live (Akatsuki R038) · built on v114
 
 Upload these three files, then reload twice on every device:
