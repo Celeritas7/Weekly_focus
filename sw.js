@@ -3,7 +3,7 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v111";
+const CACHE = "weekly-focus-v112";
 /* v105: the Supabase library is cached too. Without it the app had no client offline, so the
    stored session could not be read and every offline open landed on the sign-in screen. */
 const SUPA = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";

@@ -230,4 +230,10 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 .sd-slotbtn.sd-cur { background: var(--sd-gold); border-color: var(--sd-gold); color: #2a2205; }
 .sd .sd-link { align-self: flex-start; background: none; border: none; padding: 0; color: var(--brand); font-weight: 700; font-size: 13px; cursor: pointer; }
 
+/* v112: Akatsuki with nothing open stays at the centre, dimmed */
+.sd .sd-coremoon.sd-dim { background: radial-gradient(circle at 38% 32%, oklch(0.86 0.03 25), oklch(0.74 0.05 25) 55%, oklch(0.6 0.05 22)); box-shadow: 0 0 0 4px color-mix(in oklch, var(--core) 8%, transparent); animation: none; opacity: .6; filter: saturate(.6); }
+.sd .sd-coremoon.sd-dim:hover { opacity: .85; }
+.sd .sd-coremoon.sd-dim .sd-cm-o { background: rgba(255,255,255,.4); }
+.sd .sd-coremoon.sd-dim { color: oklch(0.32 0.07 22); opacity: .72; }
+
 @media (prefers-reduced-motion: reduce) { .sd *, .sd *::before, .sd *::after { animation: none !important; transition: none !important; } }

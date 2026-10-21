@@ -1,3 +1,22 @@
+# v112 — Akatsuki always at the centre · built on v111
+
+Upload these four files, then reload twice on every device:
+- `js/weekly-focus-app.js` (build number only)
+- `js/wf-sphere-draft.js`
+- `css/wf-sphere-draft.css`
+- `sw.js` (cache → `weekly-focus-v112`)
+
+**No SQL ships with this build.**
+
+## What changed
+In the Sphere Draft, Akatsuki now stays at the centre all the time. While it has open tasks it is the bright red moon (open count + next task); with none it is **dimmed** and reads **All clear**. Tap it either way to open the Akatsuki card. The Five count stays in the header (The Five n/5). The red core bar on Today and Week still shows only while Akatsuki has open tasks.
+
+## Check after upload
+1. Footer reads **build v112 · opens offline · core always shown**.
+2. Tick off all Akatsuki subtasks → the draft's centre stays, dimmed, "All clear". Add one → bright red again.
+
+---
+
 # v111 — an emptied slot stays empty · built on v110
 
 Upload these two files, then reload twice on every device:
