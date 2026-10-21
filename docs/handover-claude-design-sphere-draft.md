@@ -1,5 +1,9 @@
 # Handover to Claude Design — Sphere Draft (game-style "Add to sphere")
 
+> **v108:** the app card named **Akatsuki** is the sphere's core (`coreId()` / `isCore()` in `weekly-focus-app.js`): never a target, never in orbit, not on the draft's table, no rank. While it has open subtasks a red core bar shows on Today and Week, and the draft's centre becomes its red moon. Keep these rules if you touch the sphere code.
+>
+> **v109:** logos via `js/wf-logos.js` (`WFLogos.logoFor(item)`): Akatsuki's store first, the app's live site as fallback. Planets show a logo or the name, never a two-letter monogram.
+>
 > **Status: built by Claude Code in v107.** Code: `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, plus the `SD_HOST` block next to `openPicker()` in `js/weekly-focus-app.js`. Don't rebuild it; to change it, edit those files. The rest of this note is the design record.
 
 **Prototype (playable):** https://claude.ai/artifact/HpMazVRWEE1TL1pv6KgUaW

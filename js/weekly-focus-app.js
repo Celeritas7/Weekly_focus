@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v107", BUILD_N = 107;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v109", BUILD_N = 109;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -269,30 +269,38 @@
   function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0, s.when || "", s.md || "b", s.urg ? 1 : 0, s.dl ? 1 : 0, s.loc || "", (s.ctx || []).join("|"), s.lat ? 1 : 0, s.rv || ""]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
   function subsDiffer(a, b) { return subsKey(a) !== subsKey(b); }
 
+  /* ---------------- v108 · the core: Akatsuki ----------------
+     Akatsuki is the truth the rest of the week orbits, so it sits at the centre of the sphere: always in it,
+     never one of the Five, never in orbit, never on the picker's table. It is only shown while it has open tasks. */
+  function coreId() { var a = (state.apps || []).filter(function (x) { return (x.name || "").trim().toLowerCase() === "akatsuki"; })[0]; return a ? a.id : null; }
+  function isCore(k) { return !!k && k === coreId(); }
+  function coreOpen() { var k = coreId(); return k ? activeSubs(subs(k)).filter(function (s) { return !s.done; }) : []; }
+
   /* ---------------- targets (The Five) ---------------- */
   var MAX_TARGETS = 5;
   function isTarget(k) { return targetOrder.indexOf(k) >= 0; }
-  function addTarget(k) { if (isTarget(k) || targetOrder.length >= MAX_TARGETS) return false; targetOrder.push(k); sphFlag(k); save(); cloudPushBoard(); return true; }
+  function addTarget(k) { if (isCore(k) || isTarget(k) || targetOrder.length >= MAX_TARGETS) return false; targetOrder.push(k); sphFlag(k); save(); cloudPushBoard(); return true; }
   function addTargetAt(k, at) {
-    if (isTarget(k)) return false;
+    if (isCore(k) || isTarget(k)) return false;
     if (typeof at !== "number" || at < 0) return addTarget(k);
     if (targetOrder.length >= MAX_TARGETS) targetOrder.pop();   // last Can drops back to Will
     targetOrder.splice(Math.min(at, targetOrder.length), 0, k); sphFlag(k); save(); cloudPushBoard(); return true;
   }
   function removeTarget(k) { var i = targetOrder.indexOf(k); if (i >= 0) { targetOrder.splice(i, 1); if (entries[k]) patch(k, { targetDone: false }); save(); cloudPushBoard(); } }
   function targetDone(k) { return getEntry(k).targetDone === true; }
-  function pruneTargets() { targetOrder = targetOrder.filter(function (k) { var it = itemById(k); return it && isActive(it) && !fgArchived(k); }); }
+  function pruneTargets() { targetOrder = targetOrder.filter(function (k) { var it = itemById(k); return it && isActive(it) && !fgArchived(k) && !isCore(k); }); }   // v108: the core never holds a target slot
   function labelFor(k) { var it = itemById(k); return it ? { name: it.name, crumb: it.group } : { name: k, crumb: "" }; }
   /* ---- Ranked Five (v51): rank = position. 1 = Must, 2-5 = Can, 6 = Will ---- */
   function rankedApps() {
     var five = targetOrder.filter(function (k) { return kindOf(k) === "app"; });
-    var rest = flatSortActive(activeItems("app")).map(function (a) { return a.id; }).filter(function (k) { return five.indexOf(k) < 0; });
+    var rest = flatSortActive(activeItems("app")).map(function (a) { return a.id; }).filter(function (k) { return five.indexOf(k) < 0 && !isCore(k); });
     rest.sort(function (a, b) { var ra = getEntry(a).rank, rb = getEntry(b).rank, na = typeof ra === "number", nb = typeof rb === "number"; if (na && nb) return ra - rb; if (na) return -1; if (nb) return 1; return 0; });
     return five.concat(rest);
   }
   /* explicit rank: 1-5 lands in The Five at that slot; 6+ orders the rest. Persisted as entries[id].rank
      (per-item Supabase row) so it can be edited from Claude / SQL too. The Five order is targetOrder on __board. */
   function setRank(id, n) {
+    if (isCore(id)) { toast(labelFor(id).name + " is the core of the sphere \u2014 it has no rank"); return; }
     var list = rankedApps().filter(function (k) { return k !== id; });
     n = Math.max(1, Math.min(list.length + 1, Math.round(n) || 1));
     list.splice(n - 1, 0, id);
@@ -456,11 +464,11 @@
      the rest sit under "Also in the sphere". Membership = entries[id].sph — a per-item row, never the __board blob.
      Items outside the sphere stay in their columns, faint. ---- */
   function sphFlag(k) { if (getEntry(k).sph !== true) patch(k, { sph: true }); }
-  function inSphere(k) { return isTarget(k) || getEntry(k).sph === true; }
+  function inSphere(k) { return isCore(k) || isTarget(k) || getEntry(k).sph === true; }
   function sphereExtras() {
     var ra = rankedApps();
     return activeItems("app").concat(activeItems("study"), activeItems("office"))
-      .filter(function (x) { return !isSpecialItem(x) && !isTarget(x.id) && getEntry(x.id).sph === true; })
+      .filter(function (x) { return !isSpecialItem(x) && !isTarget(x.id) && !isCore(x.id) && getEntry(x.id).sph === true; })
       .map(function (x) { return x.id; })
       .sort(function (a, b) { var ia = ra.indexOf(a), ib = ra.indexOf(b); if (ia < 0) ia = 1e6; if (ib < 0) ib = 1e6; return ia - ib || labelFor(a).name.toLowerCase().localeCompare(labelFor(b).name.toLowerCase()); });
   }
@@ -468,6 +476,7 @@
   function sphereOn() { return targetOrder.length > 0 || sphereExtras().length > 0; }
   function sphereFill() { var ex = sphereExtras(), ch = false; while (targetOrder.length < MAX_TARGETS && ex.length) { targetOrder.push(ex.shift()); ch = true; } return ch; }   // a free target slot pulls up the next-ranked sphere item
   function sphereAdd(k, at) {
+    if (isCore(k)) return false;
     if (isTarget(k) || (inSphere(k) && typeof at !== "number")) return false;
     targetOrder.forEach(sphFlag);   // pre-v101 targets join the sphere so a push to 6+ never drops them
     sphFlag(k);
@@ -476,6 +485,7 @@
     syncRanks(); return true;
   }
   function sphereRemove(k) {
+    if (isCore(k)) return;
     removeTarget(k); if (getEntry(k).sph) patch(k, { sph: false });
     if (sphereFill()) { save(); cloudPushBoard(); }
     syncRanks();
@@ -508,7 +518,8 @@
   var DRAG = { id: null, type: null, kind: null };
 
   function renderAll() {
-    pruneTargets(); if (targetOrder.length < MAX_TARGETS && (boardPulled || !cloudConfigured()) && sphereFill()) { save(); cloudPushBoard(); }   // v101: a free target slot pulls up the next sphere item
+    var hadCore = targetOrder.some(isCore); pruneTargets(); if (hadCore && (boardPulled || !cloudConfigured())) { save(); cloudPushBoard(); }
+    if (targetOrder.length < MAX_TARGETS && (boardPulled || !cloudConfigured()) && sphereFill()) { save(); cloudPushBoard(); }   // v101: a free target slot pulls up the next sphere item
     renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome(); if (FGS.open) { paintFgsTabs(); paintFgsList(); }
     if (window.WFSphereDraft && window.WFSphereDraft.isOpen()) window.WFSphereDraft.refresh();   // v107: a sync pull while the draft is open
     if (ENTER) { ENTER = false; setTimeout(function () { var ns = document.querySelectorAll(".wf-enter"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("wf-enter"); }, 720); }
@@ -540,7 +551,29 @@
     lastPctShown = pct;
   }
 
+  /* v108: the core bar only appears while Akatsuki has open tasks: on Today above Build, on the Week tab above the Five */
+  function coreBarIn(id, before) {
+    var cb = $(id); if (cb || !before || !before.parentNode) return cb;
+    cb = document.createElement("button"); cb.type = "button"; cb.id = id; cb.className = "core-bar"; cb.setAttribute("data-act", "coreopen");
+    before.parentNode.insertBefore(cb, before); return cb;
+  }
+  var logosWired = false;
+  function renderCore() {
+    if (window.WFLogos) {   // v109: logos come from Akatsuki's store (or the app's own site until it exists)
+      if (!logosWired) { logosWired = true; window.WFLogos.onChange(function () { renderCore(); if (window.WFSphereDraft && window.WFSphereDraft.isOpen()) window.WFSphereDraft.refresh(); }); }
+      window.WFLogos.refresh(state.apps);
+    }
+    var bb = $("buildBand"), k = coreId(), o = coreOpen(), lg = k && window.WFLogos ? window.WFLogos.logoFor(itemById(k)) : null;
+    [coreBarIn("coreBar", $("fiveGrid")), coreBarIn("coreBarToday", bb && bb.previousElementSibling)].forEach(function (cb) {
+      if (!cb) return;
+      cb.hidden = !k || !o.length; if (cb.hidden) return;
+      cb.setAttribute("aria-label", labelFor(k).name + ", core of the sphere: " + o.length + " open. Open it");
+      cb.innerHTML = '<span class="core-moon" aria-hidden="true">' + (lg && lg.url ? '<img src="' + esc(lg.url) + '" alt="" referrerpolicy="no-referrer">' : lg && lg.emoji ? esc(lg.emoji) : '') + '</span><span class="core-txt"><span class="core-k">Core \u00b7 ' + esc(labelFor(k).name) + '</span>' +
+        '<span class="core-next">Next: ' + esc(o[0].t || "") + '</span></span><span class="core-n">' + o.length + ' open</span>';
+    });
+  }
   function renderFive() {
+    renderCore();
     var grid = $("fiveGrid"); grid.innerHTML = "";
     if (ENTER) grid.classList.add("wf-enter");
     targetOrder.forEach(function (k, i) {
@@ -1602,7 +1635,7 @@
     if (window.WFSphereDraft) { window.WFSphereDraft.open(SD_HOST); return; }   // v107: the Sphere Draft replaces this list when its script is loaded
     var body = $("pickBody"); body.innerHTML = "";
     var rows = [];
-    activeItems("app").forEach(function (a) { if (isSpecialItem(a)) return; rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
+    activeItems("app").forEach(function (a) { if (isSpecialItem(a) || isCore(a.id)) return; rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
     activeItems("study").forEach(function (s) { if (isSpecialItem(s)) return; rows.push({ key: s.id, name: s.name, crumb: s.group, tag: "Study", color: "oklch(0.55 0.13 " + hueFor(s.group) + ")" }); });
     activeItems("office").forEach(function (o) { if (isSpecialItem(o)) return; rows.push({ key: o.id, name: o.name, crumb: o.group, tag: "Office", color: "var(--office)" }); });
     if (!rows.length) { body.innerHTML = '<div class="modal-empty">No active items yet.<br>Switch on an app or topic first, then pull it into the sphere.</div>'; }
@@ -1628,12 +1661,12 @@
     var now = Date.now(), rows = [];
     ["app", "study", "office"].forEach(function (kind) {
       activeItems(kind).forEach(function (it) {
-        if (isSpecialItem(it)) return;
+        if (isSpecialItem(it) || isCore(it.id)) return;
         var pr = subProgress(it.id), last = 0;
         visibleSubs(subs(it.id)).forEach(function (s) { if (s.u > last) last = s.u; });
         rows.push({ id: it.id, kind: kind, name: it.name, group: (it.group || "").trim() || "Unsorted",
           pri: SD_PRI[getEntry(it.id).pri] || "", done: pr ? pr.done : 0, total: pr ? pr.total : 0, next: nextSub(it.id),
-          age: last ? Math.max(0, Math.floor((now - last) / 864e5)) : null });
+          age: last ? Math.max(0, Math.floor((now - last) / 864e5)) : null, logo: window.WFLogos ? window.WFLogos.logoFor(it) : null });
       });
     });
     return rows;
@@ -1641,6 +1674,8 @@
   function sdCommit() { save(); cloudPushBoard(); syncRanks(); renderAll(); }
   var SD_HOST = {
     max: MAX_TARGETS,
+    core: function () { var k = coreId(); if (!k) return null; var o = coreOpen(); return { id: k, name: labelFor(k).name, open: o.length, next: o.length ? (o[0].t || "") : "", logo: window.WFLogos ? window.WFLogos.logoFor(itemById(k)) : null }; },
+    openCore: function () { var k = coreId(); if (!k) return; closePicker(); openBuildSheet(k); },
     rows: sdRows,
     state: function () { return { five: targetOrder.slice(), orbit: sphereExtras() }; },
     add: function (k) { if (inSphere(k)) return; sphereAdd(k); renderAll(); },
@@ -1710,6 +1745,7 @@
     var a = act.getAttribute("data-act");
 
     if (a === "tpick") { openPicker(); return; }
+    if (a === "coreopen") { var ck = coreId(); if (ck) openBuildSheet(ck); return; }
     if (a === "pickclose") { closePicker(); return; }
     if (a === "tdone") {
       var tk = act.closest("[data-tkey]").getAttribute("data-tkey");
@@ -1817,6 +1853,7 @@
     if (a === "spunarch") { patch(key, { arch: false }); renderAll(); return; }
     if (a === "flagupd") { var wasUpd = !!getEntry(key).upd; patch(key, { upd: !wasUpd }); toast(wasUpd ? "Update flag cleared." : "Flagged \u2014 pending update for Claude."); renderAll(); return; }
     if (a === "star") {   // v101: the ◎ button — in / out of the sphere
+      if (isCore(key)) { toast(labelFor(key).name + " is the core of the sphere \u2014 always in it"); return; }
       var snm = labelFor(key).name;
       if (inSphere(key)) { sphereRemove(key); renderAll(); toast(snm + " back to faint"); }
       else { sphereAdd(key); renderAll(); var six = targetOrder.indexOf(key); toast(snm + (six >= 0 ? " \u2192 target #" + (six + 1) : " pulled into the sphere")); }
@@ -3028,7 +3065,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 sphere draft";   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 app logos";   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });

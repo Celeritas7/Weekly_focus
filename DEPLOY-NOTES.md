@@ -1,3 +1,53 @@
+# v109 — app logos · built on v108
+
+Upload these six files, then reload twice on every device:
+- `index.html` (loads `js/wf-logos.js`)
+- `js/wf-logos.js` (new)
+- `js/weekly-focus-app.js`
+- `js/wf-sphere-draft.js`
+- `css/wf-sphere-draft.css`
+- `sw.js` (cache → `weekly-focus-v109`)
+
+**No SQL ships with this build.** The logo store is Akatsuki's (hub migration **R038**); WF only reads it and seeds it through Akatsuki's RPC.
+
+## What changed
+- Planets in the Sphere Draft show the app's **logo**; an app without one shows its **name** inside the planet (no label underneath, so the sphere is more compact). Orbit planets: logo or a short name. Cards on the table get a small logo. The Akatsuki core shows its logo in the red moon and in the core bar.
+- **Where logos come from**, in order: Akatsuki's shared store (`akatsuki_app_logos`: uploaded, emoji or synced from the app's site) → the app's own GitHub Pages site (home-screen icon, else the largest manifest icon ≤ 512 px, else its browser icon), remembered on this device for a week → no logo.
+- **Until R038 is live**, the store isn't there and WF quietly uses the live sites. No errors, nothing to do.
+- **Once R038 is live**, WF sends each app (name + live link) to Akatsuki once, using Akatsuki's key rule (Pages repo name, or a slug of the name), then only apps that are new or renamed. New hosted apps trigger Akatsuki's logo sync.
+
+## Check after upload
+1. Footer reads **build v109 · opens offline · app logos**.
+2. Open **+ Add to sphere**: apps with a github.io link in Quick links show their logo within a few seconds; others show their name.
+3. After R038 lands: reload once; Akatsuki's `akatsuki_app_identity` gets one row per app; a day later (or after the sync runs) the hosted apps' logos come from the store.
+
+---
+
+# v108 — Akatsuki is the core of the sphere · built on v107
+
+Upload these four files, then reload twice on every device:
+- `js/weekly-focus-app.js`
+- `js/wf-sphere-draft.js`
+- `css/wf-sphere-draft.css`
+- `sw.js` (cache → `weekly-focus-v108`)
+
+`index.html` is unchanged from v107. **No SQL ships with this build.** `wf_keep_history()` is owned by `migrations/`.
+
+## What changed
+The app card named **Akatsuki** is the core of the sphere: always in it, never one of the Five, never in orbit, never on the Sphere Draft's table, and it has no rank.
+- While Akatsuki has **open subtasks**, a red **Core · Akatsuki** bar shows on **Today** (above Build) and on the **Week** tab (above the Five), with the next task and the open count. Tap it to open the Akatsuki card. With no open subtasks the bar is hidden.
+- In the **Sphere Draft**, the centre becomes Akatsuki's red moon while it has open subtasks; tap it to open the card. Otherwise the centre shows the n/5 count.
+- If Akatsuki was one of the Five, it leaves its slot on first load and the next sphere item moves up.
+- Its ◎ button and the rank picker say it is the core and change nothing.
+
+## Check after upload
+1. Footer reads **build v108 · opens offline · Akatsuki core**.
+2. Akatsuki is no longer in the Five; the Five are refilled.
+3. Add a subtask to Akatsuki → the red bar appears on Today and Week. Tick it done → the bar disappears.
+4. Open **+ Add to sphere** → the red moon is in the centre; Akatsuki is not on the table.
+
+---
+
 # v107 — Sphere Draft · built on v106 (v106 was never deployed, so this upload carries both)
 
 Upload these five files, then reload twice on every device:
