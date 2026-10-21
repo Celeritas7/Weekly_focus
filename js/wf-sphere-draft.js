@@ -63,7 +63,8 @@
           '</section>' +
           '<section class="sd-pool" id="sdPool" data-sddrop="pool" aria-label="Everything still on the table">' +
             '<div class="sd-bar"><div class="sd-seg" id="sdSeg" role="group" aria-label="Show"><button type="button" data-kind="all"></button><button type="button" data-kind="app"></button><button type="button" data-kind="study"></button><button type="button" data-kind="office"></button></div>' +
-              '<div class="sd-tools"><input id="sdQ" type="search" placeholder="Find…" autocomplete="off" aria-label="Find"><button type="button" class="sd-tog" id="sdGrp">By category</button>' +
+              '<button type="button" class="sd-more" id="sdMore" aria-expanded="false" aria-controls="sdTools" aria-label="Search, group and sort"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><i class="sd-more-dot" aria-hidden="true"></i></button>' +
+              '<div class="sd-tools" id="sdTools"><input id="sdQ" type="search" placeholder="Find…" autocomplete="off" aria-label="Find"><button type="button" class="sd-tog" id="sdGrp">By category</button>' +
               '<select id="sdSort" aria-label="Sort"><option value="pri">Priority first</option><option value="open">Most open tasks</option><option value="stale">Longest untouched</option><option value="az">A–Z</option></select></div></div>' +
             '<div class="sd-legend" aria-hidden="true"><span><i style="--pc:var(--pri-h)"></i>High</span><span><i style="--pc:var(--pri-m)"></i>Medium</span><span><i style="--pc:var(--pri-l)"></i>Low</span><span class="sd-legend-tip">Tap a bubble for details</span></div>' +
             '<div class="sd-grid" id="sdGrid"></div>' +
@@ -165,6 +166,7 @@
     });
     $("sdGrp").setAttribute("aria-pressed", GROUP ? "true" : "false");
     $("sdSort").value = sortBy;
+    $("sdMore").classList.toggle("sd-active", !!q || !GROUP || sortBy !== "pri");
     $("sdT5").textContent = ST.five.length + "/" + H.max; $("sdTO").textContent = ST.orbit.length; $("sdTP").textContent = left.length;
   }
   function renderHud() {
@@ -304,6 +306,11 @@
     $("sdSort").addEventListener("change", function () { sortBy = this.value; savePref(); renderPool(); });
     $("sdQ").addEventListener("input", function () { q = this.value.trim().toLowerCase(); renderPool(); });
     $("sdGrp").addEventListener("click", function () { GROUP = !GROUP; savePref(); renderPool(); });
+    $("sdMore").addEventListener("click", function () {   // v114: on phones the search / group / sort row folds away
+      var bar = this.closest(".sd-bar"), on = !bar.classList.contains("sd-tools-open");
+      bar.classList.toggle("sd-tools-open", on); this.setAttribute("aria-expanded", on ? "true" : "false");
+      if (on) { var qi = $("sdQ"); if (qi) qi.focus({ preventScroll: true }); }
+    });
     $("sdHudGo").addEventListener("click", function () { $("sdSphere").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" }); });
     if ("IntersectionObserver" in window) io = new IntersectionObserver(function (es) { $("sdHud").hidden = es[0].isIntersecting; }, { root: root, threshold: 0.15 });
 

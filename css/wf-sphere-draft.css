@@ -236,4 +236,23 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 .sd .sd-coremoon.sd-dim .sd-cm-o { background: rgba(255,255,255,.4); }
 .sd .sd-coremoon.sd-dim { color: oklch(0.32 0.07 22); opacity: .72; }
 
+/* ---- v114 · phones: the filter block folds to one row ---- */
+.sd-more { display: none; }
+@media (max-width: 600px) {
+  .sd-bar { flex-wrap: nowrap; gap: 8px; margin-bottom: 8px; position: relative; }
+  .sd-seg { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .sd-seg::-webkit-scrollbar { display: none; }
+  .sd-seg button { padding: 6px 8px; font-size: 12px; white-space: nowrap; flex: 1 0 auto; }
+  .sd-more { display: grid; place-items: center; position: relative; flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--hair); background: var(--card); color: var(--mid); cursor: pointer; padding: 0; }
+  .sd-more[aria-expanded="true"] { background: var(--brand-soft); border-color: var(--brand-line); color: var(--brand); }
+  .sd-more-dot { display: none; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); }
+  .sd-more.sd-active .sd-more-dot { display: block; }
+  .sd-tools { display: none; }
+  .sd-bar.sd-tools-open { flex-wrap: wrap; }
+  .sd-bar.sd-tools-open .sd-tools { display: flex; flex: 1 1 100%; gap: 8px; }
+  .sd-tools input { flex: 1 1 auto; width: auto; }
+  .sd-legend { margin: 0 0 12px; gap: 4px 12px; font-size: 11px; }
+  .sd-legend .sd-legend-tip { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) { .sd *, .sd *::before, .sd *::after { animation: none !important; transition: none !important; } }
