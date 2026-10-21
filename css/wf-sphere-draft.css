@@ -256,3 +256,15 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 }
 
 @media (prefers-reduced-motion: reduce) { .sd *, .sd *::before, .sd *::after { animation: none !important; transition: none !important; } }
+
+/* v117: Set logo (details window) */
+.sd-ilogo .sd-lnote { margin: 0 0 8px; font-size: 13px; color: var(--mid); line-height: 1.4; }
+.sd-lrow { display: flex; flex-wrap: wrap; gap: 8px; }
+.sd-lemo { display: flex; gap: 8px; margin-top: 8px; }
+.sd-lemo[hidden] { display: none; }
+.sd-lemo input { flex: 1 1 auto; min-width: 0; border: 1px solid var(--hair); border-radius: 10px; padding: 8px 10px; font-size: 18px; background: var(--card); color: var(--ink); }
+.sd-lmsg { margin: 6px 0 0; font-size: 12.5px; color: var(--mid); min-height: 1em; }
+.sd-lmsg:empty { display: none; }
+.sd-lmsg.sd-lerr { color: oklch(0.55 0.19 25); }
+/* v117: names are measured against the circle's inner width (86% keeps the name inside the round edge) */
+.sd .sd-bub-c .sd-face-name, .sd .sd-slot .sd-face-name { width: 86%; max-width: 86%; min-width: 0; padding: 0; box-sizing: border-box; letter-spacing: -.01em; }

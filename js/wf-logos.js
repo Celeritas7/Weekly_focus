@@ -1,16 +1,16 @@
 /* ============================================================
-   Weekly Focus v116 — app logos (v109; R038 live since v115)
+   Weekly Focus v117 — app logos (v109; R038 live since v115; Set logo v117)
    Source of truth: Akatsuki's shared store (hub migration R038):
      view  akatsuki_app_logos  (app_key, name, home_url, logo_url, logo_source, emoji, …)
      RPC   akatsuki_app_identity_upsert(p jsonb)   — WF seeds a row per app (name, home_url)
      edge  akatsuki-logo-sync                       — copies each hosted app's icon into the store
    Until R038 is live (or for an app the store has no logo for), the icon is read from the
    app's own GitHub Pages site and remembered on this device for a week.
-   This file only reads and seeds; it never uploads images.
+   v117: setUpload / setEmoji / useSite write the person's own choice ("Set logo" in the Sphere Draft).
    ============================================================ */
 (function () {
   "use strict";
-  var VIEW = "akatsuki_app_logos", RPC = "akatsuki_app_identity_upsert", SYNC = "akatsuki-logo-sync";
+  var BUCKET = "akatsuki-logos", VIEW = "akatsuki_app_logos", RPC = "akatsuki_app_identity_upsert", SYNC = "akatsuki-logo-sync";
   var SITE_KEY = "wf_logo_site_v1", SEED_KEY = "wf_logo_seed_v2", WEEK = 7 * 864e5, DAY = 864e5;
   var STORE = {}, storeState = "unknown", storeAt = 0, nextTry = 0, SITE = {}, pending = {}, subs = [], seeding = false;
   try { SITE = JSON.parse(localStorage.getItem(SITE_KEY) || "{}") || {}; } catch (e) { SITE = {}; }
@@ -131,8 +131,82 @@
     if (h) { var c = SITE[k]; if (c && c.u) return { url: c.u, key: k }; if (navigator.onLine !== false) fromSite(k, h); }
     return null;
   }
+  /* ---- v117: Set logo. The person's choice (upload or emoji) wins over the site; the sync never overwrites it. ---- */
+  function info(item) {
+    var k = keyFor(item), s = STORE[k] || null, h = homeOf(item && item.links) || (s && s.home_url) || "";
+    return { key: k, ready: !!client() && storeState === "ok", source: s ? s.logo_source : null, emoji: (s && s.emoji) || "",
+      url: (s && s.logo_url) || "", status: s ? s.sync_status || null : null, hasHome: !!h };
+  }
+  function write(item, patch) {
+    var sb = client(); if (!sb) return Promise.reject(new Error("Sign in first."));
+    var k = keyFor(item), row = { app_key: k };
+    Object.keys(patch).forEach(function (f) { row[f] = patch[f]; });
+    if (!STORE[k]) { row.name = item.name; var h = homeOf(item.links); if (h) row.home_url = h; }   // not registered yet: create it
+    return sb.rpc(RPC, { p: row }).then(function (r) {
+      if (r.error) throw new Error(r.error.message || "The store refused it.");
+      var x = (r.data || [])[0]; if (x && x.status === "refused") throw new Error(x.reason || "The store refused it.");
+      return k;
+    });
+  }
+  function reload() { storeState = storeState === "loading" ? "unknown" : storeState; return loadStore(true); }
+  function setEmoji(item, e) {
+    e = String(e || "").trim();
+    if (!e) return Promise.reject(new Error("Type or paste an emoji first."));
+    if (e.length > 16 || Array.from(e).length > 8) return Promise.reject(new Error("That's too long for an emoji."));
+    return write(item, { logo_source: "emoji", emoji: e }).then(reload);
+  }
+  function useSite(item) {
+    var sb = client();
+    return write(item, { logo_source: "site" }).then(function (k) {
+      if (sb && sb.functions && sb.functions.invoke) return sb.functions.invoke(SYNC, { body: { app_keys: [k] } }).then(function () {}, function () {});
+    }).then(reload);
+  }
+  /* any image the browser can read → one square PNG (or WebP) of 256 px, under 64 KB, named by its hash */
+  function readImage(file) {
+    return new Promise(function (res, rej) {
+      var u = URL.createObjectURL(file), im = new Image();
+      im.onload = function () { res(im); setTimeout(function () { URL.revokeObjectURL(u); }, 0); };
+      im.onerror = function () { URL.revokeObjectURL(u); rej(new Error("This browser can't read that file as an image.")); };
+      im.src = u;
+    });
+  }
+  function encode(im) {
+    var w = im.naturalWidth || im.width || 256, h = im.naturalHeight || im.height || 256;
+    var tries = [[256, "image/png"], [256, "image/webp", 0.92], [256, "image/webp", 0.8], [192, "image/webp", 0.8], [128, "image/png"], [128, "image/webp", 0.75]];
+    function one(i) {
+      if (i >= tries.length) return Promise.reject(new Error("Couldn't get the image under 64 KB. Try a simpler one."));
+      var t = tries[i], n = t[0], c = document.createElement("canvas"); c.width = c.height = n;
+      var g = c.getContext("2d"), sc = Math.min(n / w, n / h), dw = w * sc, dh = h * sc;
+      g.imageSmoothingQuality = "high"; g.drawImage(im, (n - dw) / 2, (n - dh) / 2, dw, dh);   // whole image, centred, transparent around it
+      return new Promise(function (res) { try { c.toBlob(res, t[1], t[2]); } catch (e) { res(null); } })
+        .then(function (b) { return b && b.type === t[1] && b.size <= 65536 ? b : one(i + 1); });
+    }
+    return one(0);
+  }
+  function hash16(blob) {
+    return blob.arrayBuffer().then(function (buf) { return crypto.subtle.digest("SHA-256", buf); })
+      .then(function (d) { return Array.from(new Uint8Array(d)).slice(0, 8).map(function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); });
+  }
+  function setUpload(item, file) {
+    var sb = client(); if (!sb) return Promise.reject(new Error("Sign in first."));
+    if (!file) return Promise.reject(new Error("No file chosen."));
+    if (file.size > 15 * 1024 * 1024) return Promise.reject(new Error("That file is too big (over 15 MB)."));
+    if (!window.crypto || !crypto.subtle) return Promise.reject(new Error("This browser can't upload logos."));
+    var k = keyFor(item), blob;
+    return Promise.all([readImage(file).then(encode), sb.auth.getSession()]).then(function (a) {
+      blob = a[0]; var ses = a[1] && a[1].data && a[1].data.session;
+      if (!ses || !ses.user) throw new Error("Sign in first.");
+      return hash16(blob).then(function (hx) { return ses.user.id + "/" + k + "/" + hx + (blob.type === "image/webp" ? ".webp" : ".png"); });
+    }).then(function (path) {
+      return sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type, upsert: true, cacheControl: "31536000" }).then(function (r) {
+        if (r.error) throw new Error("Upload failed: " + (r.error.message || r.error));
+        return write(item, { logo_source: "upload", logo_path: path });
+      });
+    }).then(reload);
+  }
+
   /* call when the board is ready: reads the store, then seeds it (once a day) with every app */
   function refresh(allApps) { loadStore(false).then(function () { seed(allApps); }); }
 
-  window.WFLogos = { keyFor: keyFor, logoFor: logoFor, refresh: refresh, onChange: function (f) { subs.push(f); }, state: function () { return storeState; } };
+  window.WFLogos = { keyFor: keyFor, logoFor: logoFor, refresh: refresh, info: info, setUpload: setUpload, setEmoji: setEmoji, useSite: useSite, onChange: function (f) { subs.push(f); }, state: function () { return storeState; } };
 })();

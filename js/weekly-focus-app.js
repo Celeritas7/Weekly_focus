@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v116", BUILD_N = 116;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v117", BUILD_N = 117;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1688,6 +1688,13 @@
     openCore: function () { var k = coreId(); if (!k) return; closePicker(); openBuildSheet(k); },
     openCard: function (k) { if (!itemById(k)) return; closePicker(); openBuildSheet(k); },
     rows: sdRows,
+    /* v117: Set logo (apps only). Writes go to Akatsuki's shared logo store through wf-logos.js. */
+    logo: {
+      info: function (k) { var it = itemById(k); return it && window.WFLogos && window.WFLogos.info ? window.WFLogos.info(it) : null; },
+      upload: function (k, f) { return window.WFLogos.setUpload(itemById(k), f); },
+      emoji: function (k, e) { return window.WFLogos.setEmoji(itemById(k), e); },
+      site: function (k) { return window.WFLogos.useSite(itemById(k)); }
+    },
     state: function () { return { five: targetOrder.slice(), orbit: sphereExtras() }; },
     add: function (k) { if (inSphere(k)) return; sphereAdd(k); renderAll(); },
     /* slot i (0-based): a target moves within the Five; anything else is placed there and the last target drops to orbit */
@@ -3075,7 +3082,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 shared logos";   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 set logo";   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });

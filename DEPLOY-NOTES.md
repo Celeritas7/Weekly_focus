@@ -1,3 +1,31 @@
+# v117 — Set logo · built on v116
+
+Upload these five files, then reload twice on every device:
+- `js/wf-logos.js`
+- `js/wf-sphere-draft.js`
+- `css/wf-sphere-draft.css`
+- `js/weekly-focus-app.js` (the logo hook for the draft, build number, footer)
+- `sw.js` (cache → `weekly-focus-v117`)
+
+**No SQL ships with this build.** It writes through Akatsuki's R038 store: bucket `akatsuki-logos` and RPC `akatsuki_app_identity_upsert`.
+
+## What changed
+1. **Set logo.** Tap any app bubble or planet in the Sphere Draft. The details window has a **Logo** section:
+   - **Upload image:** any image the browser can read (PNG, JPEG, WebP, GIF, SVG). WF turns it into one square 256 px PNG or WebP under 64 KB, names it by its hash and stores it in Akatsuki's store. Every app that reads the store shows it.
+   - **Use an emoji:** one emoji instead of an image.
+   - **Use the site's icon:** only for apps with a live site that currently use an upload or emoji. It goes back to the site's icon and asks the sync to fetch it.
+   - A line says where the current logo comes from, or why the store has none (no PNG icon on the site, icon file missing, page too big).
+   Study and office items have no Logo section.
+2. **Names behind logos stay hidden.** Long names (ScreenToll, Astrocyte, Calender_app…) showed clipped text under the logo, because the "hide" class was never applied to names with a size class.
+3. **Long names fit their circle.** Names wrap after `_` or `-`, and each one is measured and shrunk until it fits. A word breaks mid-way only if it still doesn't fit at the smallest size.
+
+## Check after upload
+1. Footer reads **build v117 · opens offline · set logo**.
+2. Tap Hypnos → Upload image → pick any picture → "Logo saved". The bubble shows it, and so do your other devices after a reload.
+3. Command_centre_advanced and "Commonplace - C++" sit inside their circles.
+
+---
+
 # v116 — logo registration fix · built on v115
 
 Upload these three files, then reload twice on every device:
