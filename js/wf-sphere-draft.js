@@ -26,13 +26,26 @@
   function score(it) { return PRI[it.pri].w * 100 + Math.min(it.total - it.done, 9) * 3 - Math.min(it.age == null ? 30 : it.age, 30) * 0.1; }
   function ageTxt(d) { return d == null ? "no activity yet" : d === 0 ? "today" : d === 1 ? "1 day ago" : d + " days ago"; }
   /* a long single word shrinks to fit its circle instead of breaking mid-word */
-  function fit(t) { var n = Math.max.apply(null, String(t).split(/\s+/).map(function (w) { return w.length; })); return n > 11 ? " sd-fit2" : n > 8 ? " sd-fit1" : ""; }
+  function fit(t) { var n = Math.max.apply(null, String(t).split(/[\s_\-]+/).map(function (w) { return w.length; })); return n > 11 ? " sd-fit2" : n > 8 ? " sd-fit1" : ""; }
+  /* v117: a name inside a circle. It may wrap after _ or -; alt = only shown if the logo fails to load */
+  function nameSpan(nm, alt) { return '<span class="sd-face-name' + fit(nm) + (alt ? " sd-alt" : "") + '">' + esc(nm).replace(/([_\-])/g, "$1<wbr>") + '</span>'; }
+  /* v117: shrink any name still wider than its circle (measured, so it never spills out of the edge) */
+  function shrinkNames() {
+    if (!root) return;
+    root.querySelectorAll(".sd-bub-c .sd-face-name, .sd-slot .sd-face-name").forEach(function (el) {
+      if (!el.offsetParent) return;
+      el.style.fontSize = ""; el.style.overflowWrap = "normal";   // measure whole words; break mid-word only if shrinking is not enough
+      var fs = parseFloat(getComputedStyle(el).fontSize) || 10, n = 0;
+      while (el.scrollWidth > el.clientWidth + 1 && fs > 7 && n++ < 10) { fs -= 0.5; el.style.fontSize = fs + "px"; }
+      if (el.scrollWidth > el.clientWidth + 1) el.style.overflowWrap = "anywhere";
+    });
+  }
   function short(name) { var w = String(name).replace(/[_\-]+/g, " ").trim().split(/\s+/)[0] || ""; return w.length > 8 ? w.slice(0, 7) + "…" : w; }
   /* v109: what sits inside a planet. Logo → the image (name kept as a hidden fallback if it fails to load); emoji; else the name itself */
   function face(it, mode) {
     var L = it.logo, nm = mode === "planet" ? it.name : mode === "moon" ? short(it.name) : mono(it.name);
-    var txt = '<span class="sd-face-name' + fit(nm) + '">' + esc(nm) + '</span>';
-    if (L && L.url) return '<img class="sd-face-img" src="' + esc(L.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' + txt.replace('sd-face-name"', 'sd-face-name sd-alt"');
+    var txt = nameSpan(nm, false);
+    if (L && L.url) return '<img class="sd-face-img" src="' + esc(L.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' + nameSpan(nm, true);
     if (L && L.emoji) return '<span class="sd-face-emo">' + esc(L.emoji) + '</span>';
     return txt;
   }
@@ -140,8 +153,8 @@
   }
   /* v110: the table is just bubbles: logo (or name) inside, priority as the ring colour. Tap one for its details. */
   function cardHtml(it) {
-    var p = PRI[it.pri] || PRI[""], L = it.logo, nameIn = '<span class="sd-face-name' + fit(it.name) + '">' + esc(it.name) + '</span>';
-    var inner = L && L.url ? '<img class="sd-bub-img" src="' + esc(L.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' + nameIn.replace('sd-face-name"', 'sd-face-name sd-alt"')
+    var p = PRI[it.pri] || PRI[""], L = it.logo, nameIn = nameSpan(it.name, false);
+    var inner = L && L.url ? '<img class="sd-bub-img" src="' + esc(L.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' + nameSpan(it.name, true)
       : L && L.emoji ? '<span class="sd-bub-emo">' + esc(L.emoji) + '</span>' : nameIn;
     return '<button type="button" class="sd-bub" data-sdk="' + esc(it.id) + '" data-sd="info" style="--kc:' + KIND[it.kind].c + ';--pc:' + (p.l ? p.c : "var(--hair)") + '" title="' + esc(it.name) + '" aria-label="' + esc(it.name) + (p.l ? ", " + p.l + " priority" : "") + '. Show details">' +
       '<span class="sd-bub-c">' + inner + '</span>' + (L ? '<span class="sd-bub-l">' + esc(it.name) + '</span>' : '') + '</button>';
@@ -174,6 +187,8 @@
     $("sdHudDots").innerHTML = d; $("sdHudO").textContent = ST.five.length + "/" + H.max + " · orbit " + ST.orbit.length;
   }
   function render(landing) { pull(); renderSphere(landing); renderLoad(); renderPool(); renderHud(); }
+  var poolOnly = renderPool; renderPool = function () { poolOnly(); shrinkNames(); };   // v117: every redraw re-fits the names
+  var sphereOnly = renderSphere; renderSphere = function (l) { sphereOnly(l); shrinkNames(); };
 
   /* ---------------- motion ---------------- */
   function fly(k, fromRect) {
@@ -230,10 +245,49 @@
         '<span class="sd-ip-age' + (it.age != null && it.age >= 14 ? " sd-stale" : "") + '">' + ageTxt(it.age) + '</span></div>' +
       '<div class="sd-isec"><h4>Open tasks <span>' + (it.open || []).length + '</span></h4>' + tasks + '</div>' +
       (it.notes ? '<div class="sd-isec"><h4>Notes</h4><p class="sd-notes">' + esc(it.notes) + '</p></div>' : '') +
+      logoSec(k, it) +
       '<div class="sd-iact">' + primary + '<div class="sd-iplace"><span>' + (w ? "Move it to" : "Or place it at") + '</span><div class="sd-slots">' + slots + '</div></div></div>' +
       (H.openCard ? '<button type="button" class="sd-link" data-sd="card">Open the full card to edit</button>' : '');
     $("sdInfo").hidden = false;
     var b = $("sdInfoCard").querySelector(".sd-big"); if (b) b.focus({ preventScroll: true });
+  }
+  /* v117: Set logo. Saved in Akatsuki's shared store, so every app shows the same logo. */
+  function logoNote(LI, it) {
+    var on = it.logo && it.logo.url;
+    if (LI.source === "emoji" && LI.emoji) return "Your emoji, shared with your other apps.";
+    if (LI.source === "upload") return "Your uploaded image, shared with your other apps.";
+    if (LI.url) return "Taken from the app's own site. It updates when the site's icon changes.";
+    var why = { no_icon: "The app's site has no PNG icon the store can use.", icon_http_404: "The app's site names an icon file that isn't deployed.",
+      page_too_large: "The app's site page is too big for the store to read.", over_64kb: "The site's icon is over 64 KB.", not_square: "The site's icon isn't square.",
+      not_png_or_webp: "The site's icon isn't PNG or WebP." }[LI.status];
+    if (why) return why + (on ? " The icon shown is read from the site on this device only." : "");
+    if (!LI.hasHome) return "No live site to take a logo from, so the name is shown.";
+    return on ? "Read from the app's site on this device. The store gets it at the next daily sync." : "Waiting for the next daily sync.";
+  }
+  function logoSec(k, it) {
+    var LI = it.kind === "app" && H.logo && H.logo.info ? H.logo.info(k) : null; if (!LI) return "";
+    var off = LI.ready ? "" : " disabled";
+    return '<div class="sd-isec sd-ilogo"><h4>Logo</h4><p class="sd-lnote">' + esc(LI.ready ? logoNote(LI, it) : "Sign in to set a logo.") + '</p>' +
+      '<div class="sd-lrow"><button type="button" class="sd-btn" data-sd="lgup"' + off + '>Upload image</button>' +
+      '<button type="button" class="sd-btn" data-sd="lgemo"' + off + ' aria-expanded="false">' + (LI.source === "emoji" ? "Change emoji" : "Use an emoji") + '</button>' +
+      (LI.hasHome && (LI.source === "upload" || LI.source === "emoji") ? '<button type="button" class="sd-btn" data-sd="lgsite"' + off + '>Use the site\'s icon</button>' : '') + '</div>' +
+      '<div class="sd-lemo" id="sdLemo" hidden><input type="text" id="sdEmo" maxlength="16" autocomplete="off" placeholder="Type or paste one emoji" aria-label="Emoji" value="' + esc(LI.source === "emoji" ? LI.emoji : "") + '">' +
+      '<button type="button" class="sd-btn sd-primary" data-sd="lgemosave">Save</button></div>' +
+      '<input type="file" id="sdLogoFile" accept="image/png,image/webp,image/jpeg,image/gif,image/svg+xml" hidden>' +
+      '<p class="sd-lmsg" id="sdLmsg" role="status" aria-live="polite"></p></div>';
+  }
+  function logoRun(job, done) {
+    var k = INFO, card = $("sdInfoCard"); if (!k || !card) return;
+    card.querySelectorAll(".sd-ilogo button").forEach(function (b) { b.disabled = true; });
+    $("sdLmsg").className = "sd-lmsg"; $("sdLmsg").textContent = "Saving…";
+    job(k).then(function () {
+      if (!isOpen) return; pull(); render(); if (INFO === k) openInfo(k);
+      var m = $("sdLmsg"); if (m) m.textContent = done;
+    }, function (e) {
+      if (!isOpen || INFO !== k) return;
+      card.querySelectorAll(".sd-ilogo button").forEach(function (b) { b.disabled = false; });
+      var m = $("sdLmsg"); if (m) { m.className = "sd-lmsg sd-lerr"; m.textContent = (e && e.message) || "That didn't work."; }
+    });
   }
   function closeInfo() {
     if (!INFO) return; INFO = null; $("sdInfo").hidden = true;
@@ -279,12 +333,17 @@
       else if (a === "orbit") { closeInfo(); act(ik, "orbit"); }
       else if (a === "card") { closeInfo(); if (H.openCard) H.openCard(ik); }
       else if (a === "back") { if (k) act(k, "back"); else { closeInfo(); act(ik, "back"); } }
+      else if (a === "lgup") { var fi = $("sdLogoFile"); if (fi) { fi.value = ""; fi.click(); } }
+      else if (a === "lgemo") { var le = $("sdLemo"), op = le.hidden; le.hidden = !op; el.setAttribute("aria-expanded", op ? "true" : "false"); if (op) $("sdEmo").focus(); }
+      else if (a === "lgemosave") { var ev = $("sdEmo").value; logoRun(function (kk) { return H.logo.emoji(kk, ev); }, "Emoji saved."); }
+      else if (a === "lgsite") logoRun(function (kk) { return H.logo.site(kk); }, "Back to the site's icon. It shows once the store has fetched it.");
       else if (a === "undo") undo();
       else if (a === "close") close();
       else if (a === "core" && H.openCore) H.openCore();
     });
     root.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && INFO) { e.stopPropagation(); closeInfo(); return; }
+      if (e.key === "Enter" && e.target.id === "sdEmo") { e.preventDefault(); var ev = e.target.value; logoRun(function (kk) { return H.logo.emoji(kk, ev); }, "Emoji saved."); return; }
       var c = e.target.closest && e.target.closest(".sd-bub[data-sdk]"); if (!c) return;
       var k = c.getAttribute("data-sdk");
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openInfo(k); return; }
@@ -292,6 +351,10 @@
       else if (e.key === "o" || e.key === "O") act(k, "orbit");
       else return;
       var next = root.querySelector(".sd-bub[data-sdk]"); if (next) next.focus();
+    });
+    root.addEventListener("change", function (e) {
+      if (e.target.id !== "sdLogoFile" || !e.target.files || !e.target.files[0]) return;
+      var f = e.target.files[0]; logoRun(function (kk) { return H.logo.upload(kk, f); }, "Logo saved. Your other apps show it too.");
     });
     root.addEventListener("error", function (e) {
       var t = e.target; if (!t || t.tagName !== "IMG") return;
