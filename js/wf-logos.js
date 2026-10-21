@@ -1,5 +1,5 @@
 /* ============================================================
-   Weekly Focus v109 — app logos
+   Weekly Focus v115 — app logos (v109; R038 live since v115)
    Source of truth: Akatsuki's shared store (hub migration R038):
      view  akatsuki_app_logos  (app_key, name, home_url, logo_url, logo_source, emoji, …)
      RPC   akatsuki_app_identity_upsert(p jsonb)   — WF seeds a row per app (name, home_url)
@@ -79,7 +79,11 @@
       });
     }, Promise.resolve()).then(function () {
       try { localStorage.setItem(SEED_KEY, JSON.stringify(sent)); } catch (e) {}
-      if (toSync.length && sb.functions && sb.functions.invoke) return sb.functions.invoke(SYNC, { body: { app_keys: toSync } }).then(function () { return loadStore(true); }, function () {});
+      if (toSync.length && sb.functions && sb.functions.invoke) {   // the sync takes at most 40 keys per call
+        var chunks = []; for (var j = 0; j < toSync.length; j += 40) chunks.push(toSync.slice(j, j + 40));
+        return chunks.reduce(function (p, c) { return p.then(function () { return sb.functions.invoke(SYNC, { body: { app_keys: c } }).then(function () {}, function () {}); }); }, Promise.resolve())
+          .then(function () { return loadStore(true); });
+      }
       if (rows.length) return loadStore(true);
     }).catch(function (e) { console.warn("[wf] logos: seeding the Akatsuki store failed", e && (e.message || e)); })
       .then(function () { seeding = false; });
