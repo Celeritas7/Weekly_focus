@@ -1,3 +1,22 @@
+# v114 — compact filters on phones · built on v113
+
+Upload these four files, then reload twice on every device:
+- `js/weekly-focus-app.js` (build number only)
+- `js/wf-sphere-draft.js`
+- `css/wf-sphere-draft.css`
+- `sw.js` (cache → `weekly-focus-v114`)
+
+**No SQL ships with this build.**
+
+## What changed (phones only, 600 px wide or less; desktop unchanged)
+In the Sphere Draft the block between the sphere and the bubbles is one row: **All / Apps / Study / Office** plus a 🔍 button. Search, **By category** and the sort open when you tap 🔍 (the cursor goes to search); tap again to fold them away. A dot on 🔍 shows while a search, the flat list or a non-default sort is in effect. The priority legend is one short line. About 70 px instead of about 200 px.
+
+## Check after upload
+1. Footer reads **build v114 · opens offline · compact filters**.
+2. Phone: the bubbles start right under the type row. Tap 🔍 → search, group, sort appear.
+
+---
+
 # v113 — review fixes · built on v112
 
 Upload these three files, then reload twice on every device:
