@@ -3,7 +3,7 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v112";
+const CACHE = "weekly-focus-v113";
 /* v105: the Supabase library is cached too. Without it the app had no client offline, so the
    stored session could not be read and every offline open landed on the sign-in screen. */
 const SUPA = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
@@ -61,6 +61,10 @@ self.addEventListener("fetch", (e) => {
     );
     return;
   }
+
+  // v113: a sibling app on this origin (logo lookups read its page and icon) goes straight to the network and is never cached,
+  // or a changed logo would be served from this app's cache until the next deploy.
+  if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
 
   // Static same-origin assets (css/js/icons): cache-first, then network (and cache it).
   e.respondWith(

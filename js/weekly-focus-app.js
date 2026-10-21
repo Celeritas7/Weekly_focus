@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v112", BUILD_N = 112;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v113", BUILD_N = 113;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -72,7 +72,7 @@
   function patch(k, p) { entries[k] = Object.assign({}, entries[k], p); save(); cloudPushEntry(k, entries[k]); }
 
   /* ---------------- inventory (in-app, Supabase-backed) ---------------- */
-  function rebuildIndex() { itemIndex = {}; state.apps.forEach(function (a) { itemIndex[a.id] = a; }); state.study.forEach(function (s) { itemIndex[s.id] = s; }); (state.office || []).forEach(function (o) { itemIndex[o.id] = o; }); }
+  function rebuildIndex() { CORE_MEMO = null; itemIndex = {}; state.apps.forEach(function (a) { itemIndex[a.id] = a; }); state.study.forEach(function (s) { itemIndex[s.id] = s; }); (state.office || []).forEach(function (o) { itemIndex[o.id] = o; }); }
   function itemById(id) { return itemIndex[id] || null; }
   function kindOf(id) { return id.indexOf("study:") === 0 ? "study" : id.indexOf("office:") === 0 ? "office" : "app"; }
   function arrFor(kind) { return kind === "study" ? state.study : kind === "office" ? state.office : state.apps; }
@@ -137,7 +137,7 @@
     patch(id, { active: true });               // new items land in This Week
     saveInv(); renderAll(); return id;
   }
-  function renameItem(id, name) { var it = itemById(id); if (!it) return; it.name = (name || "").trim() || it.name; saveInv(); }
+  function renameItem(id, name) { var it = itemById(id); if (!it) return; it.name = (name || "").trim() || it.name; CORE_MEMO = null; saveInv(); }
   function regroupItem(id, group) { var it = itemById(id); if (!it) return; it.group = (group || "").trim() || it.group; saveInv(); renderAll(); }
   function deleteItem(id) {
     var arr = arrFor(kindOf(id)), i = arr.findIndex(function (x) { return x.id === id; });
@@ -272,7 +272,12 @@
   /* ---------------- v108 · the core: Akatsuki ----------------
      Akatsuki is the truth the rest of the week orbits, so it sits at the centre of the sphere: always in it,
      never one of the Five, never in orbit, never on the picker's table. It is only shown while it has open tasks. */
-  function coreId() { var a = (state.apps || []).filter(function (x) { return (x.name || "").trim().toLowerCase() === "akatsuki"; })[0]; return a ? a.id : null; }
+  var CORE_MEMO = null;   // v113: looked up once per app-list change (isCore runs inside every rank sort)
+  function coreId() {
+    if (CORE_MEMO && CORE_MEMO.apps === state.apps && CORE_MEMO.n === state.apps.length) return CORE_MEMO.id;
+    var a = (state.apps || []).filter(function (x) { return (x.name || "").trim().toLowerCase() === "akatsuki"; })[0];
+    CORE_MEMO = { apps: state.apps, n: state.apps.length, id: a ? a.id : null }; return CORE_MEMO.id;
+  }
   function isCore(k) { return !!k && k === coreId(); }
   function coreOpen() { var k = coreId(); return k ? activeSubs(subs(k)).filter(function (s) { return !s.done; }) : []; }
 
@@ -3070,7 +3075,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 core always shown";   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 review fixes";   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -3846,6 +3851,7 @@
     }
     if ($("buildCount")) $("buildCount").textContent = "#1 of " + ranked.length;
     var fiveA = fiveApps(), m0 = fiveA[0], cans = fiveA.slice(1, 5), will = ranked[fiveA.length] || null;   // v111: empty slots stay empty
+    if (will && getEntry(will).sph !== true) will = null;   // v113: "next in line" is an orbit app, never one outside the sphere
     if (!m0) { host.innerHTML = '<div class="bb-none">No targets this week \u2014 open the Week tab and add apps to the sphere.</div>'; renderStudyBand(); return; }
     var pr = subProgress(m0), nx = nextSub(m0), done0 = targetDone(m0);
     var h = '<div class="btile bhero' + (done0 ? " done" : "") + '" role="button" tabindex="0" style="--h:' + bHue(m0) + ';--fill:' + bFill(m0) + '%" data-hact="bopen" data-hkey="' + esc(m0) + '">' +
