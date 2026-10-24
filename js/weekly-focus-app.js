@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v118", BUILD_N = 118;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v119", BUILD_N = 119;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1597,7 +1597,7 @@
         '<button class="lr-del" data-act="linkdel" title="Remove link">\u00d7</button></li>';
     }).join("");
     var linksRow = '<div class="links-block"><span class="notes-lbl">\u2197 Quick links</span>' +
-      (linkRows ? '<ul class="lrows">' + linkRows + '</ul>' : '<div class="lr-none">No links yet \u2014 add the app, repo, doc or a PC folder you jump to.</div>') +
+      (linkRows ? '<ul class="lrows">' + linkRows + '</ul>' + lkAllHtml(lks) : '<div class="lr-none">No links yet \u2014 add the app, repo, doc or a PC folder you jump to.</div>') +
       '<div class="lr-add"><input class="lr-name" placeholder="Label (e.g. Live app)"><input class="lr-url" placeholder="https://\u2026  or  C:\\path\\to\\folder"><button class="lr-addbtn" data-act="linkadd">Add</button></div></div>';
     var genSel = kindOf(id) !== "app" ? '' : '<select class="mg-gen" data-act="gen" title="Which tool generated this app">' +
       '<option value="">Made with\u2026</option>' +
@@ -1819,6 +1819,8 @@
       if (lO) openLocalPath(lO.url);
       return;
     }
+    if (a === "linkall") { lkOpenAll(itemById(key)); return; }
+    if (a === "lktype") { lkToggleType(act.getAttribute("data-lkt")); return; }
     if (a === "linkdel") {
       var itL = itemById(key), row = e.target.closest(".lrow");
       if (itL && row) { var ix = +row.getAttribute("data-lix"); itL.links = (itL.links || []).filter(function (_, i2) { return i2 !== ix; }); saveInv(); renderCols(); renderHome(); }
@@ -3082,7 +3084,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 vault copy helpers";   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 open all links";   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -3718,6 +3720,51 @@
     var hs = 0; for (var j = 0; j < host.length; j++) hs = (hs * 31 + host.charCodeAt(j)) % 360;
     var core = host.replace(/\.(com|io|org|net|app|dev|ai|co|in)$/i, "").split(".").pop() || "?";
     return { t: esc(core.slice(0, 1).toUpperCase() + core.slice(1, 2)), c: 0.12, h: hs };
+  }
+  /* ---- v119 · Open all: every quick link of a card in one click, filtered by kind of link.
+     The kind comes from the address, not the label, so "Cladue AI" and "Claude AI" count the same.
+     Unticked kinds are kept in meta.lkOff (board-synced, so the filter is the same on every device). ---- */
+  var LK_TYPES = [{ k: "design", l: "Claude design" }, { k: "ai", l: "Claude AI" }, { k: "code", l: "Claude Code" }, { k: "app", l: "Live app" },
+    { k: "repo", l: "GitHub" }, { k: "folder", l: "PC folder" }, { k: "other", l: "Other" }];
+  function lkType(u) {
+    u = String(u || "").trim(); if (isLocalPath(u)) return "folder";
+    var m = /^https?:\/\/(?:www\.)?([^\/?#]+)(\/[^?#]*)?/i.exec(u); if (!m) return "";
+    var host = m[1].toLowerCase(), path = m[2] || "/";
+    if (host.indexOf(".") < 0 && host !== "localhost") return "";   // placeholders like https://111 never open
+    if (host === "claude.ai") return /^\/design\b/.test(path) ? "design" : /^\/code\b/.test(path) ? "code" : "ai";
+    if (/\.github\.io$/.test(host)) return "app";
+    if (host === "github.com") return "repo";
+    return "other";
+  }
+  function lkOff() { return Array.isArray(meta.lkOff) ? meta.lkOff : []; }
+  function lkPicks(links) { var off = lkOff(); return (links || []).filter(function (l) { var t = lkType(l && l.url); return t && off.indexOf(t) < 0; }); }
+  function lkAllHtml(links) {
+    var have = {}; (links || []).forEach(function (l) { var t = lkType(l && l.url); if (t) have[t] = (have[t] || 0) + 1; });
+    var kinds = LK_TYPES.filter(function (x) { return have[x.k]; }); if (!kinds.length) return "";
+    var n = lkPicks(links).length, off = lkOff();
+    return '<div class="lk-all"><button type="button" class="lk-allbtn" data-act="linkall"' + (n ? "" : " disabled") + ' title="Open every ticked kind of link at once">Open all \u00b7 ' + n + '</button>' +
+      '<span class="lk-kinds" title="Tap a kind to include or skip it. The choice applies to every card and syncs across your devices.">' + kinds.map(function (x) {
+        var on = off.indexOf(x.k) < 0;
+        return '<button type="button" class="lk-kind' + (on ? " on" : "") + '" data-act="lktype" data-lkt="' + x.k + '" aria-pressed="' + on + '">' + (on ? "\u2713 " : "") + esc(x.l) + (have[x.k] > 1 ? " \u00b7 " + have[x.k] : "") + '</button>';
+      }).join("") + '</span></div>';
+  }
+  function lkToggleType(t) {
+    if (!t) return; var off = lkOff().slice(), i = off.indexOf(t);
+    if (i >= 0) off.splice(i, 1); else off.push(t);
+    meta.lkOff = off; save(); cloudPushBoard(); renderAll();
+  }
+  /* must run straight from the click: browsers only allow new tabs inside a user gesture */
+  function lkOpenAll(it) {
+    var picks = lkPicks(it && it.links); if (!picks.length) { toast("Nothing ticked to open."); return; }
+    var opened = 0, blocked = 0, folders = 0;
+    picks.forEach(function (l) {
+      var u = String(l.url).trim();
+      if (isLocalPath(u)) { folders++; openLocalPath(u); return; }
+      var w = null; try { w = window.open(u, "_blank"); } catch (e) {}
+      if (w) { try { w.opener = null; } catch (e) {} opened++; } else blocked++;
+    });
+    if (blocked) toast("Your browser blocked " + blocked + " of " + (opened + blocked) + " tabs. Allow pop-ups for this site (address bar icon), then tap Open all again.");
+    else if (opened) toast("Opened " + opened + (opened === 1 ? " tab" : " tabs") + (folders ? " and sent " + folders + (folders === 1 ? " folder" : " folders") + " to your PC" : "") + ".");
   }
   function lkCopy(t) {
     function fb() { var ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Path copied — paste it in Explorer."); } catch (e2) { window.prompt("Copy this path:", t); } document.body.removeChild(ta); }
