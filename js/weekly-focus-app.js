@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v117", BUILD_N = 117;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v118", BUILD_N = 118;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -3082,7 +3082,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 set logo";   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 vault copy helpers";   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -4671,6 +4671,62 @@
     if (fd && fd.pc) { v = v.replace(/^\u3012\s*/, "").replace(/\s+/g, ""); if (/^\d{7}$/.test(v)) v = v.slice(0, 3) + "-" + v.slice(3); }
     return v;
   }
+  /* ---- v118 · Phase 5: copy helpers for Japanese addresses ----
+     日本語 / English per record (remembered on this device in wf_vlang), 番地 as 1-1-22 ⇄ 1丁目1番22号,
+     postal code in two halves (336 / 0025), phone as 090-1234-5678 / +81 90-1234-5678 / digits only.
+     Only how a value is shown and copied changes; the stored value stays as typed. */
+  var VLANG_KEY = "wf_vlang";
+  function vLangMap() { try { return JSON.parse(localStorage.getItem(VLANG_KEY) || "{}") || {}; } catch (e) { return {}; } }
+  function vLang(it) { return vLangMap()[it && it.id] === "en" ? "en" : "ja"; }
+  function vSetLang(it, l) { var m = vLangMap(); m[it.id] = l === "en" ? "en" : "ja"; try { localStorage.setItem(VLANG_KEY, JSON.stringify(m)); } catch (e) {} }
+  function vNfkc(v) { v = String(v == null ? "" : v); try { v = v.normalize("NFKC"); } catch (e) {} return v; }
+  function jpPhoneDigits(v) {
+    var d = vNfkc(v).replace(/[^\d+]/g, "");
+    if (/^\+81/.test(d) || /^81\d{9,10}$/.test(d)) d = "0" + d.replace(/^\+?81/, "").replace(/^0/, "");
+    return d.replace(/\D/g, "");
+  }
+  /* 0120 / 0800 → 4-3-3 / 4-3-4 · 050 070 080 090 (11 digits) → 3-4-4 · Tokyo 03 / Osaka 06 → 2-4-4 · other landlines → 3-3-4 */
+  function jpPhone(v) {
+    var d = jpPhoneDigits(v); if (!/^0\d{9,10}$/.test(d)) return "";
+    if (/^0(120|800)/.test(d)) return d.slice(0, 4) + "-" + d.slice(4, 7) + "-" + d.slice(7);
+    if (d.length === 11) return d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7);
+    if (/^0[36]/.test(d)) return d.slice(0, 2) + "-" + d.slice(2, 6) + "-" + d.slice(6);
+    return d.slice(0, 3) + "-" + d.slice(3, 6) + "-" + d.slice(6);
+  }
+  function jpPostalParts(v) { var d = vNfkc(v).replace(/\D/g, ""); return d.length === 7 ? [d.slice(0, 3), d.slice(3)] : null; }
+  /* 番地: only the last block of three numbers is converted, so a town name or a room number is left alone */
+  function toChome(s) { return vNfkc(s).replace(/(^|[^\d\-])(\d+)-(\d+)-(\d+)(?=$|[^\d\-])/, "$1$2\u4e01\u76ee$3\u756a$4\u53f7"); }
+  function toHyphen(s) { return vNfkc(s).replace(/(\d+)\u4e01\u76ee(\d+)\u756a\u5730?(\d+)\u53f7?/, "$1-$2-$3"); }
+  function vIsJpAddr(c, it) { return !!c && c.k === "addr" && vShapeOf(c, it) === "JP"; }
+  /* "郵便番号 Postal code (336-0027)" → 郵便番号 in 日本語, "Postal code (336-0027)" in English */
+  function vLbl(fd, lang) {
+    var l = String(fd.l || ""), i = l.search(/[A-Za-z]/);
+    if (/^[^\x00-\x7f]/.test(l) && i > 0) return lang === "en" ? l.slice(i) : l.slice(0, i).trim();   // "建物名 + 部屋番号 Building & room"
+    return fd.k === "ph" && lang === "ja" ? "\u96fb\u8a71" : l;
+  }
+  /* the value as shown and copied (Copy, 全角, Copy all) */
+  function vView(c, it, k) {
+    var raw = String(((it && it.f) || {})[k] || ""); if (!vIsJpAddr(c, it)) return raw;
+    var lang = vLang(it);
+    if (k === "street") return lang === "ja" ? toChome(raw) : toHyphen(raw);
+    if (k === "ph") { var p = jpPhone(raw); return !p ? raw : lang === "en" ? "+81 " + p.slice(1) : p; }
+    return raw;
+  }
+  /* the extra copy buttons a field gets on a Japanese address */
+  function vJpActs(it, fd) {
+    var raw = String(((it && it.f) || {})[fd.k] || ""), lang = vLang(it), b = "";
+    if (fd.k === "postal_code") { var pp = jpPostalParts(raw); if (pp) b += '<button class="v-ico jp" data-vact="copyjp" data-vf="pc0" title="Copy the first half (' + pp[0] + ') for forms with two boxes">' + pp[0] + '</button><button class="v-ico jp" data-vact="copyjp" data-vf="pc1" title="Copy the second half (' + pp[1] + ')">' + pp[1] + '</button>'; }
+    if (fd.k === "street") { var other = lang === "ja" ? toHyphen(raw) : toChome(raw), shown = lang === "ja" ? toChome(raw) : toHyphen(raw); if (other !== shown) b += '<button class="v-ico jp" data-vact="copyjp" data-vf="st" title="Copy as ' + esc(other) + '">' + (lang === "ja" ? "1-1-22" : "\u4e01\u76ee") + '</button>'; }
+    if (fd.k === "ph" && jpPhone(raw)) b += '<button class="v-ico jp" data-vact="copyjp" data-vf="ph" title="Copy the digits only (' + jpPhoneDigits(raw) + ')">' + (lang === "ja" ? "\u6570\u5b57\u306e\u307f" : "Digits") + '</button>';
+    return b;
+  }
+  function vJpCopy(it, which) {
+    var f = (it && it.f) || {}, lang = vLang(it);
+    if (which === "pc0" || which === "pc1") { var pp = jpPostalParts(f.postal_code); return pp ? pp[which === "pc0" ? 0 : 1] : ""; }
+    if (which === "st") return lang === "ja" ? toHyphen(f.street) : toChome(f.street);
+    if (which === "ph") return jpPhoneDigits(f.ph);
+    return "";
+  }
   function vShapeOf(c, it) { if (!c) return ""; if (c.ctry) return vIsLegacy(c, it) ? "_" : vctryOf(it); if (c.shape) return String(((it && it.f) || {})[c.shape] || ""); return ""; }
   function vfs(c, it) { if (!c) return []; if (!c.fsBy) return c.fs || []; return c.fsBy[vShapeOf(c, it)] || c.fsBy._ || c.fsBy.IN || c.fs || []; }
   /* v61: free-form extra fields on any record — f.x = [{l,v,s}] */
@@ -4718,8 +4774,9 @@
     var FS = vfs(c, it);
     FS.forEach(function (fd) { if (fd.tp === "pass" && String(f[fd.k] || "").trim()) hasSec = true; });
     vXs(it).forEach(function (r) { if (r.s && String(r.v || "").trim()) hasSec = true; });
+    var jp = vIsJpAddr(c, it), lang = jp ? vLang(it) : "";
     var body = FS.filter(function (fd) { return fd.k !== "t" && String(f[fd.k] || "").trim(); }).map(function (fd) {
-      var raw = f[fd.k], sec = fd.tp === "pass", open = VREVEAL[it.id + "|" + fd.k];
+      var raw = jp ? vView(c, it, fd.k) : f[fd.k], sec = fd.tp === "pass", open = VREVEAL[it.id + "|" + fd.k];
       var val = sec && !open ? vMask(raw) : esc(raw);
       var acts = "";
       if (fd.tp === "big") {
@@ -4729,9 +4786,10 @@
       }
       if (sec) acts += '<button class="v-ico" data-vact="reveal" data-vf="' + fd.k + '" title="' + (open ? "Hide again" : "Show the real value") + '">' + (open ? "Hide" : "Show") + '</button>';
       acts += '<button class="v-ico" data-vact="copy" data-vf="' + fd.k + '" title="Copy this field">Copy</button>';
+      if (jp) acts += vJpActs(it, fd);
       if (fd.zk && vShapeOf(c, it) === "JP") acts += '<button class="v-ico zk" data-vact="copyzk" data-vf="' + fd.k + '" title="Copy as full-width \u5168\u89d2 for Japanese forms \u2014 stored value stays half-width">\u5168\u89d2</button>';
       if (fd.tp === "url") acts += '<a class="tbtn chat-open v-open" href="' + esc(/^https?:\/\//i.test(raw) ? raw : "https://" + raw) + '" target="_blank" rel="noopener">Open \u2197</a>';
-      return '<div class="v-f' + (fd.tp === "ta" ? " ta" : "") + '"><span class="v-k">' + esc(fd.l) + '</span><span class="v-v' + (sec ? " sec" : "") + '">' + val + '</span><span class="v-acts">' + acts + '</span></div>';
+      return '<div class="v-f' + (fd.tp === "ta" ? " ta" : "") + '"><span class="v-k">' + esc(jp ? vLbl(fd, lang) : fd.l) + '</span><span class="v-v' + (sec ? " sec" : "") + '">' + val + '</span><span class="v-acts">' + acts + '</span></div>';
     }).join("");
     body += vXs(it).map(function (r, i) {
       if (!String(r.v || "").trim()) return "";
@@ -4743,6 +4801,7 @@
     var head = '<div class="v-head"><span class="v-emo">' + c.emo + '</span><span class="v-title">' + esc(f.t || "Untitled") + '</span>' +
       (vfo ? '<span class="v-fold" style="color:oklch(0.45 0.16 ' + vfh + ');background:oklch(0.96 0.03 ' + vfh + ')">' + esc(vfo) + '</span>' : '') +
       (c.ctry && !vIsLegacy(c, it) ? '<span class="v-ctry ctry-' + vctryOf(it).toLowerCase() + '">' + esc(vctryL(vctryOf(it))) + '</span>' : '') +
+      (jp ? '<button class="v-lang" data-vact="vlang" title="Switch labels, \u756a\u5730 and phone between Japanese and English forms (remembered for this record on this device)"><b' + (lang === "ja" ? ' class="on"' : '') + '>\u65e5\u672c\u8a9e</b><b' + (lang === "en" ? ' class="on"' : '') + '>EN</b></button>' : '') +
       (vIsLegacy(c, it) ? '<span class="v-ctry legacy" title="Saved before v92 \u2014 Edit and pick a country to split it into fields">Old format</span>' : '') +
       (c.pb && String(f[c.pb] || "").trim() ? '<button class="v-cta pri" data-vact="copybody" title="' + esc(c.pl || "Copy the text only") + '">Copy ' + esc(c.one) + '</button>' : '') +
       '<button class="v-cta" data-vact="copyall" title="Copy the whole record' + (hasSec ? " \u2014 without secrets" : "") + '">Copy all</button>' +
@@ -4810,6 +4869,7 @@
       var v = String(f[fd.k] || "").trim(); if (!v) return;
       if (secretsOnly !== (fd.tp === "pass")) return;
       if (fd.tp === "big") { lines.push("", String(f[fd.k]).replace(/\s+$/, ""), ""); return; }
+      if (vIsJpAddr(c, it)) v = vView(c, it, fd.k).trim();   // v118: 番地 and phone in the record's 日本語 / English form
       lines.push(fd.cl ? fd.cl + ": " + v : v);
     });
     vXs(it).forEach(function (r) {
@@ -5054,12 +5114,14 @@
         if (va === "copybody") { if (vc && vc.pb) vCopy(String((vit.f || {})[vc.pb] || ""), false); return; }
         if (va === "copysec") { if (vc) vCopy(vCopyText(vc, vit, true), true); return; }
         var vf = vb.getAttribute("data-vf");
-        if (va === "copyzk") { vCopy(toZenkaku(String((vit.f || {})[vf] || "")), false); return; }
+        if (va === "copyzk") { vCopy(toZenkaku(vView(vc, vit, vf)), false); return; }
+        if (va === "copyjp") { vCopy(vJpCopy(vit, vf), false); return; }
+        if (va === "vlang") { vSetLang(vit, vLang(vit) === "ja" ? "en" : "ja"); renderChats(); return; }
         if (va === "reveal") { var vkk = vid + "|" + vf; VREVEAL[vkk] = !VREVEAL[vkk]; renderChats(); return; }
         if (va === "copy") {
           var mx = /^x(\d+)$/.exec(vf);
           if (mx) { var xr = vXs(vit)[+mx[1]] || {}; vCopy(String(xr.v || ""), !!xr.s); return; }
-          var vfd = null; if (vc) vfs(vc, vit).forEach(function (x) { if (x.k === vf) vfd = x; }); vCopy(String((vit.f || {})[vf] || ""), !!(vfd && vfd.tp === "pass")); return;
+          var vfd = null; if (vc) vfs(vc, vit).forEach(function (x) { if (x.k === vf) vfd = x; }); vCopy(vc ? vView(vc, vit, vf) : String((vit.f || {})[vf] || ""), !!(vfd && vfd.tp === "pass")); return;
         }
         return;
       }

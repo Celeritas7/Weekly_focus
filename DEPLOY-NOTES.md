@@ -1,3 +1,26 @@
+# v118 — Vault copy helpers for Japanese addresses (Phase 5) · built on v117
+
+Upload these three files, then reload twice on every device:
+- `js/weekly-focus-app.js`
+- `css/weekly-focus.css`
+- `sw.js` (cache → `weekly-focus-v118`)
+
+**No SQL ships with this build.** Nothing about how records are stored changes.
+
+## What changed (Vault → Addresses, records with the Japan country only)
+1. **日本語 / EN switch** on each record's header. It switches the field labels, how 番地 is shown and the phone format. The choice is remembered per record on this device (`wf_vlang`); records start in 日本語.
+2. **番地:** a stored `1-1-22` shows and copies as `1丁目1番22号` in 日本語, and as `1-1-22` in EN. A button copies the other form. Only a final block of three numbers is converted, so a town name or `1-1-22-305` is left alone.
+3. **Postal code halves:** buttons `336` and `0025` copy each half, for forms with two boxes.
+4. **Phone:** shown and copied as `090-1234-5678` (日本語) or `+81 90-1234-5678` (EN). Typed as `+81…`, full-width or without hyphens, it is still recognised. A button copies the digits only (`09012345678`). Numbers that aren't Japanese are left as typed.
+5. **Copy all** and **全角** use the same forms as the record shows.
+6. Phones: the record header wraps its buttons below the title instead of squeezing it.
+
+## Check after upload
+1. Footer reads **build v118 · opens offline · vault copy helpers**.
+2. Open a Japan address. Tap **336** → paste gives `336`. Tap **EN** → 番地 shows `1-1-22` and the phone `+81 …`.
+
+---
+
 # v117 — Set logo · built on v116
 
 Upload these five files, then reload twice on every device:
