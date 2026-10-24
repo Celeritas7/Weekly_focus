@@ -1,3 +1,27 @@
+# v119 — Open all quick links · built on v118
+
+Upload these three files, then reload twice on every device:
+- `js/weekly-focus-app.js`
+- `css/weekly-focus.css`
+- `sw.js` (cache → `weekly-focus-v119`)
+
+**No SQL ships with this build.**
+
+## What changed
+Under a card's **Quick links** there is now an **Open all · N** button and one chip per kind of link the card has:
+Claude design · Claude AI · Claude Code · Live app · GitHub · PC folder · Other.
+- **Open all** opens every link whose kind is ticked, each in its own tab. PC folders go to the launcher (or the path is copied, as before).
+- **Tap a chip** to skip or include that kind. The choice applies to every card and syncs across devices (`meta.lkOff`). Everything is ticked to start with.
+- The kind comes from the address, not the label, so "Cladue AI" and "Claude AI" count the same. Placeholder links such as `https://111` never open.
+
+**One-time browser step:** the first time, the browser lets only one tab through and blocks the rest. A message says so. Click the pop-up icon in the address bar, choose **Always allow pop-ups** for this site, and tap Open all again. Phones usually open only the first link.
+
+## Check after upload
+1. Footer reads **build v119 · opens offline · open all links**.
+2. Open a card with several links → **Open all** → allow pop-ups once → all ticked links open.
+
+---
+
 # v118 — Vault copy helpers for Japanese addresses (Phase 5) · built on v117
 
 Upload these three files, then reload twice on every device:
