@@ -384,13 +384,62 @@
     if (ids.indexOf(sel.folder) >= 0) sel.folder = ""; if (!cur()) sel.file = "";
     saveSel(); paintTree(); paintViewer();
   }
+  /* ---- v120: download a folder as one .zip (stored, no compression; built in the browser, works offline) ---- */
+  var CRC_T = null;
+  function crc32(b) {
+    if (!CRC_T) { CRC_T = new Uint32Array(256); for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; CRC_T[n] = c >>> 0; } }
+    var x = 0xFFFFFFFF; for (var i = 0; i < b.length; i++) x = CRC_T[(x ^ b[i]) & 255] ^ (x >>> 8); return (x ^ 0xFFFFFFFF) >>> 0;
+  }
+  function dosTime(ms) {
+    var d = new Date(ms || Date.now()); if (d.getFullYear() < 1980) d = new Date(1980, 0, 1);
+    return { t: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), d: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() };
+  }
+  /* entries: [{ path: "a/b.txt" or "a/" for a folder, data: Uint8Array, u: ms }] → Blob (UTF-8 names, flag 0x0800) */
+  function zipBlob(entries) {
+    var enc = new TextEncoder(), parts = [], central = [], off = 0;
+    entries.forEach(function (e) {
+      var nm = enc.encode(e.path), d = e.data || new Uint8Array(0), crc = crc32(d), t = dosTime(e.u);
+      var h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+      h.setUint16(10, t.t, true); h.setUint16(12, t.d, true); h.setUint32(14, crc, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true);
+      h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+      parts.push(h.buffer, nm, d);
+      var c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+      c.setUint16(12, t.t, true); c.setUint16(14, t.d, true); c.setUint32(16, crc, true); c.setUint32(20, d.length, true); c.setUint32(24, d.length, true);
+      c.setUint16(28, nm.length, true); c.setUint16(30, 0, true); c.setUint16(32, 0, true); c.setUint16(34, 0, true); c.setUint16(36, 0, true);
+      c.setUint32(38, /\/$/.test(e.path) ? 0x10 : 0, true); c.setUint32(42, off, true);
+      central.push(c.buffer, nm); off += 30 + nm.length + d.length;
+    });
+    var cs = 0; central.forEach(function (x) { cs += x.byteLength; });
+    var z = new DataView(new ArrayBuffer(22));
+    z.setUint32(0, 0x06054b50, true); z.setUint16(8, entries.length, true); z.setUint16(10, entries.length, true); z.setUint32(12, cs, true); z.setUint32(16, off, true);
+    return new Blob(parts.concat(central, [z.buffer]), { type: "application/zip" });
+  }
+  function safeName(n) { return String(n || "untitled").replace(/[\\\/:*?"<>|]+/g, "_").replace(/^\.+$/, "_"); }
+  function zipFolder(fid) {
+    var f = items[fid]; if (!f) return;
+    var enc = new TextEncoder(), list = [], nFiles = 0, root = safeName(f.name);
+    (function walk(id, pre) {
+      list.push({ path: pre + "/", u: (items[id] && items[id].u) || 0 });   // keeps empty folders too
+      filesIn(id).forEach(function (r) { nFiles++; list.push({ path: pre + "/" + safeName(r.name), data: enc.encode(r.code || ""), u: r.u }); });
+      kids(id).forEach(function (k) { walk(k.id, pre + "/" + safeName(k.name)); });
+    })(fid, root);
+    if (!nFiles) { toast("“" + f.name + "” has no files to download."); return; }
+    var u = URL.createObjectURL(zipBlob(list)), a = document.createElement("a");
+    a.href = u; a.download = root + ".zip"; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(u); }, 4000);
+    toast("Downloading " + root + ".zip · " + nFiles + (nFiles === 1 ? " file" : " files"));
+  }
+  function countDeep(fid) { var n = filesIn(fid).length; kids(fid).forEach(function (k) { n += countDeep(k.id); }); return n; }
   function closePop() { var p = $("wfcPop"); if (p) p.remove(); }
   function folderMenu(btn, fid) {
     closePop(); var b = btn.getBoundingClientRect(), p = document.createElement("div"); p.className = "wfc-pop"; p.id = "wfcPop";
-    p.innerHTML = '<button type="button" data-fa="sub">New folder inside</button><button type="button" data-fa="ren">Rename</button><button type="button" class="danger" data-fa="del">Delete folder</button>';
-    p.style.top = Math.min(window.innerHeight - 140, b.bottom + 4) + "px"; p.style.left = Math.max(8, Math.min(window.innerWidth - 180, b.right - 170)) + "px";
+    p.innerHTML = '<button type="button" data-fa="zip">Download as .zip · ' + countDeep(fid) + '</button><button type="button" data-fa="sub">New folder inside</button><button type="button" data-fa="ren">Rename</button><button type="button" class="danger" data-fa="del">Delete folder</button>';
+    p.style.top = Math.min(window.innerHeight - 180, b.bottom + 4) + "px"; p.style.left = Math.max(8, Math.min(window.innerWidth - 180, b.right - 170)) + "px";
     p.addEventListener("click", function (e) {
       var a = e.target.closest("[data-fa]"); if (!a) return; var k = a.getAttribute("data-fa"), f = items[fid]; closePop(); if (!f) return;
+      if (k === "zip") { zipFolder(fid); return; }
       if (k === "sub") { var nm = prompt("Name for the new folder inside “" + f.name + "”"); if (nm && nm.trim()) { var nf = newFolder(nm.trim(), fid); openF[fid] = 1; sel.folder = nf.id; saveSel(); paintTree(); } }
       else if (k === "ren") { var nn = prompt("Rename folder", f.name); if (nn && nn.trim()) { f.name = nn.trim(); save(f); paintTree(); paintTop(); } }
       else if (k === "del") delFolder(fid);
@@ -502,7 +551,7 @@
     paintTree(); paintViewer();
     if (lsGet(TAB_KEY) === "scrCode") show();
     var n = 0, iv = setInterval(function () { if (sb() || ++n > 100) { clearInterval(iv); if (sb()) { pull(); sb().auth.onAuthStateChange(function (ev) { if (ev === "SIGNED_IN" || ev === "TOKEN_REFRESHED") pull(); }); } } }, 150);
-    window.__wfCode = { files: function () { return all("file").length; }, folders: function () { return all("folder").length; }, pull: pull,
+    window.__wfCode = { zipBlob: zipBlob, files: function () { return all("file").length; }, folders: function () { return all("folder").length; }, pull: pull,
       add: function (name, text, dirs) { return importList([{ name: name, size: text.length, read: function () { return Promise.resolve(text); }, dirs: dirs || [] }], sel.folder); } };
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();

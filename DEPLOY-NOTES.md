@@ -1,3 +1,21 @@
+# v120 — download a Code folder as .zip · built on v119
+
+Upload these three files, then reload twice on every device:
+- `js/wf-code.js`
+- `js/weekly-focus-app.js` (build number and footer only)
+- `sw.js` (cache → `weekly-focus-v120`)
+
+**No SQL ships with this build.**
+
+## What changed
+Code tab → a folder's **⋯** menu → **Download as .zip · N**. One `<folder>.zip` with every file in that folder and its subfolders, names and folder structure kept (empty subfolders too). The zip is built in the browser, so it also works offline. Characters a computer won't allow in a file name (`/ \ : * ? " < > |`) become `_`.
+
+## Check after upload
+1. Footer reads **build v120 · opens offline · folder zip**.
+2. Code → ⋯ on a folder → Download as .zip → the zip opens in Explorer / Finder with every file.
+
+---
+
 # v119 — Open all quick links · built on v118
 
 Upload these three files, then reload twice on every device:

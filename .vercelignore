@@ -1,0 +1,10 @@
+# Vercel serves this repo as plain static files (no build step).
+# Keep old copies of the app and repo-only material off the Vercel site.
+# This file has no effect on GitHub Pages.
+Attempt_*/
+Temp/
+docs/
+migrations/
+Chats Demo.html
+run-weekly-focus.bat
+*.md
