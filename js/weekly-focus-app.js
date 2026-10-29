@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v123", BUILD_N = 123;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v124", BUILD_N = 124;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -3084,7 +3084,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 share code";   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 sign-in text";   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -3100,7 +3100,7 @@
   function cloudSetStatus(html, warn) { var el = $("cloudStatus"); if (!el) return; el.innerHTML = html; el.className = "dstatus" + (warn ? " warn" : ""); }
   function cloudSummary() {
     if (!cloudConfigured()) return "Cloud is off. Enter your project details above, then <b>Save connection</b>.";
-    if (!signedIn()) return "Connected to board <b>" + esc(cloud.board) + "</b> \u2014 not signed in on this device yet. Send yourself a magic link below and open it <b>on this device</b>.";
+    if (!signedIn()) return "Connected to board <b>" + esc(cloud.board) + "</b> \u2014 not signed in on this device yet. Enter your email below, then type the <b>6-digit code</b> from the email.";
     var n = pendingCount();
     var empty = !state.apps.length && !state.study.length && !(state.office || []).length && !Object.keys(entries).length;
     return "Syncing board <b>" + esc(cloud.board) + "</b> as <b>" + esc(session.user.email || "you") + "</b>." + (n ? " " + n + " change" + (n > 1 ? "s" : "") + " waiting to upload." : " Everything is up to date.") + (n && OB_ERR ? " Last error: <b>" + esc(OB_ERR) + "</b>" : "") +
@@ -3130,7 +3130,7 @@
     if (!t.ok) { cloudSetStatus(t.msg, true); updateCloudStatus(); return false; }
     ensureClient(); renderAuthUI(); updateCloudStatus();
     if (syncReady()) { initialSync(); cloudSetStatus("Connection verified \u2713 \u2014 board <b>" + esc(cloud.board) + "</b> is syncing."); }
-    else cloudSetStatus("Connection verified \u2713 Now send yourself a <b>magic link</b> below and open it <b>on this device</b> to start syncing board <b>" + esc(cloud.board) + "</b>.");
+    else cloudSetStatus("Connection verified \u2713 Now enter your email below and type the <b>6-digit code</b> from the email to start syncing board <b>" + esc(cloud.board) + "</b>.");
     return true;
   }
   function fillCloud() {}   // connection fields are gone — the build is pre-wired via config.js

@@ -1,3 +1,14 @@
+# v124 — sign-in text brought up to date · built on v123
+
+Upload `index.html`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v124`). **No SQL ships with this build.**
+
+- Sign-in banner: "nothing is stored locally" removed. It was no longer true (unsent edits, settings and Code tab files are kept on the device).
+- Cloud sync window and its status lines: "magic link" replaced by the real flow, your email plus the 6-digit code from the email.
+
+Check: footer reads **build v124 · opens offline · sign-in text**.
+
+---
+
 # v123 — share links on snippet-room.vercel.app · built on v122
 
 Upload `js/config.js` (`shareBase` → `https://snippet-room.vercel.app/code`), `js/weekly-focus-app.js` (build number) and `sw.js` (cache → `weekly-focus-v123`). **No SQL ships with this build.**
