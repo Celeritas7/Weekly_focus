@@ -671,7 +671,7 @@ button { font-family: inherit; }
 .cloud-pill.auth { color: #9a6a18; background: oklch(0.96 0.04 80); border-color: oklch(0.88 0.07 80); }
 .cloud-pill.ok { color: oklch(0.46 0.12 152); background: var(--on-soft); border-color: oklch(0.85 0.07 152); }
 .cloud-pill.warn { color: #9a4a2a; background: oklch(0.96 0.04 50); border-color: oklch(0.88 0.07 50); }
-.buildtag { margin-right: auto; align-self: center; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.buildtag { margin-right: auto; align-self: center; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); flex: 1 1 auto; min-width: 0; padding-right: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* v125: one line on phones; full text in the tooltip */
 @media (max-width: 760px) { .cloud-pill { order: 4; } }
 
 /* toast */

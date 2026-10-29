@@ -1,3 +1,13 @@
+# v125 — Cloud sync footer stays on one line on phones · built on v124
+
+Upload `css/weekly-focus.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v125`). **No SQL ships with this build.**
+
+On phones 360 px wide or narrower, the build line at the bottom of the Cloud sync window broke onto two lines. It now stays on one line and ends with "…" when space runs out; the build number always shows, and the full text appears on hover / long-press.
+
+Check: footer reads **build v125 · opens offline · phone footer** (on a narrow phone: "BUILD V125 · OPENS OFFLINE …").
+
+---
+
 # v124 — sign-in text brought up to date · built on v123
 
 Upload `index.html`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v124`). **No SQL ships with this build.**
