@@ -113,7 +113,7 @@
       if (changed) paintTree();
       if (openChanged && ver < 0) paintViewer();
     } catch (e) { syncErr = "Couldn't reach the cloud. Everything is saved on this device."; }
-    pulling = false; paintFoot();
+    pulling = false; paintFoot(); loadShares();
   }
 
   /* ---------- adding files ---------- */
@@ -208,6 +208,11 @@
     ".wfc-row.hot{box-shadow:inset 0 0 0 2px var(--brand)!important;background:var(--brand-soft)}" +
     ".wfc-car{border:0;background:none;padding:0;width:16px;height:16px;flex:0 0 16px;display:grid;place-items:center;color:var(--faint);cursor:pointer;transition:transform .12s}.wfc-car.open{transform:rotate(90deg)}" +
     ".wfc-fi{flex:0 0 auto;color:oklch(0.74 0.12 80)}" +
+    ".wfc-pub{font-size:11px;margin-left:4px;flex:0 0 auto}" +
+    ".wfc-share{max-width:460px}.wfc-sh-h{display:flex;align-items:center;justify-content:space-between;font-size:15px}.wfc-sh-x{border:0;background:none;font-size:20px;cursor:pointer;color:var(--mid)}" +
+    ".wfc-sh-t{color:var(--mid);line-height:1.45}.wfc-sh-sw{display:flex;align-items:center;gap:8px;font-weight:700;cursor:pointer}.wfc-sh-sw input{width:18px;height:18px;accent-color:var(--brand)}" +
+    ".wfc-sh-row{display:flex;gap:6px}.wfc-sh-row input{flex:1;min-width:0;border:1px solid var(--hair);border-radius:8px;padding:7px 9px;font:inherit;font-size:12.5px;background:var(--card-2,#fafaf7)}" +
+    ".wfc-sh-row2{display:flex;align-items:center;justify-content:space-between;gap:8px}.wfc-sh-open{color:var(--brand);font-weight:700;font-size:13px}.wfc-sh-msg{font-size:12.5px;color:var(--mid)}.wfc-sh-msg.err{color:var(--pri-h,#c0392b)}" +
     ".wfc-dots{border:0;background:none;color:var(--mid);cursor:pointer;padding:0 6px;font-size:16px;line-height:1;opacity:0}.wfc-row:hover .wfc-dots,.wfc-dots:focus{opacity:1}@media(hover:none){.wfc-dots{opacity:1}}" +
     ".wfc-ext{flex:0 0 32px;font:700 9px/1 " + MONO + ";padding:4px 0;border-radius:4px;background:#eceae5;color:var(--mid);text-align:center;text-transform:uppercase}" +
     ".wfc-ext[data-l=JavaScript],.wfc-ext[data-l=TypeScript]{background:oklch(0.95 0.06 95);color:oklch(0.45 0.1 80)}.wfc-ext[data-l=Python]{background:oklch(0.95 0.04 240);color:oklch(0.45 0.12 240)}.wfc-ext[data-l=SQL]{background:oklch(0.95 0.04 200);color:oklch(0.45 0.1 200)}.wfc-ext[data-l=HTML]{background:oklch(0.95 0.04 30);color:oklch(0.5 0.15 30)}.wfc-ext[data-l=CSS]{background:oklch(0.95 0.04 283);color:oklch(0.5 0.15 283)}.wfc-ext[data-l=JSON]{background:oklch(0.95 0.03 150);color:oklch(0.45 0.1 150)}" +
@@ -275,13 +280,13 @@
     var ql = q.trim().toLowerCase(), h = "";
     var match = ql ? function (f) { return f.name.toLowerCase().indexOf(ql) >= 0 || f.code.toLowerCase().indexOf(ql) >= 0; } : null;
     function has(fid) { return filesIn(fid).some(match) || kids(fid).some(function (k) { return has(k.id); }); }
-    h += '<div class="wfc-row wfc-root' + (sel.folder === "" ? " tgt" : "") + '" data-fid="" style="--d:0"><span class="nm">ALL CODE</span><em>' + all("file").length + '</em></div>';
+    h += '<div class="wfc-row wfc-root' + (sel.folder === "" ? " tgt" : "") + '" data-fid="" style="--d:0"><span class="nm">ALL CODE</span>' + (isShared("") ? '<span class="wfc-pub" title="Shared by link">\ud83d\udd17</span>' : '') + '<em>' + all("file").length + '</em><button type="button" class="wfc-dots" data-rmenu="1" aria-label="All code actions">\u22ef</button></div>';
     var shown = 0;
     (function walk(fid, d) {
       kids(fid).forEach(function (f) {
         if (match && !has(f.id)) return;
         var open = match ? true : !!openF[f.id];
-        h += '<div class="wfc-row wfc-fold' + (sel.folder === f.id ? " tgt" : "") + '" data-fid="' + f.id + '" style="--d:' + d + '"><button type="button" class="wfc-car' + (open ? " open" : "") + '" data-car="' + f.id + '" aria-label="' + (open ? "Close" : "Open") + ' folder">' + CAR + '</button>' + FOLD + '<span class="nm">' + esc(f.name) + '</span><em>' + countIn(f.id) + '</em><button type="button" class="wfc-dots" data-fmenu="' + f.id + '" aria-label="Folder actions">⋯</button></div>';
+        h += '<div class="wfc-row wfc-fold' + (sel.folder === f.id ? " tgt" : "") + '" data-fid="' + f.id + '" style="--d:' + d + '"><button type="button" class="wfc-car' + (open ? " open" : "") + '" data-car="' + f.id + '" aria-label="' + (open ? "Close" : "Open") + ' folder">' + CAR + '</button>' + FOLD + '<span class="nm">' + esc(f.name) + '</span>' + (isShared(f.id) ? '<span class="wfc-pub" title="Shared by link">\ud83d\udd17</span>' : '') + '<em>' + countIn(f.id) + '</em><button type="button" class="wfc-dots" data-fmenu="' + f.id + '" aria-label="Folder actions">⋯</button></div>';
         if (open) walk(f.id, d + 1);
       });
       filesIn(fid).forEach(function (r) {
@@ -385,37 +390,7 @@
     saveSel(); paintTree(); paintViewer();
   }
   /* ---- v120: download a folder as one .zip (stored, no compression; built in the browser, works offline) ---- */
-  var CRC_T = null;
-  function crc32(b) {
-    if (!CRC_T) { CRC_T = new Uint32Array(256); for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; CRC_T[n] = c >>> 0; } }
-    var x = 0xFFFFFFFF; for (var i = 0; i < b.length; i++) x = CRC_T[(x ^ b[i]) & 255] ^ (x >>> 8); return (x ^ 0xFFFFFFFF) >>> 0;
-  }
-  function dosTime(ms) {
-    var d = new Date(ms || Date.now()); if (d.getFullYear() < 1980) d = new Date(1980, 0, 1);
-    return { t: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), d: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() };
-  }
-  /* entries: [{ path: "a/b.txt" or "a/" for a folder, data: Uint8Array, u: ms }] → Blob (UTF-8 names, flag 0x0800) */
-  function zipBlob(entries) {
-    var enc = new TextEncoder(), parts = [], central = [], off = 0;
-    entries.forEach(function (e) {
-      var nm = enc.encode(e.path), d = e.data || new Uint8Array(0), crc = crc32(d), t = dosTime(e.u);
-      var h = new DataView(new ArrayBuffer(30));
-      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
-      h.setUint16(10, t.t, true); h.setUint16(12, t.d, true); h.setUint32(14, crc, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true);
-      h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
-      parts.push(h.buffer, nm, d);
-      var c = new DataView(new ArrayBuffer(46));
-      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
-      c.setUint16(12, t.t, true); c.setUint16(14, t.d, true); c.setUint32(16, crc, true); c.setUint32(20, d.length, true); c.setUint32(24, d.length, true);
-      c.setUint16(28, nm.length, true); c.setUint16(30, 0, true); c.setUint16(32, 0, true); c.setUint16(34, 0, true); c.setUint16(36, 0, true);
-      c.setUint32(38, /\/$/.test(e.path) ? 0x10 : 0, true); c.setUint32(42, off, true);
-      central.push(c.buffer, nm); off += 30 + nm.length + d.length;
-    });
-    var cs = 0; central.forEach(function (x) { cs += x.byteLength; });
-    var z = new DataView(new ArrayBuffer(22));
-    z.setUint32(0, 0x06054b50, true); z.setUint16(8, entries.length, true); z.setUint16(10, entries.length, true); z.setUint32(12, cs, true); z.setUint32(16, off, true);
-    return new Blob(parts.concat(central, [z.buffer]), { type: "application/zip" });
-  }
+  function zipBlob(entries) { return window.WFZip.blob(entries); }   // v121: the writer lives in wf-zip.js (the share page uses it too)
   function safeName(n) { return String(n || "untitled").replace(/[\\\/:*?"<>|]+/g, "_").replace(/^\.+$/, "_"); }
   function zipFolder(fid) {
     var f = items[fid]; if (!f) return;
@@ -432,14 +407,80 @@
     toast("Downloading " + root + ".zip · " + nFiles + (nFiles === 1 ? " file" : " files"));
   }
   function countDeep(fid) { var n = filesIn(fid).length; kids(fid).forEach(function (k) { n += countDeep(k.id); }); return n; }
+  /* ---- v121: share a folder (or All code) by link. Anyone with the link reads it live, read-only, via share.html.
+     Links live in wf_code_shares (owner-only RLS); the public reads go through wf_code_shared_list / _file. ---- */
+  var SHARES = {}, SHARES_ST = "unknown";   // folder_id ('' = All code) → { token, enabled }
+  async function loadShares() {
+    var c = sb(), u = await user(); if (!c || !u) return;
+    try {
+      var r = await c.from("wf_code_shares").select("folder_id,token,enabled");
+      if (r.error) { SHARES_ST = /does not exist|could not find|PGRST205|42P01/i.test((r.error.code || "") + " " + (r.error.message || "")) ? "missing" : "error"; return; }
+      SHARES = {}; (r.data || []).forEach(function (x) { SHARES[x.folder_id || ""] = { token: x.token, enabled: !!x.enabled }; });
+      SHARES_ST = "ok"; paintTree();
+    } catch (e) { SHARES_ST = "error"; }
+  }
+  function isShared(fid) { var x = SHARES[fid || ""]; return !!(x && x.enabled); }
+  function newToken() { var a = new Uint8Array(24); crypto.getRandomValues(a); return btoa(String.fromCharCode.apply(null, a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+  function shareUrl(tok) { return new URL("share.html#" + tok, location.href).href; }
+  async function shareWrite(fid, patch) {
+    var c = sb(), u = await user(); if (!c || !u) throw new Error("Sign in first.");
+    var cur = SHARES[fid], row = { user_id: u.id, folder_id: fid, token: (cur && cur.token) || newToken(), enabled: cur ? cur.enabled : true, updated_at: new Date().toISOString() };
+    Object.keys(patch).forEach(function (k) { row[k] = patch[k]; });
+    var r = await c.from("wf_code_shares").upsert(row, { onConflict: "user_id,folder_id" });
+    if (r.error) throw new Error(/does not exist|could not find/i.test(r.error.message || "") ? "Sharing needs the database update (migration 20261029_01) first." : r.error.message);
+    SHARES[fid] = { token: row.token, enabled: row.enabled }; SHARES_ST = "ok"; paintTree();
+  }
+  function openShare(fid) {
+    var m = $("wfcModal"), f = fid ? items[fid] : null, label = fid ? (f ? f.name : "Folder") : "All code";
+    function paint(msg, err) {
+      var x = SHARES[fid], on = !!(x && x.enabled), url = x ? shareUrl(x.token) : "";
+      m.innerHTML = '<div class="wfc-mbox wfc-share" data-sh="stay"><div class="wfc-sh-h"><b>Share \u201c' + esc(label) + '\u201d</b><button type="button" class="wfc-sh-x" data-sh="close" aria-label="Close">\u00d7</button></div>' +
+        '<div class="wfc-sh-t">Anyone with the link sees ' + (fid ? 'this folder and everything inside it' : 'every file in your Code tab') + ', read-only, without signing in. They always see the current files.</div>' +
+        '<label class="wfc-sh-sw"><input type="checkbox" id="wfcShOn"' + (on ? " checked" : "") + '> <span>' + (on ? "Link is on" : "Link is off") + '</span></label>' +
+        (x ? '<div class="wfc-sh-row"><input type="text" id="wfcShUrl" readonly value="' + esc(url) + '"' + (on ? "" : " disabled") + '><button type="button" class="tbtn primary" data-sh="copy"' + (on ? "" : " disabled") + '>Copy</button></div>' +
+          '<div class="wfc-sh-row2"><a class="wfc-sh-open" href="' + esc(url) + '" target="_blank" rel="noopener"' + (on ? "" : ' hidden') + '>Open the shared view \u2197</a><button type="button" class="tbtn" data-sh="new">New link</button></div>' : '') +
+        '<div class="wfc-sh-msg' + (err ? " err" : "") + '" role="status">' + esc(msg || (on ? "Turning it off stops the link at once; turning it on again brings back the same link." : x ? "The link is off. Nobody can open it." : "Switch it on to make a link.")) + '</div></div>';
+      m.classList.add("on");
+    }
+    function run(job, done) {
+      paint("Saving\u2026"); job().then(function () { paint(done); }, function (e) { paint(e.message || "That didn't work.", true); });
+    }
+    m.onclick = function (e) {
+      var a = e.target.closest("[data-sh]"), k = a && a.getAttribute("data-sh");
+      if (e.target === m || k === "close") { m.classList.remove("on"); m.onclick = null; m.onchange = null; return; }
+      if (k === "copy") { var i = $("wfcShUrl"); if (i) { navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(i.value).then(function () { paint("Link copied. Send it to your friend."); }, function () { i.select(); }) : i.select(); } }
+      else if (k === "new") { if (confirm("Make a new link? The old one stops working right away.")) run(function () { return shareWrite(fid, { token: newToken(), enabled: true }); }, "New link made. The old one no longer works."); }
+    };
+    m.onchange = function (e) { if (e.target.id === "wfcShOn") { var v = e.target.checked; run(function () { return shareWrite(fid, { enabled: v }); }, v ? "Link is on. Copy it and send it." : "Link is off. Nobody can open it now."); } };
+    paint(SHARES_ST === "missing" ? "Sharing needs the database update (migration 20261029_01) first." : "", SHARES_ST === "missing");
+  }
+  function rootMenu(btn) {
+    closePop(); var b = btn.getBoundingClientRect(), p = document.createElement("div"); p.className = "wfc-pop"; p.id = "wfcPop";
+    p.innerHTML = '<button type="button" data-fa="share">' + (isShared("") ? "\ud83d\udd17 Shared \u00b7 manage link" : "Share all code by link\u2026") + '</button><button type="button" data-fa="zipall">Download all as .zip \u00b7 ' + all("file").length + '</button>';
+    p.style.top = Math.min(window.innerHeight - 120, b.bottom + 4) + "px"; p.style.left = Math.max(8, Math.min(window.innerWidth - 220, b.right - 210)) + "px";
+    p.addEventListener("click", function (e) { var a = e.target.closest("[data-fa]"); if (!a) return; var k = a.getAttribute("data-fa"); closePop(); if (k === "share") openShare(""); else if (k === "zipall") zipAll(); });
+    document.body.appendChild(p);
+  }
+  function zipAll() {
+    var enc = new TextEncoder(), list = [], n = 0;
+    (function walk(id, pre) {
+      filesIn(id).forEach(function (r) { n++; list.push({ path: pre + safeName(r.name), data: enc.encode(r.code || ""), u: r.u }); });
+      kids(id).forEach(function (k) { var pp = pre + safeName(k.name) + "/"; list.push({ path: pp, u: k.u }); walk(k.id, pp); });
+    })("", "code/");
+    if (!n) { toast("No files to download."); return; }
+    list.unshift({ path: "code/", u: Date.now() });
+    var u = URL.createObjectURL(zipBlob(list)), a = document.createElement("a"); a.href = u; a.download = "code.zip"; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(u); }, 4000); toast("Downloading code.zip \u00b7 " + n + (n === 1 ? " file" : " files"));
+  }
   function closePop() { var p = $("wfcPop"); if (p) p.remove(); }
   function folderMenu(btn, fid) {
     closePop(); var b = btn.getBoundingClientRect(), p = document.createElement("div"); p.className = "wfc-pop"; p.id = "wfcPop";
-    p.innerHTML = '<button type="button" data-fa="zip">Download as .zip · ' + countDeep(fid) + '</button><button type="button" data-fa="sub">New folder inside</button><button type="button" data-fa="ren">Rename</button><button type="button" class="danger" data-fa="del">Delete folder</button>';
-    p.style.top = Math.min(window.innerHeight - 180, b.bottom + 4) + "px"; p.style.left = Math.max(8, Math.min(window.innerWidth - 180, b.right - 170)) + "px";
+    p.innerHTML = '<button type="button" data-fa="share">' + (isShared(fid) ? "\ud83d\udd17 Shared \u00b7 manage link" : "Share by link\u2026") + '</button><button type="button" data-fa="zip">Download as .zip · ' + countDeep(fid) + '</button><button type="button" data-fa="sub">New folder inside</button><button type="button" data-fa="ren">Rename</button><button type="button" class="danger" data-fa="del">Delete folder</button>';
+    p.style.top = Math.min(window.innerHeight - 220, b.bottom + 4) + "px"; p.style.left = Math.max(8, Math.min(window.innerWidth - 180, b.right - 170)) + "px";
     p.addEventListener("click", function (e) {
       var a = e.target.closest("[data-fa]"); if (!a) return; var k = a.getAttribute("data-fa"), f = items[fid]; closePop(); if (!f) return;
       if (k === "zip") { zipFolder(fid); return; }
+      if (k === "share") { openShare(fid); return; }
       if (k === "sub") { var nm = prompt("Name for the new folder inside “" + f.name + "”"); if (nm && nm.trim()) { var nf = newFolder(nm.trim(), fid); openF[fid] = 1; sel.folder = nf.id; saveSel(); paintTree(); } }
       else if (k === "ren") { var nn = prompt("Rename folder", f.name); if (nn && nn.trim()) { f.name = nn.trim(); save(f); paintTree(); paintTop(); } }
       else if (k === "del") delFolder(fid);
@@ -454,6 +495,7 @@
       if (!e.target.closest("#wfcPop")) closePop();
       var car = e.target.closest("[data-car]"); if (car) { var cf = car.getAttribute("data-car"); openF[cf] = !openF[cf]; saveSel(); paintTree(); return; }
       var fm = e.target.closest("[data-fmenu]"); if (fm) { folderMenu(fm, fm.getAttribute("data-fmenu")); return; }
+      var rm = e.target.closest("[data-rmenu]"); if (rm) { rootMenu(rm); return; }
       var fr = e.target.closest(".wfc-fold,.wfc-root"); if (fr) { var fid = fr.getAttribute("data-fid") || ""; if (fid && sel.folder === fid) openF[fid] = !openF[fid]; else if (fid) openF[fid] = 1; sel.folder = fid; saveSel(); paintTree(); return; }
       var fi = e.target.closest(".wfc-file"); if (fi) { open(fi.getAttribute("data-id")); return; }
       var vr = e.target.closest("[data-ver]"); if (vr) { ver = +vr.getAttribute("data-ver"); var keep = showHist; paintViewer(); showHist = keep; paintTop(); return; }

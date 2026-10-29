@@ -3,14 +3,14 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v120";
+const CACHE = "weekly-focus-v121";
 /* v105: the Supabase library is cached too. Without it the app had no client offline, so the
    stored session could not be read and every offline open landed on the sign-in screen. */
 const SUPA = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
 const ASSETS = [
   "./", "./index.html",
   "./js/config.js", "./js/akatsuki-client.js", "./js/akatsuki-banner.js", "./js/wf-purchase-adapter.js", "./js/weekly-focus-app.js", "./js/info-feeds.js", "./js/wf-cc-bridge-v2.js",
-  "./css/weekly-focus.css", "./css/home-screens.css", "./css/wf-login.css", "./js/wf-login.js", "./js/wf-code-hl.js", "./js/wf-code.js", "./js/wf-logos.js", "./js/wf-sphere-draft.js", "./css/wf-sphere-draft.css",
+  "./css/weekly-focus.css", "./css/home-screens.css", "./css/wf-login.css", "./js/wf-login.js", "./js/wf-code-hl.js", "./js/wf-code.js", "./js/wf-logos.js", "./js/wf-sphere-draft.js", "./js/wf-zip.js", "./css/wf-sphere-draft.css",
   "./manifest.webmanifest",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png"
 ];
@@ -53,6 +53,8 @@ self.addEventListener("fetch", (e) => {
   if (url.searchParams.has("nocache")) return;
 
   // The page itself: network-first (so new versions land), cache fallback offline.
+  // v121: only the app's own page is cached as the offline shell; other pages (share.html) go straight to the network
+  if (req.mode === "navigate" && !/\/(index\.html)?$/.test(url.pathname)) return;
   if (req.mode === "navigate") {
     e.respondWith(
       fetch(req)
