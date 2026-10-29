@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Shared code</title>
+<link rel="icon" href="icons/icon-192.png">
+<style>
+  :root { --bg:#f4f3ef; --card:#fff; --card2:#fafaf7; --ink:#1d1d24; --mid:#666a73; --faint:#9a9ea6; --hair:#e4e4df; --brand:#5b4fd6; --brand-soft:#efedfb; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#15151b; --card:#1f1f27; --card2:#25252e; --ink:#ececf1; --mid:#a6a8b3; --faint:#7b7e89; --hair:#33333d; --brand:#9a8ff0; --brand-soft:#2b2840; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 14px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--hair); background: var(--card); position: sticky; top: 0; z-index: 5; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -.01em; min-width: 0; overflow-wrap: anywhere; }
+  .sub { color: var(--mid); font-size: 12px; margin-top: 2px; }
+  .grow { flex: 1 1 auto; min-width: 0; }
+  button, .btn { border: 1px solid var(--hair); background: var(--card); color: var(--ink); border-radius: 9px; height: 32px; padding: 0 12px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  button.pri { background: var(--brand); border-color: var(--brand); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px; padding: 16px 20px 28px; max-width: 1400px; margin: 0 auto; }
+  .tree, .view { background: var(--card); border: 1px solid var(--hair); border-radius: 14px; min-width: 0; }
+  .tree { padding: 6px; align-self: start; position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow: auto; }
+  .row { display: flex; align-items: center; gap: 7px; padding: 7px 8px 7px calc(8px + var(--d, 0) * 14px); border-radius: 8px; cursor: pointer; font-size: 13px; min-width: 0; }
+  .row:hover { background: var(--card2); }
+  .row.on { background: var(--brand-soft); font-weight: 700; }
+  .row.fold { color: var(--mid); font-weight: 700; cursor: default; }
+  .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row em { font-style: normal; color: var(--faint); font-size: 11px; }
+  .ext { font-size: 9.5px; font-weight: 800; text-transform: uppercase; color: var(--mid); background: var(--card2); border: 1px solid var(--hair); border-radius: 5px; padding: 1px 5px; min-width: 30px; text-align: center; }
+  .vbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--hair); }
+  .vbar b { font-size: 15px; overflow-wrap: anywhere; }
+  .code { overflow: auto; max-height: calc(100vh - 170px); font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .code table { border-collapse: collapse; width: 100%; }
+  .code td { padding: 0 12px; white-space: pre; vertical-align: top; }
+  .code td.n { color: var(--faint); text-align: right; user-select: none; width: 1%; border-right: 1px solid var(--hair); background: var(--card2); }
+  .code pre { margin: 0; padding: 10px 14px; white-space: pre; }
+  .empty { padding: 40px 20px; text-align: center; color: var(--mid); line-height: 1.5; }
+  .back { display: none; }
+  .note { font-size: 12px; color: var(--mid); padding: 0 14px 12px; }
+  .hl-com{color:#8a8a91;font-style:italic} .hl-str{color:oklch(0.48 0.12 150)} .hl-kw{color:oklch(0.5 0.17 283);font-weight:600} .hl-num{color:oklch(0.55 0.15 50)}
+  .hl-fn{color:oklch(0.47 0.13 240)} .hl-tag{color:oklch(0.5 0.16 20)} .hl-attr{color:oklch(0.48 0.12 230)} .hl-var{color:oklch(0.5 0.15 330)}
+  @media (prefers-color-scheme: dark) { .hl-str{color:oklch(0.78 0.12 150)} .hl-kw{color:oklch(0.78 0.13 283)} .hl-num{color:oklch(0.8 0.12 60)} .hl-fn{color:oklch(0.8 0.1 240)} .hl-tag{color:oklch(0.78 0.13 20)} .hl-attr{color:oklch(0.8 0.1 230)} .hl-var{color:oklch(0.8 0.12 330)} }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #1d1d24; color: #fff; padding: 9px 14px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
+  .toast.on { opacity: 1; }
+  @media (max-width: 760px) {
+    header { padding: 12px 16px; }
+    main { grid-template-columns: 1fr; padding: 12px 16px 24px; }
+    .tree { position: static; max-height: none; }
+    body.reading .tree { display: none; }
+    body:not(.reading) .view { display: none; }
+    .back { display: inline-flex; }
+    .code { max-height: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="grow"><h1 id="shTitle">Shared code</h1><div class="sub" id="shSub">Loading&hellip;</div></div>
+  <button type="button" id="shRefresh" title="Load the latest files">&#8635; Refresh</button>
+  <button type="button" class="pri" id="shZip" disabled>Download all (.zip)</button>
+</header>
+<main>
+  <nav class="tree" id="shTree" aria-label="Files"></nav>
+  <section class="view" id="shView"><div class="empty">Pick a file on the left.</div></section>
+</main>
+<div class="toast" id="shToast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/config.js"></script>
+<script src="js/wf-code-hl.js"></script>
+<script src="js/wf-zip.js"></script>
+<script src="js/wf-share.js"></script>
+</body>
+</html>

@@ -1,3 +1,30 @@
+# v121 — share Code folders by link · built on v120
+
+**SQL ships with this build:** run `migrations/20261029_01_wf_code_shares.sql` in Supabase → SQL Editor (all at once), then its VERIFY block. Until then the Share window says the database update is needed; nothing else changes.
+
+Upload these files, then reload twice on every device:
+- `share.html` (new) and `js/wf-share.js` (new): the read-only page your friend opens
+- `js/wf-zip.js` (new): the zip writer, now shared by the Code tab and the share page
+- `js/wf-code.js`, `index.html` (loads wf-zip.js), `js/weekly-focus-app.js` (build number, footer)
+- `sw.js` (cache → `weekly-focus-v121`; only the app's own page is cached as the offline shell now)
+
+## What changed
+- **Share by link.** Code → ⋯ on a folder → **Share by link…**, or ⋯ on **All code** → **Share all code by link…**. Switch **Link is on**, then **Copy** and send it.
+- **The link is fixed and live.** Your friend can keep it and open it any time; each open (and **Refresh**, and coming back to the tab) shows the current files. They can read, copy, download a file, or **Download all (.zip)**. No sign-in, no editing, nothing outside that folder.
+- **Off / on / new.** Switching it off stops the link at once; switching it on again brings back the same link. **New link** retires the old one for good.
+- **🔗** next to a folder (or All code) means it is shared.
+- **All code ⋯** also gets **Download all as .zip**.
+
+## How it is kept private
+`weekly_focus_entries` keeps its RLS unchanged. The share page reads only through `wf_code_shared_list` / `wf_code_shared_file`, which return files inside the shared folder for a valid, switched-on token and nothing else. The token is 32 random characters and sits after `#`, so it is not sent to servers in the request or the referrer.
+
+## Check after upload
+1. Footer reads **build v121 · opens offline · share code**.
+2. Share a folder → open the link in a private window → its files show; other folders don't.
+3. Switch the link off → Refresh in the private window → "This link is switched off".
+
+---
+
 # v120 — download a Code folder as .zip · built on v119
 
 Upload these three files, then reload twice on every device:
