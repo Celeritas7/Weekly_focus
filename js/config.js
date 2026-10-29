@@ -19,5 +19,5 @@ window.WF_CONFIG = {
   /* v122: where Code share links point. Empty = the address you're on (…/Weekly_focus/share.html#…).
      Set it to a neutral Vercel address added under Vercel → Project → Settings → Domains, e.g.
      "https://my-code.vercel.app/code" → links look like https://my-code.vercel.app/code#<token>. */
-  shareBase: ""
+  shareBase: "https://snippet-room.vercel.app/code"
 };

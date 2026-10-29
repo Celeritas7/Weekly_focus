@@ -1,3 +1,13 @@
+# v123 — share links on snippet-room.vercel.app · built on v122
+
+Upload `js/config.js` (`shareBase` → `https://snippet-room.vercel.app/code`), `js/weekly-focus-app.js` (build number) and `sw.js` (cache → `weekly-focus-v123`). **No SQL ships with this build.**
+
+The Share window now gives links like `https://snippet-room.vercel.app/code#<token>`. The token is unchanged, so a folder's link keeps working; only the address in front of it is new. Old `…/Weekly_focus/share.html#…` links keep working too.
+
+**Before merging:** the domain `snippet-room.vercel.app` must be added to the Vercel project (Settings → Domains). Check `https://snippet-room.vercel.app/code#test` shows "Link not available".
+
+---
+
 # v122 — cleaner share page, neutral share address · built on v121
 
 Upload: `share.html`, `js/wf-share.js`, `js/wf-code.js`, `js/config.js`, `vercel.json` (new), `js/weekly-focus-app.js` (build number), `sw.js` (cache → `weekly-focus-v122`). **No SQL ships with this build.**
