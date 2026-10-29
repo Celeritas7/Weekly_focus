@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Shared code</title>
-<link rel="icon" href="icons/icon-192.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%235b4fd6'/%3E%3Cpath d='M25 20 13 32l12 12M39 20l12 12-12 12' stroke='white' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   :root { --bg:#f4f3ef; --card:#fff; --card2:#fafaf7; --ink:#1d1d24; --mid:#666a73; --faint:#9a9ea6; --hair:#e4e4df; --brand:#5b4fd6; --brand-soft:#efedfb; }
   @media (prefers-color-scheme: dark) { :root { --bg:#15151b; --card:#1f1f27; --card2:#25252e; --ink:#ececf1; --mid:#a6a8b3; --faint:#7b7e89; --hair:#33333d; --brand:#9a8ff0; --brand-soft:#2b2840; } }
@@ -42,6 +42,12 @@
   .hl-com{color:#8a8a91;font-style:italic} .hl-str{color:oklch(0.48 0.12 150)} .hl-kw{color:oklch(0.5 0.17 283);font-weight:600} .hl-num{color:oklch(0.55 0.15 50)}
   .hl-fn{color:oklch(0.47 0.13 240)} .hl-tag{color:oklch(0.5 0.16 20)} .hl-attr{color:oklch(0.48 0.12 230)} .hl-var{color:oklch(0.5 0.15 330)}
   @media (prefers-color-scheme: dark) { .hl-str{color:oklch(0.78 0.12 150)} .hl-kw{color:oklch(0.78 0.13 283)} .hl-num{color:oklch(0.8 0.12 60)} .hl-fn{color:oklch(0.8 0.1 240)} .hl-tag{color:oklch(0.78 0.13 20)} .hl-attr{color:oklch(0.8 0.1 230)} .hl-var{color:oklch(0.8 0.12 330)} }
+  /* v122: a link that doesn't work shows one message and nothing else */
+  body.dead header, body.dead main { display: none; }
+  .dead-card { display: none; max-width: 420px; margin: 18vh auto 0; padding: 28px 24px; background: var(--card); border: 1px solid var(--hair); border-radius: 16px; text-align: center; }
+  body.dead .dead-card { display: block; }
+  .dead-card b { display: block; font-size: 17px; margin-bottom: 8px; }
+  .dead-card span { color: var(--mid); line-height: 1.5; }
   .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #1d1d24; color: #fff; padding: 9px 14px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
   .toast.on { opacity: 1; }
   @media (max-width: 760px) {
@@ -65,6 +71,7 @@
   <nav class="tree" id="shTree" aria-label="Files"></nav>
   <section class="view" id="shView"><div class="empty">Pick a file on the left.</div></section>
 </main>
+<div class="dead-card" role="alert"><b id="shDeadT">Link not available</b><span id="shDeadM"></span></div>
 <div class="toast" id="shToast" role="status"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="js/config.js"></script>

@@ -421,7 +421,10 @@
   }
   function isShared(fid) { var x = SHARES[fid || ""]; return !!(x && x.enabled); }
   function newToken() { var a = new Uint8Array(24); crypto.getRandomValues(a); return btoa(String.fromCharCode.apply(null, a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
-  function shareUrl(tok) { return new URL("share.html#" + tok, location.href).href; }
+  function shareUrl(tok) {   // v122: WF_CONFIG.shareBase (a neutral address) wins; otherwise the address you're on
+    var base = (window.WF_CONFIG && window.WF_CONFIG.shareBase) || "";
+    return base ? base.replace(/#.*$/, "") + "#" + tok : new URL("share.html#" + tok, location.href).href;
+  }
   async function shareWrite(fid, patch) {
     var c = sb(), u = await user(); if (!c || !u) throw new Error("Sign in first.");
     var cur = SHARES[fid], row = { user_id: u.id, folder_id: fid, token: (cur && cur.token) || newToken(), enabled: cur ? cur.enabled : true, updated_at: new Date().toISOString() };

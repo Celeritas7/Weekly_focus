@@ -1,3 +1,17 @@
+# v122 — cleaner share page, neutral share address · built on v121
+
+Upload: `share.html`, `js/wf-share.js`, `js/wf-code.js`, `js/config.js`, `vercel.json` (new), `js/weekly-focus-app.js` (build number), `sw.js` (cache → `weekly-focus-v122`). **No SQL ships with this build.**
+
+## What changed
+1. **A link that doesn't work shows one message** ("Link not available" + why) and nothing else: no empty file list, no Refresh / Download buttons.
+2. **Neutral tab icon** (`</>`) on the share page instead of the Weekly Focus icon.
+3. **Share links can live on a neutral address.** `js/config.js` → `shareBase`. Empty (default) keeps today's links (`…github.io/Weekly_focus/share.html#…`). Set it to a Vercel address of your choice and every link the Share window shows uses it.
+4. **`vercel.json`:** Vercel serves the share page at `/code` too, so a link can be `https://<name>.vercel.app/code#<token>`. GitHub Pages ignores this file.
+
+Links already sent keep working; only newly copied links use the new address.
+
+---
+
 # v121 — share Code folders by link · built on v120
 
 **SQL ships with this build:** run `migrations/20261029_01_wf_code_shares.sql` in Supabase → SQL Editor (all at once), then its VERIFY block. Until then the Share window says the database update is needed; nothing else changes.

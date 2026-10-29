@@ -16,10 +16,9 @@
   function byName(a, b) { return String(a.name).localeCompare(String(b.name), undefined, { numeric: true, sensitivity: "base" }); }
   function kids(pid) { return LIST.filter(function (x) { return x.kind === "folder" && x.parent === pid && x.id !== pid; }).sort(byName); }
   function filesIn(fid) { return LIST.filter(function (x) { return x.kind === "file" && x.parent === fid; }).sort(byName); }
-  function off(msg) {
-    $("shTitle").textContent = "Link not available"; $("shSub").textContent = "";
-    $("shTree").innerHTML = ""; $("shZip").disabled = true;
-    $("shView").innerHTML = '<div class="empty">' + esc(msg) + '</div>';
+  function off(msg) {   // v122: nothing but the message (no empty list, no buttons)
+    LIST = []; BY = {}; CUR = ""; $("shTree").innerHTML = ""; $("shView").innerHTML = ""; $("shZip").disabled = true;
+    $("shDeadM").textContent = msg; document.title = "Link not available"; document.body.classList.add("dead");
   }
 
   /* ---- data ---- */
@@ -37,6 +36,7 @@
       var top = ROOT ? BY[ROOT] : null;
       if (ROOT && !top) { off("This shared folder is empty or was deleted."); return; }
       if (top) top.parent = "\u0000";   // the shared folder is the top of this view
+      document.body.classList.remove("dead");
       var nf = LIST.filter(function (x) { return x.kind === "file"; }).length;
       $("shTitle").textContent = top ? top.name : "All code";
       $("shSub").textContent = nf + (nf === 1 ? " file" : " files") + " · read-only · live, updated " + new Date().toTimeString().slice(0, 5);
