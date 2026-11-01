@@ -4819,14 +4819,17 @@
      src {app:"tapal", kind, id, at}. Reading goes through Akatsuki's shared view, never Tapal's own tables.
      Re-running updates a copy only if it was not edited in WF since the last import. ---- */
   var ADDR_VIEW = "akatsuki_addresses";
-  function jpAddrRow(a) { return String(a.country || "").toUpperCase() === "JP" || /[\u90fd\u9053\u5e9c\u770c]$/.test(String(a.state || "").trim()); }
+  function jpAddrRow(a) {   // Tapal stores no country for addresses: JP if said so, if the pin looks like NNN-NNNN, or the state is a 都道府県
+    var pin = vNorm(null, String(a.pin || "")).trim();
+    return String(a.country || "").toUpperCase() === "JP" || /^\u3012?\s*\d{3}-\d{4}$/.test(pin) || /[\u90fd\u9053\u5e9c\u770c]$/.test(String(a.state || "").trim());
+  }
   function tapalToVault(a) {
     function n(v) { return vNorm(null, v == null ? "" : String(v)).trim(); }
     var f, t = n(a.label) || n(a.name) || "Tapal address";
     if (jpAddrRow(a)) {
       var nm = n(a.name).split(/\s+/).filter(Boolean), pc = n(a.pin).replace(/^\u3012\s*/, "").replace(/\s+/g, "");
       if (/^\d{7}$/.test(pc)) pc = pc.slice(0, 3) + "-" + pc.slice(3);
-      f = { ctry: "JP", t: t, first: nm.length > 1 ? nm.slice(0, -1).join(" ") : (nm[0] || ""), last: nm.length > 1 ? nm[nm.length - 1] : "",
+      f = { ctry: "JP", t: t, first: nm.length > 1 ? nm.slice(0, -1).join(" ") : "", last: nm.length > 1 ? nm[nm.length - 1] : n(a.name),   // can't split safely → all of it in 姓
         postal_code: pc, prefecture: n(a.state), city: [n(a.city), n(a.district)].filter(Boolean).join(" "), street: n(a.line), ph: n(a.phone), note: n(a.notes) };
     } else {
       f = { ctry: "IN", t: t, name: n(a.name), house: n(a.line), city: n(a.city), district: n(a.district), state: n(a.state), pin: n(a.pin), ph: n(a.phone), note: n(a.notes) };
@@ -4840,10 +4843,12 @@
     sb.from(ADDR_VIEW).select("*").then(function (r) {
       if (r.error) throw r.error;
       var rows = (r.data || []).filter(function (a) { return !a.archived && !a.retired && !a.retired_at; });
+      var senders = rows.filter(function (a) { return a.source === "tapal_sender"; });   // your own "from" addresses: only on request
+      if (senders.length && !confirm("Tapal also has " + senders.length + " sender address" + (senders.length === 1 ? "" : "es") + " (your own \u201cfrom\u201d addresses). Import them too?")) rows = rows.filter(function (a) { return a.source !== "tapal_sender"; });
       var by = {}; vaultArr().forEach(function (x) { if (x && x.src && x.src.app === "tapal") by[x.src.kind + ":" + x.src.id] = x; });
       var added = 0, updated = 0, kept = 0, same = 0, now = Date.now();
       rows.forEach(function (a) {
-        var kind = a.source || "tapal_address", id = String(a.source_id || a.id || ""); if (!id) return;
+        var kind = a.source || "tapal_address", id = String(a.source_id || a.id || (a.key || "").split(":")[1] || ""); if (!id) return;
         var at = a.updated_at ? Date.parse(a.updated_at) || 0 : 0, f = tapalToVault(a), ex = by[kind + ":" + id];
         if (!ex) { vaultArr().push({ id: uid(), cat: "addr", f: f, fold: null, u: now, src: { app: "tapal", kind: kind, id: id, at: at, imp: now } }); added++; return; }
         if (ex.src.at >= at && JSON.stringify(ex.f) === JSON.stringify(Object.assign({}, f, ex.f.x ? { x: ex.f.x } : {}))) { same++; return; }

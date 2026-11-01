@@ -7,6 +7,8 @@ Vault → Addresses has an **Import from Tapal** button next to + Add address.
 - Copies every active address Tapal keeps (recipients and senders) into the Vault. Indian addresses use the India shape (name, house, city, district, state, PIN, phone); Japanese ones (country JP or a prefecture ending in 都/道/府/県) use the Japan shape.
 - Each copy is tagged **from Tapal**. Press Import again to pick up changes made in Tapal: a copy is updated only if you haven't edited it in WF since the last import; edited copies are kept and counted.
 - Archived Tapal addresses are skipped. WF never writes back to Tapal.
+- Your own **sender** addresses are imported only if you say yes when asked. Tapal's notes stay in Tapal (Akatsuki keeps them out of the view).
+- Akatsuki's view: `akatsuki_addresses` (R057). Tapal stores no country for recipients, so WF treats an address as Japanese when the PIN looks like `NNN-NNNN` or the state is a 都道府県. A Japanese name that can't be split safely goes whole into 姓.
 
 ---
 
