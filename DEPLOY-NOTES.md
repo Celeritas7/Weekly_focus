@@ -1,3 +1,13 @@
+# v128 — Japanese lines that start with 都道府県 / 市区町村 · built on v127
+
+Upload `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v128`). **No SQL ships with this build.**
+
+Import from Tapal: a Japanese address line such as `埼玉県さいたま市南区文蔵2丁目11番15号 アーバンテラス南浦和 201号` now fills 都道府県 (埼玉県) and 住所(市区町村) (さいたま市南区) when Tapal's own fields are empty or in romaji ("Saitama"), then splits the rest into 番地 (文蔵2丁目11番15号) and 建物名 (アーバンテラス南浦和 201号).
+
+**Already-saved copies change only when you run Import from Tapal again and press Save.** The review must be on this build: footer **build v128 · opens offline · jp address split**.
+
+---
+
 # v127 — Import from Tapal shows a review first · built on v126
 
 Upload `js/weekly-focus-app.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v127`). **No SQL ships with this build.**
