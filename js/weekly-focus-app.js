@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v127", BUILD_N = 127;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v128", BUILD_N = 128;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -3084,7 +3084,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 import review"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 jp address split"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -4832,7 +4832,11 @@
       var nm = n(a.name).split(/\s+/).filter(Boolean), pc = n(a.pin).replace(/^\u3012\s*/, "").replace(/\s+/g, "");
       if (/^\d{7}$/.test(pc)) pc = pc.slice(0, 3) + "-" + pc.slice(3);
       f = { ctry: "JP", t: t, first: nm.length > 1 ? nm.slice(0, -1).join(" ") : "", last: nm.length > 1 ? nm[nm.length - 1] : n(a.name),   // can't split safely → all of it in 姓
-        postal_code: pc, prefecture: /[\u90fd\u9053\u5e9c\u770c]$/.test(n(a.state)) ? n(a.state) : "", city: [n(a.city), n(a.district)].filter(Boolean).join(""), street: jpSplitLine(a.line).street, building: jpSplitLine(a.line).building, ph: n(a.phone), note: n(a.notes) };
+        postal_code: pc, prefecture: /[\u90fd\u9053\u5e9c\u770c]$/.test(n(a.state)) ? n(a.state) : "", city: [n(a.city), n(a.district)].filter(Boolean).join(""), ph: n(a.phone), note: n(a.notes) };
+      var pe = jpPeel(a.line), sp = jpSplitLine(pe.rest);   // v128: a line that starts with 都道府県 / 市区町村 fills those fields when Tapal's own are empty
+      if (pe.pref && !f.prefecture) f.prefecture = pe.pref;
+      if (pe.city && (!f.city || /^[\x00-\x7f]+$/.test(f.city) || f.city === pe.city)) f.city = pe.city;   // a romaji city ("Saitama") gives way to the Japanese one
+      f.street = sp.street; f.building = sp.building;
     } else {
       f = { ctry: "IN", t: t, name: n(a.name), house: n(a.line), city: n(a.city), district: n(a.district), state: n(a.state), pin: n(a.pin), ph: n(a.phone), note: n(a.notes) };
     }
@@ -4841,6 +4845,16 @@
   }
   /* v127: a Japanese one-line address → 番地 and 建物名. Comma parts: the one with 丁目/番/1-1-22 is the street,
      the rest is the building. One part: the street runs up to the last word that looks like a street number. */
+  /* v128: "埼玉県さいたま市南区文蔵2丁目11番15号 …" → prefecture 埼玉県, city さいたま市南区, rest 文蔵2丁目11番15号 … */
+  function jpPeel(line) {
+    var L = vNorm(null, line || "").trim(), out = { pref: "", city: "", rest: L };
+    var m = /^(\u6771\u4eac\u90fd|\u5317\u6d77\u9053|\u4eac\u90fd\u5e9c|\u5927\u962a\u5e9c|[^\s\d,\u3001]{2,3}\u770c)/.exec(L);
+    if (m) { out.pref = m[1]; L = L.slice(m[1].length); }
+    var c = /^([^\s\d,\u3001]+?[\u5e02\u90e1](?:[^\s\d,\u3001]+?\u533a)?|[^\s\d,\u3001]+?\u533a)/.exec(L);   // ○○市 / ○○市○○区 / ○○郡 / 東京の○○区
+    if (c && (m || /\u5e02/.test(c[1]))) { out.city = c[1]; L = L.slice(c[1].length); }
+    out.rest = L.trim();
+    return out;
+  }
   function jpSplitLine(line) {
     var L = vNorm(null, line || "").trim(), ST = /(丁目|番地|\d番|\d+-\d+)/;
     if (!L) return { street: "", building: "" };
