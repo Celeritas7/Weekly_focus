@@ -4821,7 +4821,9 @@
   var ADDR_VIEW = "akatsuki_addresses";
   function jpAddrRow(a) {   // Tapal stores no country for addresses: JP if said so, if the pin looks like NNN-NNNN, or the state is a 都道府県
     var pin = vNorm(null, String(a.pin || "")).trim();
-    return String(a.country || "").toUpperCase() === "JP" || /^\u3012?\s*\d{3}-\d{4}$/.test(pin) || /[\u90fd\u9053\u5e9c\u770c]$/.test(String(a.state || "").trim());
+    var c = String(a.country || "").trim().toUpperCase();
+    if (c === "IN" || c === "INDIA" || c === "BHARAT") return false;
+    return c === "JP" || c === "JAPAN" || c === "\u65e5\u672c" || /^\u3012?\s*\d{3}-?\d{4}$/.test(pin) || /[\u90fd\u9053\u5e9c\u770c]$/.test(String(a.state || "").trim());   // a 7-digit postal code is Japanese (Indian PINs have 6)
   }
   function tapalToVault(a) {
     function n(v) { return vNorm(null, v == null ? "" : String(v)).trim(); }
