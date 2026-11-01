@@ -1,3 +1,11 @@
+# v129 — "Split building & room out" in the Edit form · built on v128
+
+Upload `js/weekly-focus-app.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v129`). **No SQL ships with this build.**
+
+Vault → Addresses → **Edit** on a Japanese address: under 住所(番地) there is a **Split building & room out** button. It moves the building and room (e.g. アーバンテラス南浦和 201号室) into 建物名 + 部屋番号, keeps the street part (文蔵二丁目11番15号) in 番地, and, if the line starts with 都道府県 / 市区町村 and those fields are empty, fills them too. Nothing is saved until you press **Save**. Works on any Japanese address, imported or typed.
+
+---
+
 # v128 — Japanese lines that start with 都道府県 / 市区町村 · built on v127
 
 Upload `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v128`). **No SQL ships with this build.**

@@ -1960,3 +1960,6 @@ body.wdrag .wtile.empty{opacity:1;filter:none}
 .tp-f{display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:center;font-size:11.5px;color:var(--mid)}
 .tp-f input{border:1px solid var(--hair);border-radius:7px;padding:5px 8px;font:inherit;font-size:13px;color:var(--ink);background:var(--card);min-width:0}
 @media (max-width:640px){.tp-cols{grid-template-columns:1fr}.tp-f{grid-template-columns:1fr;gap:2px}}
+
+/* v129: split 番地 in the Edit form */
+.vm-split{margin-top:6px;font-size:12px;padding:5px 10px}
