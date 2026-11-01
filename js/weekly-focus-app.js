@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v128", BUILD_N = 128;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v129", BUILD_N = 129;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -3084,7 +3084,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 jp address split"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 split button"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -5042,6 +5042,7 @@
         fd.tp === "ta" ? '<textarea id="vmF_' + fd.k + '" rows="2">' + v + '</textarea>' :
         fd.tp === "sel" ? '<select id="vmF_' + fd.k + '"><option value="">\u2014</option>' + (fd.opts || []).map(function (o) { return '<option value="' + esc(o) + '"' + (o === (f[fd.k] || "") ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") + '</select>' :
         '<input id="vmF_' + fd.k + '" type="text" autocomplete="off" value="' + v + '">';
+      if (c.k === "addr" && VM_CTRY === "JP" && fd.k === "street") inp += '<button type="button" class="tbtn vm-split" data-vmsplit="1" title="Moves the building and room (and a leading 都道府県 / 市区町村) out of this line into their own fields">Split building &amp; room out</button>';   // v129
       return '<div class="cfield"><label>' + esc(fd.l) + '</label>' + inp + (c.shape === fd.k ? '<span class="cf-hint">picks the fields below</span>' : "") + '</div>';
     }).join("") + '<div id="vmXWrap" class="vm-x">' + vmXHtml() + '</div>';
     $("vmDelete").style.display = it ? "" : "none";
@@ -5252,6 +5253,19 @@
       if (xdb) { vmXRead(); VM_X.splice(+xdb.getAttribute("data-xdel"), 1); vmXPaint(); return; }
       var xsb = e.target.closest("[data-xsec]");
       if (xsb) { vmXRead(); var xsi = +xsb.getAttribute("data-xsec"); if (VM_X[xsi]) VM_X[xsi].s = VM_X[xsi].s ? 0 : 1; vmXPaint(); return; }
+      if (e.target.closest("[data-vmsplit]")) {   // v129: 番地 line → 都道府県 / 市区町村 (if empty) + 番地 + 建物名
+        var stEl = $("vmF_street"), bdEl = $("vmF_building"), prEl = $("vmF_prefecture"), ciEl = $("vmF_city");
+        if (!stEl || !stEl.value.trim()) { toast("Nothing in 番地 to split."); return; }
+        var pe = jpPeel(stEl.value), sp = jpSplitLine(pe.rest), moved = [];
+        if (pe.pref && prEl && !prEl.value.trim()) { prEl.value = pe.pref; moved.push("都道府県"); }
+        if (pe.city && ciEl && !ciEl.value.trim()) { ciEl.value = pe.city; moved.push("市区町村"); }
+        var peeled = (!pe.pref || (prEl && prEl.value.trim() === pe.pref)) && (!pe.city || (ciEl && ciEl.value.trim() === pe.city));   // drop 都道府県/市区町村 from 番地 only when their own fields hold them
+        var newSt = peeled ? sp.street : jpSplitLine(stEl.value).street;
+        if (sp.building && bdEl) { bdEl.value = bdEl.value.trim() ? bdEl.value.trim() + " " + sp.building : sp.building; moved.push("建物名"); }
+        if (newSt !== stEl.value.trim()) stEl.value = newSt;
+        toast(moved.length ? "Moved to " + moved.join(", ") + " \u2014 check, then Save." : "Couldn\u2019t find a building or room to move. Edit it by hand.");
+        return;
+      }
       if (e.target.closest("#vmSave")) {
         var c = vcat(VM_CAT); if (!c) { closeVaultModal(); return; }
         var prevIt = null; if (VM_ID) vaultArr().forEach(function (x) { if (x.id === VM_ID) prevIt = x; });
