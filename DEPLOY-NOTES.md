@@ -1,3 +1,11 @@
+# v130 — review fix: a Tapal update keeps your notes · built on v129
+
+Upload `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v130`). **No SQL ships with this build.**
+
+Found in the review of v118–v129: when Import from Tapal updated an existing copy, it kept only the fields shown on the review card, so a note, romaji line or katakana name you had added to that copy was dropped. They now stay.
+
+---
+
 # v129 — "Split building & room out" in the Edit form · built on v128
 
 Upload `js/weekly-focus-app.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v129`). **No SQL ships with this build.**

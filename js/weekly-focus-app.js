@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v129", BUILD_N = 129;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v130", BUILD_N = 130;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -3084,7 +3084,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 split button"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 review keeps notes"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -4949,7 +4949,9 @@
       if (!o.on) return; tpRead(i);
       var src = { app: "tapal", kind: o.kind, id: o.id, at: o.at, imp: now, base: o.auto };   // base: Tapal's data as mapped at this import
       if (!o.ex) { vaultArr().push({ id: uid(), cat: "addr", f: o.f, fold: null, u: now, src: src }); added++; return; }
-      if (o.ex.f && o.ex.f.x) o.f.x = o.ex.f.x;   // extra fields added in WF stay
+      if (o.ex.f) Object.keys(o.ex.f).forEach(function (k) {   // v130: what the review doesn't show (notes, romaji, extra fields, old text) stays on the copy
+        if (o.f[k] === undefined && (k === "x" || k === "note" || k === "romaji" || k === "old" || k === "name_kana" || k === "last_kana" || k === "first_kana")) o.f[k] = o.ex.f[k];
+      });
       o.ex.f = o.f; o.ex.u = now; o.ex.src = src; updated++;
     });
     $("tapalModal").classList.remove("open"); TP = null;
