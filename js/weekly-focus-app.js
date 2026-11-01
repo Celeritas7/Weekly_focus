@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v125", BUILD_N = 125;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v126", BUILD_N = 126;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -3084,7 +3084,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 phone footer"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 tapal import"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -4811,9 +4811,60 @@
     }
     var rows = inCat(c.k).slice().sort(function (a, b) { return (b.u || 0) - (a.u || 0); });
     var back = scoped ? '@vaultf:' + fold : '@vault';
-    var h2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="' + esc(back) + '">\u2190 Vault</button><span class="cf-open-name" style="color:oklch(0.45 0.16 ' + c.hue + ')"><span class="cf-emo sm">' + c.emo + '</span>' + esc(c.l) + scopeTag + '</span><span class="chat-sec-n">' + rows.length + '</span><button type="button" class="tbtn primary vault-addbtn" data-vact="add" data-vcat="' + c.k + '" data-vfold="' + esc(fold || "") + '">+ Add ' + esc(c.one) + '</button></li>';
+    var h2 = '<li class="chat-back"><button type="button" class="tbtn" data-cfold="' + esc(back) + '">\u2190 Vault</button><span class="cf-open-name" style="color:oklch(0.45 0.16 ' + c.hue + ')"><span class="cf-emo sm">' + c.emo + '</span>' + esc(c.l) + scopeTag + '</span><span class="chat-sec-n">' + rows.length + '</span>' + (c.k === "addr" ? '<button type="button" class="tbtn vault-impbtn" data-vact="imptapal" title="Copy the addresses Tapal keeps into the Vault (via Akatsuki). Run it again to pick up changes.">Import from Tapal</button>' : '') + '<button type="button" class="tbtn primary vault-addbtn" data-vact="add" data-vcat="' + c.k + '" data-vfold="' + esc(fold || "") + '">+ Add ' + esc(c.one) + '</button></li>';
     h2 += rows.length ? rows.map(function (it) { return vRowHtml(c, it); }).join("") : '<li class="chat-empty">Nothing here yet \u2014 tap \u201c+ Add ' + esc(c.one) + '\u201d and fill the template.</li>';
     return h2;
+  }
+  /* ---- v126: Import from Tapal (via Akatsuki). Tapal owns the addresses; the Vault keeps a copy tagged
+     src {app:"tapal", kind, id, at}. Reading goes through Akatsuki's shared view, never Tapal's own tables.
+     Re-running updates a copy only if it was not edited in WF since the last import. ---- */
+  var ADDR_VIEW = "akatsuki_addresses";
+  function jpAddrRow(a) {   // Tapal stores no country for addresses: JP if said so, if the pin looks like NNN-NNNN, or the state is a 都道府県
+    var pin = vNorm(null, String(a.pin || "")).trim();
+    var c = String(a.country || "").trim().toUpperCase();
+    if (c === "IN" || c === "INDIA" || c === "BHARAT") return false;
+    return c === "JP" || c === "JAPAN" || c === "\u65e5\u672c" || /^\u3012?\s*\d{3}-?\d{4}$/.test(pin) || /[\u90fd\u9053\u5e9c\u770c]$/.test(String(a.state || "").trim());   // a 7-digit postal code is Japanese (Indian PINs have 6)
+  }
+  function tapalToVault(a) {
+    function n(v) { return vNorm(null, v == null ? "" : String(v)).trim(); }
+    var f, t = n(a.label) || n(a.name) || "Tapal address";
+    if (jpAddrRow(a)) {
+      var nm = n(a.name).split(/\s+/).filter(Boolean), pc = n(a.pin).replace(/^\u3012\s*/, "").replace(/\s+/g, "");
+      if (/^\d{7}$/.test(pc)) pc = pc.slice(0, 3) + "-" + pc.slice(3);
+      f = { ctry: "JP", t: t, first: nm.length > 1 ? nm.slice(0, -1).join(" ") : "", last: nm.length > 1 ? nm[nm.length - 1] : n(a.name),   // can't split safely → all of it in 姓
+        postal_code: pc, prefecture: n(a.state), city: [n(a.city), n(a.district)].filter(Boolean).join(" "), street: n(a.line), ph: n(a.phone), note: n(a.notes) };
+    } else {
+      f = { ctry: "IN", t: t, name: n(a.name), house: n(a.line), city: n(a.city), district: n(a.district), state: n(a.state), pin: n(a.pin), ph: n(a.phone), note: n(a.notes) };
+    }
+    Object.keys(f).forEach(function (k) { if (f[k] === "") delete f[k]; });
+    return f;
+  }
+  function vImportTapal(btn) {
+    if (!sb || !signedIn()) { toast("Sign in first \u2014 the Vault lives in the cloud."); return; }
+    if (btn) { btn.disabled = true; btn.textContent = "Importing\u2026"; }
+    sb.from(ADDR_VIEW).select("*").then(function (r) {
+      if (r.error) throw r.error;
+      var rows = (r.data || []).filter(function (a) { return !a.archived && !a.retired && !a.retired_at; });
+      var senders = rows.filter(function (a) { return a.source === "tapal_sender"; });   // your own "from" addresses: only on request
+      if (senders.length && !confirm("Tapal also has " + senders.length + " sender address" + (senders.length === 1 ? "" : "es") + " (your own \u201cfrom\u201d addresses). Import them too?")) rows = rows.filter(function (a) { return a.source !== "tapal_sender"; });
+      var by = {}; vaultArr().forEach(function (x) { if (x && x.src && x.src.app === "tapal") by[x.src.kind + ":" + x.src.id] = x; });
+      var added = 0, updated = 0, kept = 0, same = 0, now = Date.now();
+      rows.forEach(function (a) {
+        var kind = a.source || "tapal_address", id = String(a.source_id || a.id || (a.key || "").split(":")[1] || ""); if (!id) return;
+        var at = a.updated_at ? Date.parse(a.updated_at) || 0 : 0, f = tapalToVault(a), ex = by[kind + ":" + id];
+        if (!ex) { vaultArr().push({ id: uid(), cat: "addr", f: f, fold: null, u: now, src: { app: "tapal", kind: kind, id: id, at: at, imp: now } }); added++; return; }
+        if (ex.src.at >= at && JSON.stringify(ex.f) === JSON.stringify(Object.assign({}, f, ex.f.x ? { x: ex.f.x } : {}))) { same++; return; }
+        if ((ex.u || 0) > (ex.src.imp || 0) + 1000) { kept++; return; }   // edited in WF after the last import: keep the user's version
+        if (ex.f.x) f.x = ex.f.x;
+        ex.f = f; ex.u = now; ex.src = { app: "tapal", kind: kind, id: id, at: at, imp: now }; updated++;
+      });
+      if (added || updated) { saveChats(); renderChats(); }
+      toast(!rows.length ? "Tapal has no addresses to import." :
+        [added && added + " added", updated && updated + " updated", same && same + " already up to date", kept && kept + " kept (you edited them here)"].filter(Boolean).join(" \u00b7 ") || "Nothing to change.");
+    }).catch(function (e) {
+      var m = String((e && e.message) || e || "");
+      toast(/does not exist|could not find|PGRST205|42P01/i.test(m + " " + ((e && e.code) || "")) ? "Akatsuki hasn\u2019t opened the shared address list yet." : "Couldn\u2019t import: " + m);
+    }).then(function () { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = "Import from Tapal"; } });
   }
   function vRowHtml(c, it) {
     var f = it.f || {};
@@ -4849,6 +4900,7 @@
       (vfo ? '<span class="v-fold" style="color:oklch(0.45 0.16 ' + vfh + ');background:oklch(0.96 0.03 ' + vfh + ')">' + esc(vfo) + '</span>' : '') +
       (c.ctry && !vIsLegacy(c, it) ? '<span class="v-ctry ctry-' + vctryOf(it).toLowerCase() + '">' + esc(vctryL(vctryOf(it))) + '</span>' : '') +
       (jp ? '<button class="v-lang" data-vact="vlang" title="Switch labels, \u756a\u5730 and phone between Japanese and English forms (remembered for this record on this device)"><b' + (lang === "ja" ? ' class="on"' : '') + '>\u65e5\u672c\u8a9e</b><b' + (lang === "en" ? ' class="on"' : '') + '>EN</b></button>' : '') +
+      (it.src && it.src.app === "tapal" ? '<span class="v-src" title="Copied from Tapal. Import from Tapal again to pick up changes made there.">from Tapal</span>' : '') +
       (vIsLegacy(c, it) ? '<span class="v-ctry legacy" title="Saved before v92 \u2014 Edit and pick a country to split it into fields">Old format</span>' : '') +
       (c.pb && String(f[c.pb] || "").trim() ? '<button class="v-cta pri" data-vact="copybody" title="' + esc(c.pl || "Copy the text only") + '">Copy ' + esc(c.one) + '</button>' : '') +
       '<button class="v-cta" data-vact="copyall" title="Copy the whole record' + (hasSec ? " \u2014 without secrets" : "") + '">Copy all</button>' +
@@ -5151,6 +5203,7 @@
       if (vb) {
         var va = vb.getAttribute("data-vact");
         if (va === "add") { openVaultModal(vb.getAttribute("data-vcat"), null, vb.getAttribute("data-vfold") || ""); return; }
+        if (va === "imptapal") { vImportTapal(vb); return; }
         var vrow = e.target.closest("[data-vid]"); if (!vrow) return;
         var vid = vrow.getAttribute("data-vid"), vit = null;
         vaultArr().forEach(function (x) { if (x.id === vid) vit = x; }); if (!vit) return;
