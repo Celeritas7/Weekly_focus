@@ -1,3 +1,15 @@
+# v127 — Import from Tapal shows a review first · built on v126
+
+Upload `js/weekly-focus-app.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v127`). **No SQL ships with this build.**
+
+## What changed
+- **Review before saving.** Import from Tapal opens a window listing every Tapal address: on the left exactly as typed in Tapal, on the right the Vault fields it will become. Edit any field, switch India / Japan, tick or untick each one. Nothing reaches the Vault until **Save N to the Vault**; Cancel changes nothing.
+- **Japanese addresses split properly.** Tapal keeps street and building in one line. The part with 丁目 / 番 / 1-1-22 goes to 住所(番地), the rest (building, 号室) to 建物名+部屋番号. City and ward join without a space; an English state name (e.g. "Chiba") is not put in 都道府県.
+- **Copies imported by v126** show as "Will update the copy", ticked, so the first review corrects them in place (no duplicates).
+- **Your fixes stay fixed.** The Vault remembers what Tapal's data looked like at import. Next time, an address is offered for update only if it changed in Tapal; if you had fixed it in the review, it is offered unticked ("tick to replace your fixed copy"). Your own sender addresses start unticked.
+
+---
+
 # v126 — Import from Tapal (via Akatsuki) · built on v125
 
 Upload `js/weekly-focus-app.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v126`). **No SQL ships with this build.** It needs Akatsuki's shared address view (`akatsuki_addresses`, requested 2026-11-01); until that exists the button says so and changes nothing.
