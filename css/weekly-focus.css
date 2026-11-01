@@ -1933,3 +1933,8 @@ body.wdrag .wtile.empty{opacity:1;filter:none}
 .lk-kinds{display:flex;flex-wrap:wrap;gap:5px}
 .lk-kind{border:1px dashed var(--hair,#d8dce3);background:transparent;color:var(--faint,#8a8f98);border-radius:99px;height:26px;padding:0 10px;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
 .lk-kind.on{border-style:solid;border-color:var(--brand-line,#cfc9f5);background:var(--brand-soft,#f1effd);color:var(--brand,#5b4fd6)}
+
+/* v126: Import from Tapal */
+.vault-impbtn{margin-left:auto}
+.vault-impbtn + .vault-addbtn{margin-left:6px}
+.v-src{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:99px;padding:3px 9px;background:oklch(0.96 0.03 230);color:oklch(0.45 0.12 230);border:1px solid oklch(0.88 0.06 230)}
