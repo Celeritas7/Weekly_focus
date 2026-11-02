@@ -131,7 +131,7 @@
         '<span class="sd-cm-n">' + esc(c.name) + '</span><span class="sd-cm-o">' + (c.open ? c.open + ' open' : 'All clear') + '</span>' + (c.open && c.next ? '<span class="sd-cm-x">' + esc(c.next) + '</span>' : '');
     }
   }
-  var ORBIT_CAP = 3;
+  var ORBIT_CAP = 8;   // v136: was 3; the orbit regularly holds ~10 apps, so 3 kept Week load red all the time
   function renderLoad() {
     var MAX = H.max, segs = "", i, over = Math.max(0, ST.orbit.length - ORBIT_CAP), slots = Math.max(ORBIT_CAP, ST.orbit.length);
     for (i = 0; i < MAX; i++) segs += '<i class="sd-five' + (i < ST.five.length ? " sd-on" : "") + '"></i>';
