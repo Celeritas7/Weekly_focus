@@ -1,3 +1,32 @@
+# v132 — Review one by one: swipe each app in or out of orbit · built on v131
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v132`). **No SQL ships with this build.**
+
+Sphere Draft → **Review one by one** (next to Undo) shows every app, topic and office task outside The Five as a card, one at a time, in the table's order (Priority first by default; the All / Apps / Study / Office filter applies).
+- Each card: name, category, priority, **Now: in orbit / not in orbit**, last activity (green "Updated …" for the last 3 days, orange after 14), progress, the first open tasks and the start of the notes.
+- **Swipe right / In orbit →** puts it in orbit. **Swipe left / ← Not in orbit** takes it out (back to the table). **Skip** leaves it as it is. Keys: → ← and ↓ skip.
+- Each decision is saved at once and is one step of the draft's **Undo**. **← Back** (or Backspace) returns to the previous card and puts its decision back.
+- The end screen counts in orbit / not in orbit / skipped and names what changed. Esc closes the review only.
+- The Five are not in the review (they are chosen on purpose).
+
+Check: footer reads **build v132 · opens offline · review mode**.
+
+---
+
+# v131 — quick orbit in the Sphere Draft · built on v130
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v131`). **No SQL ships with this build.**
+
+Putting apps in orbit took three taps each (bubble → details → Orbit), and a new item sent to orbit landed in The Five whenever a slot was free.
+- **Orbit means orbit.** The Orbit button, the `O` key and dropping on the dashed ring now put a new item in orbit even while The Five has free slots. **Add as #N** still fills The Five.
+- **Tap → Orbit** switch next to All / Apps / Study / Office: while it is on, each bubble you tap goes straight to orbit, with no details window. Tap the switch again for details. The choice is remembered on this device.
+- **All to orbit** on each category header (By category view) sends every bubble shown in that category to orbit in one move; one **Undo** takes it back. It respects the Apps / Study / Office filter and the search.
+- Orbit chips under Week load are sorted by category and carry the category colour.
+
+Check: footer reads **build v131 · opens offline · quick orbit**.
+
+---
+
 # v130 — review fix: a Tapal update keeps your notes · built on v129
 
 Upload `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v130`). **No SQL ships with this build.**

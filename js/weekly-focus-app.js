@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v130", BUILD_N = 130;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v132", BUILD_N = 132;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1705,7 +1705,8 @@
     },
     /* orbit: a target only leaves the Five when an orbit item can take its slot (a free slot always pulls the next one up) */
     orbit: function (k) {
-      if (!inSphere(k)) { var free = targetOrder.length < MAX_TARGETS; sphereAdd(k); renderAll(); return free ? "five" : "orbit"; }
+      /* v131: a new item goes straight to orbit, even while the Five has a free slot (before: it took the slot) */
+      if (!inSphere(k)) { if (isCore(k)) return "orbit"; targetOrder.forEach(sphFlag); sphFlag(k); sdCommit(); return "orbit"; }
       if (!isTarget(k)) return "orbit";
       targetOrder.splice(targetOrder.indexOf(k), 1);   // v111: its slot stays empty
       sphFlag(k); if (entries[k] && entries[k].targetDone) patch(k, { targetDone: false });
@@ -3084,7 +3085,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 review keeps notes"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 review mode"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
