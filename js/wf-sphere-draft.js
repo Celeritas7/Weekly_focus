@@ -344,17 +344,26 @@
      The message carries the current Five, the nominees (priority, progress, last activity, open tasks, notes) and the rest of
      the orbit by name. Belay (career) and Apperse are not built yet: the message says so, and they join here later. */
   function nomToggle(k) { if (!BY[k] || !H.nominate) return; var on = !BY[k].nom; H.nominate(k, on); pull(); render(); toast(on ? BY[k].name + " is nominated for the Five" : BY[k].name + " is no longer a nominee", false); }
-  function clip(x, n) { x = String(x || "").replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n - 1) + "…" : x; }
-  function dbLine(it, rank) {
-    var p = PRI[it.pri] || PRI[""], open = it.open || [];
-    var head = (rank ? "#" + rank + " " : "- ") + it.name + (it.idea && !it.done ? " (not started yet: no code)" : "") + " \u2014 " + KIND[it.kind].l + " · " + it.group + (p.l ? " · priority " + p.l : "") +
-      (it.idea && !it.done && !it.total ? "" : " · " + (it.total ? it.done + "/" + it.total + " subtasks done" : "no subtasks") + " · last activity " + ageTxt(it.age));
-    var t = "\n   Open tasks: " + (open.length ? open.slice(0, 5).map(function (x) { return clip(x, 80); }).join("; ") + (open.length > 5 ? " (+" + (open.length - 5) + " more)" : "") : "none");
-    return head + t + (it.notes ? "\n   Notes: " + clip(it.notes, 200) : "");
+  /* v135: cut at a word boundary, never mid-word */
+  function clip(x, n) {
+    x = String(x || "").replace(/\s+/g, " ").trim(); if (x.length <= n) return x;
+    var c = x.slice(0, n - 1), sp = c.lastIndexOf(" ");
+    return (sp > n * 0.6 ? c.slice(0, sp) : c).replace(/[\s,;:.\-]+$/, "") + "…";
   }
-  function dbText() {
+  /* v135: what the task list says about an item. none = no task was ever written (not the same as finished) */
+  function taskState(it) { return it.idea && !it.done && !it.total ? "idea" : !it.total ? "none" : !(it.open || []).length ? "done" : "open"; }
+  function dbLine(it, rank, tl) {
+    var p = PRI[it.pri] || PRI[""], open = it.open || [], ts = taskState(it); tl = tl || 200;
+    var head = (rank ? "#" + rank + " " : "- ") + it.name + (ts === "idea" ? " (not started yet: no code)" : "") + " — " + KIND[it.kind].l + " · " + it.group + (p.l ? " · priority " + p.l : "");
+    if (ts === "none") head += " · NO TASKS WRITTEN YET (nothing defined to do, not finished)";
+    else if (ts !== "idea") head += " · " + it.done + "/" + it.total + " subtasks done" + (ts === "done" ? " (all done)" : "");
+    if (ts !== "idea" && it.age != null) head += " · last activity " + ageTxt(it.age);
+    var t = ts === "open" ? "\n   Open tasks: " + open.slice(0, 5).map(function (x) { return clip(x, tl); }).join("; ") + (open.length > 5 ? " (+" + (open.length - 5) + " more)" : "") : "";
+    return head + t + (it.notes ? "\n   Notes: " + clip(it.notes, Math.max(200, tl)) : "");
+  }
+  function dbText(tl) {
     pull();
-    var five = ST.five.map(function (k, i) { return dbLine(BY[k], i + 1); }), noms = nominees().map(function (it) { return dbLine(it, 0); });
+    var five = ST.five.map(function (k, i) { return dbLine(BY[k], i + 1, tl); }), noms = nominees().map(function (it) { return dbLine(it, 0, tl); });
     var rest = ST.orbit.filter(function (k) { return !BY[k].nom; }).map(function (k) { return BY[k].name; });
     var c = H.core ? H.core() : null;
     var today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -394,8 +403,8 @@
   function dbOpen() {
     pull(); INFO = "@debate"; if (!infoFrom || !document.contains(infoFrom) || $("sdInfo").hidden) infoFrom = document.activeElement;
     var noms = nominees();
-    var row = function (it, rank) { return '<li class="sd-db-row"><span class="sd-db-rk">' + (rank ? "#" + rank : "★") + '</span><span class="sd-db-nm">' + esc(it.name) + '<small>' + (it.idea && !it.done ? (it.group === "Not started yet" ? "Not started yet" : esc(it.group) + ' \u00b7 not started yet') : esc(it.group) + ' \u00b7 ' + ageTxt(it.age)) + '</small></span>' +
-      (rank ? '' : '<button type="button" class="sd-x sd-db-x" data-sd="dbunnom" data-sdk="' + esc(it.id) + '" aria-label="Remove ' + esc(it.name) + ' from the nominees">×</button>') + '</li>'; };
+    var row = function (it, rank) { return '<li class="sd-db-row"><span class="sd-db-rk">' + (rank ? "#" + rank : "★") + '</span><span class="sd-db-nm">' + esc(it.name) + '<small>' + (taskState(it) === "none" ? '<b class="sd-db-warn">no tasks yet</b> \u00b7 ' : '') + (it.idea && !it.done ? (it.group === "Not started yet" ? "Not started yet" : esc(it.group) + ' \u00b7 not started yet') : esc(it.group) + (it.age == null ? '' : ' \u00b7 ' + ageTxt(it.age))) + '</small></span>' +
+      (taskState(it) === "none" && H.openCard ? '<button type="button" class="sd-btn sd-db-task" data-sd="dbtask" data-sdk="' + esc(it.id) + '">+ Task</button>' : '') + (rank ? '' : '<button type="button" class="sd-x sd-db-x" data-sd="dbunnom" data-sdk="' + esc(it.id) + '" aria-label="Remove ' + esc(it.name) + ' from the nominees">×</button>') + '</li>'; };
     $("sdInfoCard").innerHTML =
       '<div class="sd-ih"><div class="sd-ih-t"><h3 id="sdInfoT">★ Debate the Five</h3><div class="sd-ih-m">Claude argues for and against each nominee, asks what matters this week, then suggests a Five. You place the winners here.</div></div>' +
         '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
@@ -407,6 +416,8 @@
           '<input id="sdIdeaG" maxlength="60" placeholder="Category (optional)" list="sdIdeaGL" autocomplete="off" aria-label="Category"><datalist id="sdIdeaGL">' + (H.groups ? H.groups() : []).map(function (g) { return '<option value="' + esc(g) + '">'; }).join("") + '</datalist>' +
           '<input id="sdIdeaT" maxlength="300" placeholder="One line: what it is for (optional)" autocomplete="off" aria-label="What it is for">' +
           '<button type="submit" class="sd-btn sd-primary">Add as nominee</button><p class="sd-db-note">It becomes a normal app on the board (category \u201cNot started yet\u201d unless you pick one), starred for the Five.</p></form></details>' : '') + '</div>' +
+      (function () { var n = ST.five.map(function (k) { return BY[k]; }).concat(noms).filter(function (it) { return taskState(it) === "none"; }).length;
+        return n ? '<p class="sd-db-hint">' + n + (n === 1 ? " has" : " have") + ' no tasks written yet. Tap <b>+ Task</b> to add a first step, so Claude can judge ' + (n === 1 ? "it" : "them") + '.</p>' : ''; })() +
       '<div class="sd-iact"><button type="button" class="sd-btn sd-primary sd-big" data-sd="dbclaude"' + (noms.length ? "" : " disabled") + '>Open the debate in Claude</button>' +
         '<button type="button" class="sd-btn" data-sd="dbcopy"' + (noms.length ? "" : " disabled") + '>Copy the message</button></div>' +
       '<p class="sd-db-note">The message includes each one’s priority, progress, last activity, open tasks and notes. Career (Belay) and Apperse join when those apps exist.</p>';
@@ -414,9 +425,11 @@
     var b = $("sdInfoCard").querySelector(".sd-big:not([disabled])") || $("sdInfoCard").querySelector(".sd-x"); if (b) b.focus({ preventScroll: true });
   }
   function dbClaude() {
-    var t = dbText(), enc = encodeURIComponent(t), short = enc.length <= DB_URL_MAX;
+    var full = dbText(200), t = full, enc = encodeURIComponent(t), cuts = [140, 100, 80], i = 0;
+    while (enc.length > DB_URL_MAX && i < cuts.length) { t = dbText(cuts[i++]); enc = encodeURIComponent(t); }   // v135: shorter task text before giving up on the link
+    var short = enc.length <= DB_URL_MAX;
     window.open(short ? "https://claude.ai/new?q=" + enc : "https://claude.ai/new", "_blank", "noopener");
-    copyText(t).then(function (ok) { toast(short ? "Opened Claude with the nominees" + (ok ? " (also copied)" : "") : ok ? "Long list: copied. Paste it into the new Claude chat" : "Couldn’t copy. Use Copy the message", false); });
+    copyText(full).then(function (ok) { toast(short ? "Opened Claude with the nominees" + (ok ? " (full text also copied)" : "") : ok ? "Long list: copied. Paste it into the new Claude chat" : "Couldn’t copy. Use Copy the message", false); });
   }
 
   /* ---------------- v132 · Review: one card at a time, swipe right = in orbit, left = not in orbit ----------------
@@ -541,9 +554,10 @@
       else if (a === "rvnom") { if (RV && RV.i < RV.ids.length) { nomToggle(RV.ids[RV.i]); rvRender(); } }
       else if (a === "dbopen") dbOpen();
       else if (a === "chipnom") nomToggle(k);
+      else if (a === "dbtask") { closeInfo(); if (H.openCard) H.openCard(k); }
       else if (a === "dbunnom") { nomToggle(k); dbOpen(); }
       else if (a === "dbclaude") dbClaude();
-      else if (a === "dbcopy") copyText(dbText()).then(function (ok) { toast(ok ? "Copied. Paste it into a Claude chat" : "Couldn\u2019t copy on this device", false); });
+      else if (a === "dbcopy") copyText(dbText(200)).then(function (ok) { toast(ok ? "Copied. Paste it into a Claude chat" : "Couldn\u2019t copy on this device", false); });
       else if (a === "rvin") rvDecide("in");
       else if (a === "rvout") rvDecide("out");
       else if (a === "rvskip") rvDecide("skip");
