@@ -1,3 +1,13 @@
+# v136 — orbit limit 8 · built on v135
+
+Upload `js/wf-sphere-draft.js`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v136`). **No SQL ships with this build.**
+
+Week load in the Sphere Draft warned above 3 apps in orbit; the orbit usually holds about 10, so the bar was always red. It now warns above **8**: 8 or fewer reads "Balanced · N in orbit", 11 reads "Heavy · 11 in orbit, drop 3". The swipe review's end screen uses the same number.
+
+Check: footer reads **build v136 · opens offline · orbit 8**.
+
+---
+
 # v135 — fuller Debate message, apps with no tasks flagged · built on v134
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v135`). **No SQL ships with this build.**
