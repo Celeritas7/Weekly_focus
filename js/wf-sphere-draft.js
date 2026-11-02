@@ -7,11 +7,11 @@
    ============================================================ */
 (function () {
   "use strict";
-  var H = null, root = null, isOpen = false, hist = [], kindF = "all", sortBy = "pri", q = "", GROUP = true, TAPO = false, lastFull = false, io = null;
+  var H = null, root = null, isOpen = false, hist = [], kindF = "all", sortBy = "pri", q = "", GROUP = true, TAPO = false, TAPN = false, lastFull = false, io = null;
   var BY = {}, ROWS = [];
   var PREF = "wf_sd_prefs";
-  try { var pf = JSON.parse(localStorage.getItem(PREF) || "{}"); if (pf.group === false) GROUP = false; if (pf.sort) sortBy = pf.sort; if (pf.tapo === true) TAPO = true; } catch (e) {}
-  function savePref() { try { localStorage.setItem(PREF, JSON.stringify({ group: GROUP, sort: sortBy, tapo: TAPO })); } catch (e) {} }
+  try { var pf = JSON.parse(localStorage.getItem(PREF) || "{}"); if (pf.group === false) GROUP = false; if (pf.sort) sortBy = pf.sort; if (pf.tapo === true) TAPO = true; if (pf.tapn === true && !TAPO) TAPN = true; } catch (e) {}
+  function savePref() { try { localStorage.setItem(PREF, JSON.stringify({ group: GROUP, sort: sortBy, tapo: TAPO, tapn: TAPN })); } catch (e) {} }
 
   var KIND = { app: { l: "App", c: "var(--brand)" }, study: { l: "Study", c: "var(--study)" }, office: { l: "Office", c: "var(--office, oklch(0.55 0.13 70))" } };
   var PRI = { high: { l: "High", c: "var(--pri-h)", w: 3 }, medium: { l: "Medium", c: "var(--pri-m)", w: 2 }, low: { l: "Low", c: "var(--pri-l)", w: 1 }, "": { l: "", c: "transparent", w: 0 } };
@@ -77,6 +77,7 @@
           '<section class="sd-pool" id="sdPool" data-sddrop="pool" aria-label="Everything still on the table">' +
             '<div class="sd-bar"><div class="sd-seg" id="sdSeg" role="group" aria-label="Show"><button type="button" data-kind="all"></button><button type="button" data-kind="app"></button><button type="button" data-kind="study"></button><button type="button" data-kind="office"></button></div>' +
               '<button type="button" class="sd-tapo" id="sdTapO" aria-pressed="false" title="When on, tapping a bubble sends it straight to orbit">Tap \u2192 Orbit</button>' +
+              '<button type="button" class="sd-tapo sd-tapn" id="sdTapN" aria-pressed="false" title="When on, tapping a bubble stars it as a nominee for the Five (tap again to remove)">Tap \u2192 \u2605</button>' +
               '<button type="button" class="sd-more" id="sdMore" aria-expanded="false" aria-controls="sdTools" aria-label="Search, group and sort"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><i class="sd-more-dot" aria-hidden="true"></i></button>' +
               '<div class="sd-tools" id="sdTools"><input id="sdQ" type="search" placeholder="Find…" autocomplete="off" aria-label="Find"><button type="button" class="sd-tog" id="sdGrp">By category</button>' +
               '<select id="sdSort" aria-label="Sort"><option value="pri">Priority first</option><option value="open">Most open tasks</option><option value="stale">Longest untouched</option><option value="az">A–Z</option></select></div></div>' +
@@ -141,7 +142,10 @@
     v.className = "sd-v" + (over ? " sd-heavy" : "");
     v.textContent = over ? "Heavy · " + ST.orbit.length + " in orbit, drop " + over : total === 0 ? "Empty" : ST.five.length < MAX ? "Light · room for " + (MAX - ST.five.length) + " more" : ST.orbit.length ? "Balanced · " + ST.orbit.length + " in orbit" : "Focused";
     /* v131: orbit chips sorted by category, each with its category colour */
-    $("sdChips").innerHTML = ST.orbit.slice().sort(function (a, b) { return BY[a].group.localeCompare(BY[b].group) || BY[a].name.localeCompare(BY[b].name); }).map(function (k) { return '<button type="button" class="sd-chip" data-sdk="' + esc(k) + '" data-sd="back" style="--cc:' + catCol(BY[k].group) + '" title="' + esc(BY[k].group) + '" aria-label="Send ' + esc(BY[k].name) + ' back"><i aria-hidden="true"></i><span>' + (BY[k].nom ? "\u2605 " : "") + esc(BY[k].name) + '</span><em aria-hidden="true">×</em></button>'; }).join("");
+    $("sdChips").innerHTML = ST.orbit.slice().sort(function (a, b) { return BY[a].group.localeCompare(BY[b].group) || BY[a].name.localeCompare(BY[b].name); }).map(function (k) { var it = BY[k]; return '<span class="sd-chip' + (it.nom ? " sd-chip-nom" : "") + '" style="--cc:' + catCol(it.group) + '" title="' + esc(it.group) + '">' +
+      '<button type="button" class="sd-chip-star" data-sd="chipnom" data-sdk="' + esc(k) + '" aria-pressed="' + (it.nom ? "true" : "false") + '" aria-label="' + (it.nom ? "Remove the star from " : "Nominate ") + esc(it.name) + (it.nom ? "" : " for the Five") + '">' + (it.nom ? "\u2605" : "\u2606") + '</button>' +
+      '<button type="button" class="sd-chip-nm" data-sd="info" data-sdk="' + esc(k) + '" aria-label="' + esc(it.name) + ': show details"><i aria-hidden="true"></i><span>' + esc(it.name) + '</span></button>' +
+      '<button type="button" class="sd-chip-x" data-sd="back" data-sdk="' + esc(k) + '" aria-label="Send ' + esc(it.name) + ' back to the table">\u00d7</button></span>'; }).join("");
     $("sdUndo").disabled = !hist.length;
     $("sdAuto").disabled = ST.five.length >= MAX || !ROWS.some(function (r) { return !where(r.id); });
   }
@@ -159,7 +163,7 @@
     var p = PRI[it.pri] || PRI[""], L = it.logo, nameIn = nameSpan(it.name, false);
     var inner = L && L.url ? '<img class="sd-bub-img" src="' + esc(L.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' + nameSpan(it.name, true)
       : L && L.emoji ? '<span class="sd-bub-emo">' + esc(L.emoji) + '</span>' : nameIn;
-    return '<button type="button" class="sd-bub" data-sdk="' + esc(it.id) + '" data-sd="info" style="--kc:' + KIND[it.kind].c + ';--pc:' + (p.l ? p.c : "var(--hair)") + '" title="' + esc(it.name) + '" aria-label="' + esc(it.name) + (p.l ? ", " + p.l + " priority" : "") + (it.nom ? ", nominated for the Five" : "") + (TAPO ? '. Send to orbit">' : '. Show details">') +
+    return '<button type="button" class="sd-bub" data-sdk="' + esc(it.id) + '" data-sd="info" style="--kc:' + KIND[it.kind].c + ';--pc:' + (p.l ? p.c : "var(--hair)") + '" title="' + esc(it.name) + '" aria-label="' + esc(it.name) + (p.l ? ", " + p.l + " priority" : "") + (it.nom ? ", nominated for the Five" : "") + (TAPO ? '. Send to orbit">' : TAPN ? (it.nom ? '. Remove the star">' : '. Nominate for the Five">') : '. Show details">') +
       '<span class="sd-bub-c">' + inner + '</span>' + (it.nom ? '<span class="sd-nomb" title="Nominated for the Five" aria-hidden="true">\u2605</span>' : '') + (L ? '<span class="sd-bub-l">' + esc(it.name) + '</span>' : '') + '</button>';
   }
   function groupedHtml(list) {
@@ -184,6 +188,7 @@
     });
     $("sdGrp").setAttribute("aria-pressed", GROUP ? "true" : "false");
     $("sdTapO").setAttribute("aria-pressed", TAPO ? "true" : "false"); root.classList.toggle("sd-tapo-on", TAPO);
+    $("sdTapN").setAttribute("aria-pressed", TAPN ? "true" : "false"); root.classList.toggle("sd-tapn-on", TAPN);
     $("sdSort").value = sortBy;
     $("sdMore").classList.toggle("sd-active", !!q || !GROUP || sortBy !== "pri");
     $("sdT5").textContent = ST.five.length + "/" + H.max; $("sdTO").textContent = ST.orbit.length; $("sdTP").textContent = left.length;
@@ -249,12 +254,13 @@
       '<div class="sd-ih"><span class="sd-ih-logo" style="--pc:' + (p.l ? p.c : "var(--hair)") + ';--kc:' + KIND[it.kind].c + '">' + logo + '</span>' +
         '<div class="sd-ih-t"><h3 id="sdInfoT">' + esc(it.name) + '</h3><div class="sd-ih-m">' + KIND[it.kind].l + ' · ' + esc(it.group) + (p.l ? ' · <b style="color:' + p.c + '">' + p.l + '</b>' : '') + '</div><div class="sd-ih-s">' + status + '</div></div>' +
         '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
+      (w && w.five != null ? '' : '<button type="button" class="sd-btn sd-nombtn sd-nomtop' + (it.nom ? " sd-on" : "") + '" data-sd="nom" aria-pressed="' + (it.nom ? "true" : "false") + '">' + (it.nom ? "\u2605 Nominated for the Five \u00b7 remove" : "\u2606 Nominate for the Five") + '</button>') +
       '<div class="sd-ip">' + (it.total ? '<span class="sd-ip-bar"><i style="width:' + pct + '%;background:' + KIND[it.kind].c + '"></i></span><span>' + it.done + '/' + it.total + ' done</span>' : '<span>No subtasks yet</span>') +
         '<span class="sd-ip-age' + (it.age != null && it.age >= 14 ? " sd-stale" : "") + '">' + ageTxt(it.age) + '</span></div>' +
       '<div class="sd-isec"><h4>Open tasks <span>' + (it.open || []).length + '</span></h4>' + tasks + '</div>' +
       (it.notes ? '<div class="sd-isec"><h4>Notes</h4><p class="sd-notes">' + esc(it.notes) + '</p></div>' : '') +
       logoSec(k, it) +
-      '<div class="sd-iact">' + primary + (w && w.five != null ? '' : '<button type="button" class="sd-btn sd-nombtn' + (it.nom ? " sd-on" : "") + '" data-sd="nom" aria-pressed="' + (it.nom ? "true" : "false") + '">' + (it.nom ? "\u2605 Nominated for the Five \u00b7 remove" : "\u2606 Nominate for the Five") + '</button>') + '<div class="sd-iplace"><span>' + (w ? "Move it to" : "Or place it at") + '</span><div class="sd-slots">' + slots + '</div></div></div>' +
+      '<div class="sd-iact">' + primary + '<div class="sd-iplace"><span>' + (w ? "Move it to" : "Or place it at") + '</span><div class="sd-slots">' + slots + '</div></div></div>' +
       (H.openCard ? '<button type="button" class="sd-link" data-sd="card">Open the full card to edit</button>' : '');
     $("sdInfo").hidden = false;
     var b = $("sdInfoCard").querySelector(".sd-big"); if (b) b.focus({ preventScroll: true });
@@ -341,8 +347,8 @@
   function clip(x, n) { x = String(x || "").replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n - 1) + "…" : x; }
   function dbLine(it, rank) {
     var p = PRI[it.pri] || PRI[""], open = it.open || [];
-    var head = (rank ? "#" + rank + " " : "- ") + it.name + " — " + KIND[it.kind].l + " · " + it.group + (p.l ? " · priority " + p.l : "") +
-      " · " + (it.total ? it.done + "/" + it.total + " subtasks done" : "no subtasks") + " · last activity " + ageTxt(it.age);
+    var head = (rank ? "#" + rank + " " : "- ") + it.name + (it.idea && !it.done ? " (not started yet: no code)" : "") + " \u2014 " + KIND[it.kind].l + " · " + it.group + (p.l ? " · priority " + p.l : "") +
+      (it.idea && !it.done && !it.total ? "" : " · " + (it.total ? it.done + "/" + it.total + " subtasks done" : "no subtasks") + " · last activity " + ageTxt(it.age));
     var t = "\n   Open tasks: " + (open.length ? open.slice(0, 5).map(function (x) { return clip(x, 80); }).join("; ") + (open.length > 5 ? " (+" + (open.length - 5) + " more)" : "") : "none");
     return head + t + (it.notes ? "\n   Notes: " + clip(it.notes, 200) : "");
   }
@@ -376,18 +382,31 @@
     try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t).then(function () { return true; }, function () { return copyOld(t); }); } catch (e) {}
     return Promise.resolve(copyOld(t));
   }
-  var DB_URL_MAX = 7000;   // a longer message goes by clipboard: claude.ai opens empty and you paste
+  var DB_URL_MAX = 7000, DB_IDEA_OPEN = false;
+  function ideaAdd() {
+    var n = $("sdIdeaN"), g = $("sdIdeaG"), t = $("sdIdeaT"); if (!n) return;
+    var name = n.value.trim(); if (!name) { n.focus(); return; }
+    var dup = ROWS.filter(function (r) { return r.name.toLowerCase() === name.toLowerCase(); })[0];
+    if (dup) { if (!dup.nom) H.nominate(dup.id, true); pull(); render(); DB_IDEA_OPEN = false; dbOpen(); toast(dup.name + " already exists, so it was starred instead", false); return; }
+    var id = H.idea(name, g.value, t.value); pull(); render(); DB_IDEA_OPEN = false; dbOpen();
+    toast(id ? name + " added and nominated" : "Couldn\u2019t add it", false);
+  }   // a longer message goes by clipboard: claude.ai opens empty and you paste
   function dbOpen() {
     pull(); INFO = "@debate"; if (!infoFrom || !document.contains(infoFrom) || $("sdInfo").hidden) infoFrom = document.activeElement;
     var noms = nominees();
-    var row = function (it, rank) { return '<li class="sd-db-row"><span class="sd-db-rk">' + (rank ? "#" + rank : "★") + '</span><span class="sd-db-nm">' + esc(it.name) + '<small>' + esc(it.group) + ' · ' + ageTxt(it.age) + '</small></span>' +
+    var row = function (it, rank) { return '<li class="sd-db-row"><span class="sd-db-rk">' + (rank ? "#" + rank : "★") + '</span><span class="sd-db-nm">' + esc(it.name) + '<small>' + (it.idea && !it.done ? (it.group === "Not started yet" ? "Not started yet" : esc(it.group) + ' \u00b7 not started yet') : esc(it.group) + ' \u00b7 ' + ageTxt(it.age)) + '</small></span>' +
       (rank ? '' : '<button type="button" class="sd-x sd-db-x" data-sd="dbunnom" data-sdk="' + esc(it.id) + '" aria-label="Remove ' + esc(it.name) + ' from the nominees">×</button>') + '</li>'; };
     $("sdInfoCard").innerHTML =
       '<div class="sd-ih"><div class="sd-ih-t"><h3 id="sdInfoT">★ Debate the Five</h3><div class="sd-ih-m">Claude argues for and against each nominee, asks what matters this week, then suggests a Five. You place the winners here.</div></div>' +
         '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
       '<div class="sd-isec"><h4>Current Five <span>' + ST.five.length + '/' + H.max + '</span></h4>' + (ST.five.length ? '<ul class="sd-db-list">' + ST.five.map(function (k, i) { return row(BY[k], i + 1); }).join("") + '</ul>' : '<p class="sd-none-txt">No targets yet.</p>') + '</div>' +
       '<div class="sd-isec"><h4>Nominees <span>' + noms.length + '</span></h4>' + (noms.length ? '<ul class="sd-db-list">' + noms.map(function (it) { return row(it, 0); }).join("") + '</ul>'
-        : '<p class="sd-none-txt">No nominees yet. Tap a bubble or planet → <b>Nominate for the Five</b>, or nominate in <b>Review one by one</b>.</p>') + '</div>' +
+        : '<p class="sd-none-txt">No nominees yet. Tap \u2606 on an orbit chip, switch on <b>Tap \u2192 \u2605</b> and tap bubbles, or nominate in <b>Review one by one</b>.</p>') +
+        (H.idea ? '<details class="sd-db-idea"' + (DB_IDEA_OPEN ? " open" : "") + '><summary>+ Add an app not started yet</summary><form class="sd-db-form" data-sdform="idea">' +
+          '<input id="sdIdeaN" required maxlength="80" placeholder="Name (e.g. Belay)" autocomplete="off" aria-label="Name of the new app">' +
+          '<input id="sdIdeaG" maxlength="60" placeholder="Category (optional)" list="sdIdeaGL" autocomplete="off" aria-label="Category"><datalist id="sdIdeaGL">' + (H.groups ? H.groups() : []).map(function (g) { return '<option value="' + esc(g) + '">'; }).join("") + '</datalist>' +
+          '<input id="sdIdeaT" maxlength="300" placeholder="One line: what it is for (optional)" autocomplete="off" aria-label="What it is for">' +
+          '<button type="submit" class="sd-btn sd-primary">Add as nominee</button><p class="sd-db-note">It becomes a normal app on the board (category \u201cNot started yet\u201d unless you pick one), starred for the Five.</p></form></details>' : '') + '</div>' +
       '<div class="sd-iact"><button type="button" class="sd-btn sd-primary sd-big" data-sd="dbclaude"' + (noms.length ? "" : " disabled") + '>Open the debate in Claude</button>' +
         '<button type="button" class="sd-btn" data-sd="dbcopy"' + (noms.length ? "" : " disabled") + '>Copy the message</button></div>' +
       '<p class="sd-db-note">The message includes each one’s priority, progress, last activity, open tasks and notes. Career (Belay) and Apperse join when those apps exist.</p>';
@@ -505,7 +524,7 @@
       var el = e.target.closest("[data-sd]"); if (!el) return;
       var a = el.getAttribute("data-sd"), k = el.getAttribute("data-sdk");
       var ik = INFO;   // buttons inside the details window act on the item it shows
-      if (a === "info") { if (TAPO && el.classList.contains("sd-bub")) act(k, "orbit"); else openInfo(k); }
+      if (a === "info") { if (TAPO && el.classList.contains("sd-bub")) act(k, "orbit"); else if (TAPN && el.classList.contains("sd-bub")) nomToggle(k); else openInfo(k); }
       else if (a === "catorb") { var g = el.getAttribute("data-g"); orbitMany(visible().filter(function (r) { return r.group === g; }).map(function (r) { return r.id; }), g); }
       else if (a === "infoclose") closeInfo();
       else if (a === "add") { closeInfo(); act(ik, "add"); }
@@ -521,6 +540,7 @@
       else if (a === "nom") { var nk = ik; nomToggle(nk); if (BY[nk]) openInfo(nk); }
       else if (a === "rvnom") { if (RV && RV.i < RV.ids.length) { nomToggle(RV.ids[RV.i]); rvRender(); } }
       else if (a === "dbopen") dbOpen();
+      else if (a === "chipnom") nomToggle(k);
       else if (a === "dbunnom") { nomToggle(k); dbOpen(); }
       else if (a === "dbclaude") dbClaude();
       else if (a === "dbcopy") copyText(dbText()).then(function (ok) { toast(ok ? "Copied. Paste it into a Claude chat" : "Couldn\u2019t copy on this device", false); });
@@ -563,6 +583,8 @@
       var host = t.parentNode; t.remove(); if (host && host.classList) host.classList.add("sd-noimg");
     }, true);
     $("sdUndo").addEventListener("click", undo);
+    root.addEventListener("submit", function (e) { if (e.target.getAttribute("data-sdform") !== "idea") return; e.preventDefault(); ideaAdd(); });
+    root.addEventListener("toggle", function (e) { if (e.target.classList && e.target.classList.contains("sd-db-idea")) { DB_IDEA_OPEN = e.target.open; if (e.target.open) { var n = $("sdIdeaN"); if (n) n.focus(); } } }, true);
     rvWire();
     $("sdAuto").addEventListener("click", function () {
       var picks = sorted(ROWS.filter(function (r) { return !where(r.id); })).slice(0, H.max - ST.five.length);
@@ -572,7 +594,8 @@
     $("sdSort").addEventListener("change", function () { sortBy = this.value; savePref(); renderPool(); });
     $("sdQ").addEventListener("input", function () { q = this.value.trim().toLowerCase(); renderPool(); });
     $("sdGrp").addEventListener("click", function () { GROUP = !GROUP; savePref(); renderPool(); });
-    $("sdTapO").addEventListener("click", function () { TAPO = !TAPO; savePref(); renderPool(); toast(TAPO ? "Tap a bubble to send it to orbit. Tap the switch again for details." : "Tap a bubble for its details", false); });
+    $("sdTapN").addEventListener("click", function () { TAPN = !TAPN; if (TAPN) TAPO = false; savePref(); renderPool(); toast(TAPN ? "Tap a bubble to star it for the Five. Tap the switch again for details." : "Tap a bubble for its details", false); });
+    $("sdTapO").addEventListener("click", function () { TAPO = !TAPO; if (TAPO) TAPN = false; savePref(); renderPool(); toast(TAPO ? "Tap a bubble to send it to orbit. Tap the switch again for details." : "Tap a bubble for its details", false); });
     $("sdMore").addEventListener("click", function () {   // v114: on phones the search / group / sort row folds away
       var bar = this.closest(".sd-bar"), on = !bar.classList.contains("sd-tools-open");
       bar.classList.toggle("sd-tools-open", on); this.setAttribute("aria-expanded", on ? "true" : "false");
@@ -583,7 +606,7 @@
 
     root.addEventListener("pointerdown", function (e) {
       if (e.button > 0) return;
-      var src = e.target.closest("[data-sdk]"); if (!src || src.classList.contains("sd-chip") || src.closest(".sd-info") || src.closest(".sd-rv")) return;
+      var src = e.target.closest("[data-sdk]"); if (!src || src.closest(".sd-chip") || src.closest(".sd-info") || src.closest(".sd-rv")) return;
       drag = { k: src.getAttribute("data-sdk"), src: src, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, on: false, touch: e.pointerType === "touch" };
       if (drag.touch) drag.timer = setTimeout(function () { if (drag) start(); }, 280);
     });

@@ -332,3 +332,22 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 .sd-db-nm small { display: block; font-weight: 500; font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
 .sd-db-x { width: 30px; height: 30px; font-size: 18px; align-self: center; }
 .sd-db-note { margin: 0; font-size: 12px; color: var(--faint); }
+
+/* v134 · one-tap star: chips are star | name | ×; Tap → ★ switch; nominate at the top of the details window; add an app not started yet */
+.sd .sd-chip { gap: 0; padding: 0; cursor: default; }
+.sd-chip > button { border: none; background: none; font: inherit; color: inherit; cursor: pointer; min-height: 34px; display: inline-flex; align-items: center; }
+.sd-chip-star { padding: 0 4px 0 10px; font-size: 16px; color: var(--faint); }
+.sd-chip-star:hover, .sd-chip-star:focus-visible { color: var(--sd-nom-ink); }
+.sd-chip-nom { border-color: var(--sd-nom); background: color-mix(in oklch, var(--sd-nom) 16%, var(--canvas)); }
+.sd-chip-nom .sd-chip-star { color: var(--sd-nom-ink); }
+.sd-chip-nm { gap: 6px; padding: 0 2px; min-width: 0; overflow: hidden; }
+.sd-chip-x { padding: 0 10px 0 6px; color: var(--faint); font-weight: 800; font-size: 15px; }
+.sd-chip-x:hover, .sd-chip-x:focus-visible { color: var(--sd-over); }
+.sd-tapn[aria-pressed="true"] { border-color: var(--sd-nom); background: var(--sd-nom); color: #2a2205; }
+.sd-tapn-on .sd-bub .sd-bub-c { outline: 2px dashed var(--sd-nom); outline-offset: 3px; }
+.sd-nomtop { width: 100%; }
+.sd-db-idea summary { cursor: pointer; font-weight: 700; color: var(--sd-nom-ink); padding: 8px 0 2px; }
+.sd-db-form { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+.sd-db-form input { font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--hair); border-radius: 10px; background: var(--canvas); color: var(--ink); min-width: 0; }
+.sd-db-form .sd-btn { min-height: 42px; }
+@media (max-width: 600px) { .sd-tapn { padding: 6px 9px; } }

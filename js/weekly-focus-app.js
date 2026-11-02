@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v133", BUILD_N = 133;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v134", BUILD_N = 134;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1677,7 +1677,7 @@
           age: last ? Math.max(0, Math.floor((now - last) / 864e5)) : null, logo: window.WFLogos ? window.WFLogos.logoFor(it) : null,
           open: activeSubs(subs(it.id)).filter(function (x) { return !x.done; }).map(function (x) { return x.t || ""; }).slice(0, 40),
           notes: typeof getEntry(it.id).notes === "string" ? getEntry(it.id).notes.slice(0, 1200) : "",
-          nom: getEntry(it.id).nom === true });   // v133: nominated for the Five (per-item flag, synced like sph)
+          nom: getEntry(it.id).nom === true, idea: getEntry(it.id).idea === true });   // v133: nominated for the Five (per-item flag, synced like sph)
       });
     });
     return rows;
@@ -1706,6 +1706,14 @@
       sphereAdd(k, Math.min(i, targetOrder.length)); sdNomWon(k); renderAll();
     },
     /* v133: nominee for the Five. The debate happens in Claude; the winner is placed here as usual */
+    /* v134: an app whose build has not started yet. It becomes a normal app (active, so it shows on the board),
+       tagged idea, nominated straight away. Its note goes into the card's notes. */
+    idea: function (name, group, note) {
+      var id = addItem("app", name, (group || "").trim() || "Not started yet"); if (!id) return null;
+      var p = { nom: true, idea: true }; note = (note || "").trim(); if (note) p.notes = note;
+      patch(id, p); renderAll(); return id;
+    },
+    groups: function () { var g = {}; state.apps.forEach(function (a) { if (a.group) g[a.group] = 1; }); return Object.keys(g).sort(); },
     nominate: function (k, on) { if (isCore(k) || !itemById(k)) return; on = !!on; if ((getEntry(k).nom === true) !== on) patch(k, { nom: on }); renderAll(); },
     /* orbit: a target only leaves the Five when an orbit item can take its slot (a free slot always pulls the next one up) */
     orbit: function (k) {
@@ -3089,7 +3097,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 five debate"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 one-tap star"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
