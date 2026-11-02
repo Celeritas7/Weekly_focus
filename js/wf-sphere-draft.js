@@ -72,7 +72,7 @@
               '<div class="sd-core"><div class="sd-n" id="sdCoreN">0<small>/5</small></div><div class="sd-l" id="sdCoreL">targets set</div></div>' +
               '<button type="button" class="sd-coremoon" id="sdCoreMoon" data-sd="core" hidden></button><canvas id="sdFx" aria-hidden="true"></canvas></div>' +
             '<div class="sd-load"><div class="sd-load-h"><span class="sd-t">Week load</span><span class="sd-v" id="sdLoadV">Light</span></div><div class="sd-segs" id="sdSegs" aria-hidden="true"></div><div class="sd-chips" id="sdChips"></div></div>' +
-            '<div class="sd-actions"><button class="sd-btn sd-primary" id="sdAuto" type="button">Auto-fill the Five</button><button class="sd-btn" id="sdUndo" type="button" disabled>Undo</button></div>' +
+            '<div class="sd-actions"><button class="sd-btn sd-primary" id="sdAuto" type="button">Auto-fill the Five</button><button class="sd-btn" id="sdUndo" type="button" disabled>Undo</button><button class="sd-btn sd-rvgo" id="sdRvGo" type="button" data-sd="rvopen">Review one by one</button></div>' +
           '</section>' +
           '<section class="sd-pool" id="sdPool" data-sddrop="pool" aria-label="Everything still on the table">' +
             '<div class="sd-bar"><div class="sd-seg" id="sdSeg" role="group" aria-label="Show"><button type="button" data-kind="all"></button><button type="button" data-kind="app"></button><button type="button" data-kind="study"></button><button type="button" data-kind="office"></button></div>' +
@@ -84,9 +84,10 @@
             '<div class="sd-grid" id="sdGrid"></div>' +
           '</section>' +
         '</div>' +
-        '<details class="sd-howto"><summary>How to play</summary><p>Tap a bubble to read its details and add it in one tap. Switch on <b>Tap → Orbit</b> to send each bubble you tap straight to orbit, or press <b>All to orbit</b> on a category. The ring colour is its priority. Drag a bubble onto a number to rank it, or onto the dashed ring for orbit; on a phone, press and hold to drag. Tap a planet to see it or send it back. Keys on a focused bubble: <kbd>Enter</kbd> details, <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit. <kbd>Esc</kbd> closes.</p></details>' +
+        '<details class="sd-howto"><summary>How to play</summary><p>Tap a bubble to read its details and add it in one tap. <b>Review one by one</b> shows every app outside The Five as a card: swipe right for orbit, left for not. Switch on <b>Tap → Orbit</b> to send each bubble you tap straight to orbit, or press <b>All to orbit</b> on a category. The ring colour is its priority. Drag a bubble onto a number to rank it, or onto the dashed ring for orbit; on a phone, press and hold to drag. Tap a planet to see it or send it back. Keys on a focused bubble: <kbd>Enter</kbd> details, <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit. <kbd>Esc</kbd> closes.</p></details>' +
       '</div>' +
       '<div class="sd-info" id="sdInfo" data-sd="infoclose" hidden><div class="sd-info-card" id="sdInfoCard" data-sd="stay" role="dialog" aria-modal="true" aria-labelledby="sdInfoT"></div></div>' +
+      '<div class="sd-rv" id="sdRv" role="dialog" aria-modal="true" aria-label="Review: orbit or not" hidden><div class="sd-rv-in" id="sdRvIn"></div></div>' +
       '<div class="sd-toast" id="sdToast" role="status" hidden></div>';
     document.body.appendChild(root);
     wire();
@@ -331,6 +332,101 @@
   }
   function undo() { if (!hist.length) return; H.restore(hist.pop()); render(); checkIgnite(); toast("Undone", false); }
 
+  /* ---------------- v132 · Review: one card at a time, swipe right = in orbit, left = not in orbit ----------------
+     The Five are not in the queue (they are chosen on purpose). Each decision is applied at once and is one Undo step;
+     Back inside the review steps to the previous card and puts its decision back. */
+  var RV = null;
+  function rvQueue() { return sorted(ROWS.filter(function (it) { return ST.five.indexOf(it.id) < 0 && (kindF === "all" || it.kind === kindF); })).map(function (it) { return it.id; }); }
+  function rvOpen() {
+    pull(); var ids = rvQueue();
+    if (!ids.length) { toast("Nothing to review: everything is in The Five", false); return; }
+    RV = { ids: ids, i: 0, log: [], from: document.activeElement };
+    $("sdRv").hidden = false; rvRender();
+  }
+  function rvClose() {
+    if (!RV) return; var from = RV.from; RV = null; $("sdRv").hidden = true; render(); checkIgnite();
+    if (from && from.focus && document.contains(from)) try { from.focus({ preventScroll: true }); } catch (e) {}
+  }
+  function rvFresh(age) { return age != null && age <= 3; }
+  function rvRender() {
+    var box = $("sdRvIn"), n = RV.ids.length;
+    while (RV.i < n && !BY[RV.ids[RV.i]]) RV.i++;   // an item switched off meanwhile is skipped
+    var bar = '<div class="sd-rv-top"><button type="button" class="sd-btn" data-sd="rvback"' + (RV.log.length ? "" : " disabled") + '>← Back</button>' +
+      '<span class="sd-rv-count">' + Math.min(RV.i + 1, n) + ' / ' + n + '</span><button type="button" class="sd-btn" data-sd="rvclose">Done</button></div>' +
+      '<div class="sd-rv-prog" aria-hidden="true"><i style="width:' + Math.round(Math.min(RV.i, n) / n * 100) + '%"></i></div>';
+    if (RV.i >= n) {
+      var inN = 0, outN = 0, added = [], removed = [], skipped = 0;
+      RV.log.forEach(function (d) { if (d.c === "in") { inN++; if (d.changed) added.push(d.k); } else if (d.c === "out") { outN++; if (d.changed) removed.push(d.k); } else skipped++; });
+      var nm = function (ks) { return ks.map(function (k) { return BY[k] ? esc(BY[k].name) : ""; }).join(", "); };
+      box.innerHTML = bar + '<div class="sd-rv-card sd-rv-end"><h3>Review done</h3>' +
+        '<p><b>' + inN + '</b> in orbit' + (added.length ? ' · new: ' + nm(added) : '') + '</p>' +
+        '<p><b>' + outN + '</b> not in orbit' + (removed.length ? ' · taken out: ' + nm(removed) : '') + '</p>' +
+        (skipped ? '<p><b>' + skipped + '</b> skipped</p>' : '') +
+        (ST.orbit.length > ORBIT_CAP ? '<p class="sd-rv-warn">' + ST.orbit.length + ' in orbit. The week load suggests ' + ORBIT_CAP + ' or fewer.</p>' : '') +
+        '<div class="sd-rv-acts"><button type="button" class="sd-btn" data-sd="rvagain">Review again</button><button type="button" class="sd-btn sd-primary" data-sd="rvclose">Done</button></div></div>';
+      var d = box.querySelector(".sd-primary"); if (d) d.focus({ preventScroll: true });
+      return;
+    }
+    var k = RV.ids[RV.i], it = BY[k], w = where(k), p = PRI[it.pri] || PRI[""], L = it.logo;
+    var pct = it.total ? Math.round(it.done / it.total * 100) : 0, open = it.open || [];
+    var logo = L && L.url ? '<img src="' + esc(L.url) + '" alt="" referrerpolicy="no-referrer">' : L && L.emoji ? '<span class="sd-ih-emo">' + esc(L.emoji) + '</span>' : '<span class="sd-ih-mono">' + esc(mono(it.name)) + '</span>';
+    box.innerHTML = bar +
+      '<div class="sd-rv-card" id="sdRvCard" tabindex="-1" style="--kc:' + KIND[it.kind].c + '">' +
+        '<span class="sd-rv-stamp sd-rv-sin" aria-hidden="true">In orbit</span><span class="sd-rv-stamp sd-rv-sout" aria-hidden="true">Not in orbit</span>' +
+        '<div class="sd-ih"><span class="sd-ih-logo" style="--pc:' + (p.l ? p.c : "var(--hair)") + ';--kc:' + KIND[it.kind].c + '">' + logo + '</span>' +
+          '<div class="sd-ih-t"><h3>' + esc(it.name) + '</h3><div class="sd-ih-m">' + KIND[it.kind].l + ' · ' + esc(it.group) + (p.l ? ' · <b style="color:' + p.c + '">' + p.l + '</b>' : '') + '</div>' +
+          '<div class="sd-rv-now' + (w && w.orbit ? " sd-in" : "") + '">' + (w && w.orbit ? "Now: in orbit" : "Now: not in orbit") + '</div></div></div>' +
+        '<div class="sd-rv-age' + (rvFresh(it.age) ? " sd-fresh" : it.age != null && it.age >= 14 ? " sd-stale" : "") + '">' + (rvFresh(it.age) ? "Updated " : "Last activity: ") + ageTxt(it.age) + '</div>' +
+        '<div class="sd-ip">' + (it.total ? '<span class="sd-ip-bar"><i style="width:' + pct + '%;background:' + KIND[it.kind].c + '"></i></span><span>' + it.done + '/' + it.total + ' done</span>' : '<span>No subtasks yet</span>') + '</div>' +
+        '<div class="sd-isec"><h4>Open tasks <span>' + open.length + '</span></h4>' + (open.length ? '<ul class="sd-tasks">' + open.slice(0, 4).map(function (t) { return '<li>' + esc(t) + '</li>'; }).join("") + (open.length > 4 ? '<li class="sd-rv-more">+' + (open.length - 4) + ' more</li>' : '') + '</ul>' : '<p class="sd-none-txt">No open subtasks.</p>') + '</div>' +
+        (it.notes ? '<p class="sd-rv-notes">' + esc(it.notes.slice(0, 180)) + (it.notes.length > 180 ? "…" : "") + '</p>' : '') +
+      '</div>' +
+      '<div class="sd-rv-acts"><button type="button" class="sd-btn sd-rv-out" data-sd="rvout">← Not in orbit</button><button type="button" class="sd-btn sd-rv-skip" data-sd="rvskip">Skip</button><button type="button" class="sd-btn sd-rv-inb" data-sd="rvin">In orbit →</button></div>' +
+      '<p class="sd-rv-tip">Swipe the card, or use ← → keys. ↓ skips.</p>';
+    var c = $("sdRvCard"); if (c) c.focus({ preventScroll: true });
+  }
+  function rvDecide(c) {
+    if (!RV || RV.i >= RV.ids.length) return;
+    var k = RV.ids[RV.i], w = where(k), snap = H.snapshot(), sig = JSON.stringify(H.state());
+    if (c === "in" && !w) H.orbit(k);
+    else if (c === "out" && w && w.orbit) H.back(k);
+    var changed = JSON.stringify(H.state()) !== sig;
+    if (changed) { hist.push(snap); if (hist.length > 30) hist.shift(); }
+    RV.log.push({ k: k, c: c, snap: snap, changed: changed });
+    pull(); RV.i++;
+    var card = $("sdRvCard");
+    if (card && !reduce && c !== "skip") { card.classList.add(c === "in" ? "sd-rv-flyr" : "sd-rv-flyl"); setTimeout(function () { if (RV) rvRender(); }, 170); }
+    else rvRender();
+  }
+  function rvBack() {
+    if (!RV || !RV.log.length) return;
+    var d = RV.log.pop();
+    if (d.changed) { H.restore(d.snap); if (hist.length && hist[hist.length - 1] === d.snap) hist.pop(); }
+    pull(); RV.i = Math.max(0, RV.i - 1); rvRender();
+  }
+  var rvDrag = null;
+  function rvWire() {
+    var rv = $("sdRv");
+    rv.addEventListener("pointerdown", function (e) {
+      var c = e.target.closest("#sdRvCard"); if (!c || e.button > 0) return;
+      rvDrag = { c: c, x0: e.clientX, y0: e.clientY, dx: 0, on: false, id: e.pointerId };
+    });
+    rv.addEventListener("pointermove", function (e) {
+      if (!rvDrag) return; var dx = e.clientX - rvDrag.x0, dy = e.clientY - rvDrag.y0;
+      if (!rvDrag.on) { if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { rvDrag = null; return; } if (Math.abs(dx) < 8) return; rvDrag.on = true; try { rvDrag.c.setPointerCapture(rvDrag.id); } catch (x) {} rvDrag.c.classList.add("sd-rv-drag"); }
+      rvDrag.dx = dx; rvDrag.c.style.transform = "translateX(" + dx + "px) rotate(" + (dx / 22) + "deg)";
+      rvDrag.c.setAttribute("data-dir", dx > 60 ? "in" : dx < -60 ? "out" : "");
+    });
+    function up() {
+      if (!rvDrag) return; var d = rvDrag; rvDrag = null; if (!d.on) return;
+      d.c.classList.remove("sd-rv-drag");
+      var lim = Math.min(110, d.c.offsetWidth * 0.28);
+      if (d.dx > lim) rvDecide("in"); else if (d.dx < -lim) rvDecide("out");
+      else { d.c.style.transform = ""; d.c.removeAttribute("data-dir"); }
+    }
+    rv.addEventListener("pointerup", up); rv.addEventListener("pointercancel", up);
+  }
+
   /* ---------------- input ---------------- */
   var drag = null, suppressClick = false, overEl = null;
   function wire() {
@@ -352,11 +448,26 @@
       else if (a === "lgemo") { var le = $("sdLemo"), op = le.hidden; le.hidden = !op; el.setAttribute("aria-expanded", op ? "true" : "false"); if (op) $("sdEmo").focus(); }
       else if (a === "lgemosave") { var ev = $("sdEmo").value; logoRun(function (kk) { return H.logo.emoji(kk, ev); }, "Emoji saved."); }
       else if (a === "lgsite") logoRun(function (kk) { return H.logo.site(kk); }, "Back to the site's icon. It shows once the store has fetched it.");
+      else if (a === "rvopen") rvOpen();
+      else if (a === "rvin") rvDecide("in");
+      else if (a === "rvout") rvDecide("out");
+      else if (a === "rvskip") rvDecide("skip");
+      else if (a === "rvback") rvBack();
+      else if (a === "rvagain") { RV.ids = rvQueue(); RV.i = 0; RV.log = []; rvRender(); }
+      else if (a === "rvclose") rvClose();
       else if (a === "undo") undo();
       else if (a === "close") close();
       else if (a === "core" && H.openCore) H.openCore();
     });
     root.addEventListener("keydown", function (e) {
+      if (RV) {
+        if (e.target.tagName === "BUTTON" && (e.key === "Enter" || e.key === " ")) return;
+        var rk = { ArrowRight: "in", ArrowLeft: "out", ArrowDown: "skip" }[e.key];
+        if (rk) { e.preventDefault(); rvDecide(rk); }
+        else if (e.key === "Backspace") { e.preventDefault(); rvBack(); }
+        else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); rvClose(); }
+        return;
+      }
       if (e.key === "Escape" && INFO) { e.stopPropagation(); closeInfo(); return; }
       if (e.key === "Enter" && e.target.id === "sdEmo") { e.preventDefault(); var ev = e.target.value; logoRun(function (kk) { return H.logo.emoji(kk, ev); }, "Emoji saved."); return; }
       var c = e.target.closest && e.target.closest(".sd-bub[data-sdk]"); if (!c) return;
@@ -376,6 +487,7 @@
       var host = t.parentNode; t.remove(); if (host && host.classList) host.classList.add("sd-noimg");
     }, true);
     $("sdUndo").addEventListener("click", undo);
+    rvWire();
     $("sdAuto").addEventListener("click", function () {
       var picks = sorted(ROWS.filter(function (r) { return !where(r.id); })).slice(0, H.max - ST.five.length);
       picks.forEach(function (it, j) { setTimeout(function () { if (isOpen) act(it.id, "add"); }, reduce ? 0 : j * 220); });
@@ -395,7 +507,7 @@
 
     root.addEventListener("pointerdown", function (e) {
       if (e.button > 0) return;
-      var src = e.target.closest("[data-sdk]"); if (!src || src.classList.contains("sd-chip") || src.closest(".sd-info")) return;
+      var src = e.target.closest("[data-sdk]"); if (!src || src.classList.contains("sd-chip") || src.closest(".sd-info") || src.closest(".sd-rv")) return;
       drag = { k: src.getAttribute("data-sdk"), src: src, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, on: false, touch: e.pointerType === "touch" };
       if (drag.touch) drag.timer = setTimeout(function () { if (drag) start(); }, 280);
     });
@@ -446,11 +558,11 @@
   }
   function close() {
     if (!isOpen) return;
-    closeInfo(); isOpen = false; root.hidden = true; $("sdToast").hidden = true; document.documentElement.classList.remove("sd-lock");
+    closeInfo(); if (RV) { RV = null; $("sdRv").hidden = true; } isOpen = false; root.hidden = true; $("sdToast").hidden = true; document.documentElement.classList.remove("sd-lock");
     if (io) io.disconnect();
     if (lastFocus && lastFocus.focus) try { lastFocus.focus({ preventScroll: true }); } catch (e) {}
   }
-  function refresh() { if (!isOpen) return; if (drag && drag.on) { pendingRefresh = true; return; } render(); checkIgnite(); }
+  function refresh() { if (!isOpen) return; if (drag && drag.on) { pendingRefresh = true; return; } render(); checkIgnite(); if (RV && !rvDrag) rvRender(); }
 
   window.WFSphereDraft = { open: open, close: close, isOpen: function () { return isOpen; }, refresh: refresh };
 })();

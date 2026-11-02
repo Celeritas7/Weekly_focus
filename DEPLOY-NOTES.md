@@ -1,3 +1,18 @@
+# v132 — Review one by one: swipe each app in or out of orbit · built on v131
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v132`). **No SQL ships with this build.**
+
+Sphere Draft → **Review one by one** (next to Undo) shows every app, topic and office task outside The Five as a card, one at a time, in the table's order (Priority first by default; the All / Apps / Study / Office filter applies).
+- Each card: name, category, priority, **Now: in orbit / not in orbit**, last activity (green "Updated …" for the last 3 days, orange after 14), progress, the first open tasks and the start of the notes.
+- **Swipe right / In orbit →** puts it in orbit. **Swipe left / ← Not in orbit** takes it out (back to the table). **Skip** leaves it as it is. Keys: → ← and ↓ skip.
+- Each decision is saved at once and is one step of the draft's **Undo**. **← Back** (or Backspace) returns to the previous card and puts its decision back.
+- The end screen counts in orbit / not in orbit / skipped and names what changed. Esc closes the review only.
+- The Five are not in the review (they are chosen on purpose).
+
+Check: footer reads **build v132 · opens offline · review mode**.
+
+---
+
 # v131 — quick orbit in the Sphere Draft · built on v130
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v131`). **No SQL ships with this build.**
