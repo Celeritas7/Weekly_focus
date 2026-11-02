@@ -1,3 +1,17 @@
+# v134 — one-tap star, and apps not started yet · built on v133
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v134`). **No SQL ships with this build.**
+
+Nominating meant opening an app and scrolling to the bottom of its window.
+- **Orbit chips** (Week load) are now **☆ | name | ×**: tap ☆ to star it for the Five (★ = nominated, tap again to remove), tap the name for its details, × sends it back to the table as before. Before, tapping anywhere on a chip sent it back.
+- **Tap → ★** switch next to Tap → Orbit: while on, each bubble on the table you tap is starred (or un-starred), with no window. Only one of the two switches is on at a time.
+- In the details window, **Nominate for the Five** is now right under the name.
+- **Debate the Five → + Add an app not started yet**: name, optional category and a one-line note. It becomes a normal app on the board (category “Not started yet” unless you pick one), tagged as not started, and starred for the Five. If the name already exists, that app is starred instead. In the Claude message it reads “(not started yet: no code)”.
+
+Check: footer reads **build v134 · opens offline · one-tap star**.
+
+---
+
 # v133 — Five debate: nominate apps, argue it out in Claude · built on v132
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v133`). **No SQL ships with this build.** Nominees are a per-item flag (`entries[id].nom`), synced like the orbit flag.
