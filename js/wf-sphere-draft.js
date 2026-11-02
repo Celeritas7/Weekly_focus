@@ -7,11 +7,11 @@
    ============================================================ */
 (function () {
   "use strict";
-  var H = null, root = null, isOpen = false, hist = [], kindF = "all", sortBy = "pri", q = "", GROUP = true, lastFull = false, io = null;
+  var H = null, root = null, isOpen = false, hist = [], kindF = "all", sortBy = "pri", q = "", GROUP = true, TAPO = false, lastFull = false, io = null;
   var BY = {}, ROWS = [];
   var PREF = "wf_sd_prefs";
-  try { var pf = JSON.parse(localStorage.getItem(PREF) || "{}"); if (pf.group === false) GROUP = false; if (pf.sort) sortBy = pf.sort; } catch (e) {}
-  function savePref() { try { localStorage.setItem(PREF, JSON.stringify({ group: GROUP, sort: sortBy })); } catch (e) {} }
+  try { var pf = JSON.parse(localStorage.getItem(PREF) || "{}"); if (pf.group === false) GROUP = false; if (pf.sort) sortBy = pf.sort; if (pf.tapo === true) TAPO = true; } catch (e) {}
+  function savePref() { try { localStorage.setItem(PREF, JSON.stringify({ group: GROUP, sort: sortBy, tapo: TAPO })); } catch (e) {} }
 
   var KIND = { app: { l: "App", c: "var(--brand)" }, study: { l: "Study", c: "var(--study)" }, office: { l: "Office", c: "var(--office, oklch(0.55 0.13 70))" } };
   var PRI = { high: { l: "High", c: "var(--pri-h)", w: 3 }, medium: { l: "Medium", c: "var(--pri-m)", w: 2 }, low: { l: "Low", c: "var(--pri-l)", w: 1 }, "": { l: "", c: "transparent", w: 0 } };
@@ -76,6 +76,7 @@
           '</section>' +
           '<section class="sd-pool" id="sdPool" data-sddrop="pool" aria-label="Everything still on the table">' +
             '<div class="sd-bar"><div class="sd-seg" id="sdSeg" role="group" aria-label="Show"><button type="button" data-kind="all"></button><button type="button" data-kind="app"></button><button type="button" data-kind="study"></button><button type="button" data-kind="office"></button></div>' +
+              '<button type="button" class="sd-tapo" id="sdTapO" aria-pressed="false" title="When on, tapping a bubble sends it straight to orbit">Tap \u2192 Orbit</button>' +
               '<button type="button" class="sd-more" id="sdMore" aria-expanded="false" aria-controls="sdTools" aria-label="Search, group and sort"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><i class="sd-more-dot" aria-hidden="true"></i></button>' +
               '<div class="sd-tools" id="sdTools"><input id="sdQ" type="search" placeholder="Find…" autocomplete="off" aria-label="Find"><button type="button" class="sd-tog" id="sdGrp">By category</button>' +
               '<select id="sdSort" aria-label="Sort"><option value="pri">Priority first</option><option value="open">Most open tasks</option><option value="stale">Longest untouched</option><option value="az">A–Z</option></select></div></div>' +
@@ -83,7 +84,7 @@
             '<div class="sd-grid" id="sdGrid"></div>' +
           '</section>' +
         '</div>' +
-        '<details class="sd-howto"><summary>How to play</summary><p>Tap a bubble to read its details and add it in one tap. The ring colour is its priority. Drag a bubble onto a number to rank it, or onto the dashed ring for orbit; on a phone, press and hold to drag. Tap a planet to see it or send it back. Keys on a focused bubble: <kbd>Enter</kbd> details, <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit. <kbd>Esc</kbd> closes.</p></details>' +
+        '<details class="sd-howto"><summary>How to play</summary><p>Tap a bubble to read its details and add it in one tap. Switch on <b>Tap → Orbit</b> to send each bubble you tap straight to orbit, or press <b>All to orbit</b> on a category. The ring colour is its priority. Drag a bubble onto a number to rank it, or onto the dashed ring for orbit; on a phone, press and hold to drag. Tap a planet to see it or send it back. Keys on a focused bubble: <kbd>Enter</kbd> details, <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit. <kbd>Esc</kbd> closes.</p></details>' +
       '</div>' +
       '<div class="sd-info" id="sdInfo" data-sd="infoclose" hidden><div class="sd-info-card" id="sdInfoCard" data-sd="stay" role="dialog" aria-modal="true" aria-labelledby="sdInfoT"></div></div>' +
       '<div class="sd-toast" id="sdToast" role="status" hidden></div>';
@@ -138,7 +139,8 @@
     var total = ST.five.length + ST.orbit.length, v = $("sdLoadV");
     v.className = "sd-v" + (over ? " sd-heavy" : "");
     v.textContent = over ? "Heavy · " + ST.orbit.length + " in orbit, drop " + over : total === 0 ? "Empty" : ST.five.length < MAX ? "Light · room for " + (MAX - ST.five.length) + " more" : ST.orbit.length ? "Balanced · " + ST.orbit.length + " in orbit" : "Focused";
-    $("sdChips").innerHTML = ST.orbit.map(function (k) { return '<button type="button" class="sd-chip" data-sdk="' + esc(k) + '" data-sd="back" aria-label="Send ' + esc(BY[k].name) + ' back"><span>' + esc(BY[k].name) + '</span><em aria-hidden="true">×</em></button>'; }).join("");
+    /* v131: orbit chips sorted by category, each with its category colour */
+    $("sdChips").innerHTML = ST.orbit.slice().sort(function (a, b) { return BY[a].group.localeCompare(BY[b].group) || BY[a].name.localeCompare(BY[b].name); }).map(function (k) { return '<button type="button" class="sd-chip" data-sdk="' + esc(k) + '" data-sd="back" style="--cc:' + catCol(BY[k].group) + '" title="' + esc(BY[k].group) + '" aria-label="Send ' + esc(BY[k].name) + ' back"><i aria-hidden="true"></i><span>' + esc(BY[k].name) + '</span><em aria-hidden="true">×</em></button>'; }).join("");
     $("sdUndo").disabled = !hist.length;
     $("sdAuto").disabled = ST.five.length >= MAX || !ROWS.some(function (r) { return !where(r.id); });
   }
@@ -156,7 +158,7 @@
     var p = PRI[it.pri] || PRI[""], L = it.logo, nameIn = nameSpan(it.name, false);
     var inner = L && L.url ? '<img class="sd-bub-img" src="' + esc(L.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' + nameSpan(it.name, true)
       : L && L.emoji ? '<span class="sd-bub-emo">' + esc(L.emoji) + '</span>' : nameIn;
-    return '<button type="button" class="sd-bub" data-sdk="' + esc(it.id) + '" data-sd="info" style="--kc:' + KIND[it.kind].c + ';--pc:' + (p.l ? p.c : "var(--hair)") + '" title="' + esc(it.name) + '" aria-label="' + esc(it.name) + (p.l ? ", " + p.l + " priority" : "") + '. Show details">' +
+    return '<button type="button" class="sd-bub" data-sdk="' + esc(it.id) + '" data-sd="info" style="--kc:' + KIND[it.kind].c + ';--pc:' + (p.l ? p.c : "var(--hair)") + '" title="' + esc(it.name) + '" aria-label="' + esc(it.name) + (p.l ? ", " + p.l + " priority" : "") + (TAPO ? '. Send to orbit">' : '. Show details">') +
       '<span class="sd-bub-c">' + inner + '</span>' + (L ? '<span class="sd-bub-l">' + esc(it.name) + '</span>' : '') + '</button>';
   }
   function groupedHtml(list) {
@@ -164,12 +166,14 @@
     list.forEach(function (it) { if (!by[it.group]) { by[it.group] = []; order.push(it.group); } by[it.group].push(it); });
     if (sortBy === "az") order.sort(function (a, b) { return a.localeCompare(b); });
     return order.map(function (g) {
-      return '<section class="sd-cat" style="--cc:' + catCol(g) + '" aria-label="' + esc(g) + '"><h3 class="sd-cat-h"><i></i>' + esc(g) + ' <span>' + by[g].length + '</span></h3><div class="sd-bubs">' + by[g].map(cardHtml).join("") + '</div></section>';
+      return '<section class="sd-cat" style="--cc:' + catCol(g) + '" aria-label="' + esc(g) + '"><h3 class="sd-cat-h"><i></i>' + esc(g) + ' <span>' + by[g].length + '</span><button type="button" class="sd-catorb" data-sd="catorb" data-g="' + esc(g) + '" aria-label="Send all ' + by[g].length + ' in ' + esc(g) + ' to orbit">All to orbit</button></h3><div class="sd-bubs">' + by[g].map(cardHtml).join("") + '</div></section>';
     }).join("");
   }
+  /* what the table shows right now (filter + search), in table order */
+  function visible() { return sorted(ROWS.filter(function (it) { return !where(it.id) && (kindF === "all" || it.kind === kindF) && (!q || (it.name + " " + it.group).toLowerCase().indexOf(q) >= 0); })); }
   function renderPool() {
     var left = ROWS.filter(function (r) { return !where(r.id); });
-    var list = sorted(left.filter(function (it) { return (kindF === "all" || it.kind === kindF) && (!q || (it.name + " " + it.group).toLowerCase().indexOf(q) >= 0); }));
+    var list = visible();
     $("sdGrid").innerHTML = !list.length
       ? '<div class="sd-empty-pool">' + (q || kindF !== "all" ? "Nothing matches. Clear the search or pick another filter." : ROWS.length ? "Everything is in the sphere. Tap a planet to send it back." : "No active items yet. Switch on an app or topic on the board first.") + '</div>'
       : GROUP ? groupedHtml(list) : '<div class="sd-bubs">' + list.map(cardHtml).join("") + '</div>';
@@ -178,6 +182,7 @@
       b.textContent = (kd === "all" ? "All" : kd === "app" ? "Apps" : KIND[kd].l) + " " + n; b.setAttribute("aria-pressed", kindF === kd ? "true" : "false");
     });
     $("sdGrp").setAttribute("aria-pressed", GROUP ? "true" : "false");
+    $("sdTapO").setAttribute("aria-pressed", TAPO ? "true" : "false"); root.classList.toggle("sd-tapo-on", TAPO);
     $("sdSort").value = sortBy;
     $("sdMore").classList.toggle("sd-active", !!q || !GROUP || sortBy !== "pri");
     $("sdT5").textContent = ST.five.length + "/" + H.max; $("sdTO").textContent = ST.orbit.length; $("sdTP").textContent = left.length;
@@ -315,6 +320,15 @@
     else if (after && after.orbit && !(before && before.orbit)) toast(name + " is in orbit", true);
     else if (after && !before && ST.five.length === H.max) toast("Your Five are set. " + name + " is #" + (after.five + 1), true);
   }
+  /* v131: several to orbit in one move (one Undo step) */
+  function orbitMany(ids, label) {
+    ids = ids.filter(function (k) { return BY[k] && !where(k); }); if (!ids.length) return;
+    var snap = H.snapshot(), sig = JSON.stringify(H.state());
+    ids.forEach(function (k) { H.orbit(k); });
+    if (JSON.stringify(H.state()) !== sig) { hist.push(snap); if (hist.length > 30) hist.shift(); }
+    render(); checkIgnite();
+    toast((ids.length === 1 ? BY[ids[0]].name + " is" : ids.length + " from " + label + " are") + " in orbit", true);
+  }
   function undo() { if (!hist.length) return; H.restore(hist.pop()); render(); checkIgnite(); toast("Undone", false); }
 
   /* ---------------- input ---------------- */
@@ -326,7 +340,8 @@
       var el = e.target.closest("[data-sd]"); if (!el) return;
       var a = el.getAttribute("data-sd"), k = el.getAttribute("data-sdk");
       var ik = INFO;   // buttons inside the details window act on the item it shows
-      if (a === "info") openInfo(k);
+      if (a === "info") { if (TAPO && el.classList.contains("sd-bub")) act(k, "orbit"); else openInfo(k); }
+      else if (a === "catorb") { var g = el.getAttribute("data-g"); orbitMany(visible().filter(function (r) { return r.group === g; }).map(function (r) { return r.id; }), g); }
       else if (a === "infoclose") closeInfo();
       else if (a === "add") { closeInfo(); act(ik, "add"); }
       else if (a === "slot") { closeInfo(); act(ik, "slot", +el.getAttribute("data-i")); }
@@ -369,6 +384,7 @@
     $("sdSort").addEventListener("change", function () { sortBy = this.value; savePref(); renderPool(); });
     $("sdQ").addEventListener("input", function () { q = this.value.trim().toLowerCase(); renderPool(); });
     $("sdGrp").addEventListener("click", function () { GROUP = !GROUP; savePref(); renderPool(); });
+    $("sdTapO").addEventListener("click", function () { TAPO = !TAPO; savePref(); renderPool(); toast(TAPO ? "Tap a bubble to send it to orbit. Tap the switch again for details." : "Tap a bubble for its details", false); });
     $("sdMore").addEventListener("click", function () {   // v114: on phones the search / group / sort row folds away
       var bar = this.closest(".sd-bar"), on = !bar.classList.contains("sd-tools-open");
       bar.classList.toggle("sd-tools-open", on); this.setAttribute("aria-expanded", on ? "true" : "false");

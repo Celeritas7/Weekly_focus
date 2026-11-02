@@ -1,3 +1,17 @@
+# v131 — quick orbit in the Sphere Draft · built on v130
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v131`). **No SQL ships with this build.**
+
+Putting apps in orbit took three taps each (bubble → details → Orbit), and a new item sent to orbit landed in The Five whenever a slot was free.
+- **Orbit means orbit.** The Orbit button, the `O` key and dropping on the dashed ring now put a new item in orbit even while The Five has free slots. **Add as #N** still fills The Five.
+- **Tap → Orbit** switch next to All / Apps / Study / Office: while it is on, each bubble you tap goes straight to orbit, with no details window. Tap the switch again for details. The choice is remembered on this device.
+- **All to orbit** on each category header (By category view) sends every bubble shown in that category to orbit in one move; one **Undo** takes it back. It respects the Apps / Study / Office filter and the search.
+- Orbit chips under Week load are sorted by category and carry the category colour.
+
+Check: footer reads **build v131 · opens offline · quick orbit**.
+
+---
+
 # v130 — review fix: a Tapal update keeps your notes · built on v129
 
 Upload `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v130`). **No SQL ships with this build.**

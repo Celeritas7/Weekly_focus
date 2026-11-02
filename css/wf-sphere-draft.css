@@ -253,6 +253,7 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
   .sd-tools input { flex: 1 1 auto; width: auto; }
   .sd-legend { margin: 0 0 12px; gap: 4px 12px; font-size: 11px; }
   .sd-legend .sd-legend-tip { display: none; }
+  .sd-tapo { min-height: 38px; padding: 6px 10px; border-radius: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) { .sd *, .sd *::before, .sd *::after { animation: none !important; transition: none !important; } }
@@ -268,3 +269,11 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 .sd-lmsg.sd-lerr { color: oklch(0.55 0.19 25); }
 /* v117: names are measured against the circle's inner width (86% keeps the name inside the round edge) */
 .sd .sd-bub-c .sd-face-name, .sd .sd-slot .sd-face-name { width: 86%; max-width: 86%; min-width: 0; padding: 0; box-sizing: border-box; letter-spacing: -.01em; }
+
+/* v131 · quick orbit: Tap → Orbit switch, All to orbit per category, orbit chips coloured by category */
+.sd-tapo { flex: 0 0 auto; border: 1px dashed var(--hair); background: var(--canvas); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; min-height: 32px; }
+.sd-tapo[aria-pressed="true"] { border-style: solid; border-color: var(--brand); background: var(--brand); color: #fff; }
+.sd-catorb { margin-left: auto; border: 1px dashed var(--cc); background: transparent; color: var(--ink); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0; text-transform: none; cursor: pointer; min-height: 28px; }
+.sd-catorb:hover, .sd-catorb:focus-visible { background: var(--cc); color: #fff; }
+.sd-tapo-on .sd-bub .sd-bub-c { outline: 2px dashed var(--brand); outline-offset: 3px; }
+.sd-chip i { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--cc, var(--faint)); }
