@@ -1,3 +1,16 @@
+# v133 — Five debate: nominate apps, argue it out in Claude · built on v132
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v133`). **No SQL ships with this build.** Nominees are a per-item flag (`entries[id].nom`), synced like the orbit flag.
+
+- **Nominate for the Five**: in the Sphere Draft, tap a bubble or an orbit planet → **☆ Nominate for the Five** (tap again to remove). In **Review one by one** there is the same button, or press **N**. Nominees carry a gold ★ on their bubble, planet and orbit chip. Members of the Five can't be nominated (they already hold a place).
+- **★ Debate the Five · N** (next to Review one by one) opens a sheet with the current Five and the nominees (× removes a nominee). **Open the debate in Claude** opens claude.ai with a ready message: the current Five and each nominee with priority, progress, last activity, up to 5 open tasks and notes, plus the rest of the orbit by name. It asks Claude to argue for and against each, point out conflicts, ask up to 3 questions, then suggest a ranked Five. The message is also copied; if it is very long, claude.ai opens empty and you paste.
+- **You place the winners** in the Sphere Draft as usual. A nominee placed in the Five loses its ★ (it won).
+- Career (Belay) and Apperse are not built yet. The message says so and asks you directly when career goals matter.
+
+Check: footer reads **build v133 · opens offline · five debate**.
+
+---
+
 # v132 — Review one by one: swipe each app in or out of orbit · built on v131
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v132`). **No SQL ships with this build.**

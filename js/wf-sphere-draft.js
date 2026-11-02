@@ -72,7 +72,7 @@
               '<div class="sd-core"><div class="sd-n" id="sdCoreN">0<small>/5</small></div><div class="sd-l" id="sdCoreL">targets set</div></div>' +
               '<button type="button" class="sd-coremoon" id="sdCoreMoon" data-sd="core" hidden></button><canvas id="sdFx" aria-hidden="true"></canvas></div>' +
             '<div class="sd-load"><div class="sd-load-h"><span class="sd-t">Week load</span><span class="sd-v" id="sdLoadV">Light</span></div><div class="sd-segs" id="sdSegs" aria-hidden="true"></div><div class="sd-chips" id="sdChips"></div></div>' +
-            '<div class="sd-actions"><button class="sd-btn sd-primary" id="sdAuto" type="button">Auto-fill the Five</button><button class="sd-btn" id="sdUndo" type="button" disabled>Undo</button><button class="sd-btn sd-rvgo" id="sdRvGo" type="button" data-sd="rvopen">Review one by one</button></div>' +
+            '<div class="sd-actions"><button class="sd-btn sd-primary" id="sdAuto" type="button">Auto-fill the Five</button><button class="sd-btn" id="sdUndo" type="button" disabled>Undo</button><button class="sd-btn sd-rvgo" id="sdRvGo" type="button" data-sd="rvopen">Review one by one</button><button class="sd-btn sd-dbgo" id="sdDbGo" type="button" data-sd="dbopen">\u2605 Debate the Five</button></div>' +
           '</section>' +
           '<section class="sd-pool" id="sdPool" data-sddrop="pool" aria-label="Everything still on the table">' +
             '<div class="sd-bar"><div class="sd-seg" id="sdSeg" role="group" aria-label="Show"><button type="button" data-kind="all"></button><button type="button" data-kind="app"></button><button type="button" data-kind="study"></button><button type="button" data-kind="office"></button></div>' +
@@ -115,7 +115,7 @@
       m.type = "button"; m.className = "sd-moon" + (landing === k ? " sd-landed" : "");
       m.setAttribute("data-sdk", k); m.setAttribute("data-sd", "info"); m.setAttribute("data-sddrop", "orbit");
       m.style.setProperty("--kc", KIND[it.kind].c); m.setAttribute("aria-label", "In orbit: " + it.name + ". Show details"); m.title = it.name;
-      m.innerHTML = face(it, "moon"); pos(m, n <= 5 ? gaps[j] : 18 + j * 360 / n, 47);
+      m.innerHTML = face(it, "moon") + (it.nom ? '<span class="sd-nomb" title="Nominated for the Five" aria-hidden="true">\u2605</span>' : ''); pos(m, n <= 5 ? gaps[j] : 18 + j * 360 / n, 47);
       sp.appendChild(m);
     });
     $("sdCoreN").innerHTML = ST.five.length + "<small>/" + MAX + "</small>";
@@ -141,7 +141,7 @@
     v.className = "sd-v" + (over ? " sd-heavy" : "");
     v.textContent = over ? "Heavy · " + ST.orbit.length + " in orbit, drop " + over : total === 0 ? "Empty" : ST.five.length < MAX ? "Light · room for " + (MAX - ST.five.length) + " more" : ST.orbit.length ? "Balanced · " + ST.orbit.length + " in orbit" : "Focused";
     /* v131: orbit chips sorted by category, each with its category colour */
-    $("sdChips").innerHTML = ST.orbit.slice().sort(function (a, b) { return BY[a].group.localeCompare(BY[b].group) || BY[a].name.localeCompare(BY[b].name); }).map(function (k) { return '<button type="button" class="sd-chip" data-sdk="' + esc(k) + '" data-sd="back" style="--cc:' + catCol(BY[k].group) + '" title="' + esc(BY[k].group) + '" aria-label="Send ' + esc(BY[k].name) + ' back"><i aria-hidden="true"></i><span>' + esc(BY[k].name) + '</span><em aria-hidden="true">×</em></button>'; }).join("");
+    $("sdChips").innerHTML = ST.orbit.slice().sort(function (a, b) { return BY[a].group.localeCompare(BY[b].group) || BY[a].name.localeCompare(BY[b].name); }).map(function (k) { return '<button type="button" class="sd-chip" data-sdk="' + esc(k) + '" data-sd="back" style="--cc:' + catCol(BY[k].group) + '" title="' + esc(BY[k].group) + '" aria-label="Send ' + esc(BY[k].name) + ' back"><i aria-hidden="true"></i><span>' + (BY[k].nom ? "\u2605 " : "") + esc(BY[k].name) + '</span><em aria-hidden="true">×</em></button>'; }).join("");
     $("sdUndo").disabled = !hist.length;
     $("sdAuto").disabled = ST.five.length >= MAX || !ROWS.some(function (r) { return !where(r.id); });
   }
@@ -159,8 +159,8 @@
     var p = PRI[it.pri] || PRI[""], L = it.logo, nameIn = nameSpan(it.name, false);
     var inner = L && L.url ? '<img class="sd-bub-img" src="' + esc(L.url) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' + nameSpan(it.name, true)
       : L && L.emoji ? '<span class="sd-bub-emo">' + esc(L.emoji) + '</span>' : nameIn;
-    return '<button type="button" class="sd-bub" data-sdk="' + esc(it.id) + '" data-sd="info" style="--kc:' + KIND[it.kind].c + ';--pc:' + (p.l ? p.c : "var(--hair)") + '" title="' + esc(it.name) + '" aria-label="' + esc(it.name) + (p.l ? ", " + p.l + " priority" : "") + (TAPO ? '. Send to orbit">' : '. Show details">') +
-      '<span class="sd-bub-c">' + inner + '</span>' + (L ? '<span class="sd-bub-l">' + esc(it.name) + '</span>' : '') + '</button>';
+    return '<button type="button" class="sd-bub" data-sdk="' + esc(it.id) + '" data-sd="info" style="--kc:' + KIND[it.kind].c + ';--pc:' + (p.l ? p.c : "var(--hair)") + '" title="' + esc(it.name) + '" aria-label="' + esc(it.name) + (p.l ? ", " + p.l + " priority" : "") + (it.nom ? ", nominated for the Five" : "") + (TAPO ? '. Send to orbit">' : '. Show details">') +
+      '<span class="sd-bub-c">' + inner + '</span>' + (it.nom ? '<span class="sd-nomb" title="Nominated for the Five" aria-hidden="true">\u2605</span>' : '') + (L ? '<span class="sd-bub-l">' + esc(it.name) + '</span>' : '') + '</button>';
   }
   function groupedHtml(list) {
     var order = [], by = {};
@@ -192,7 +192,9 @@
     var d = ""; for (var i = 0; i < H.max; i++) { var k = ST.five[i], it = k && BY[k]; d += it ? '<i class="sd-on" style="--kc:' + KIND[it.kind].c + '">' + (it.logo && it.logo.url ? '<img src="' + esc(it.logo.url) + '" alt="" referrerpolicy="no-referrer">' : it.logo && it.logo.emoji ? esc(it.logo.emoji) : esc(mono(it.name))) + '</i>' : '<i>' + (i + 1) + '</i>'; }
     $("sdHudDots").innerHTML = d; $("sdHudO").textContent = ST.five.length + "/" + H.max + " · orbit " + ST.orbit.length;
   }
-  function render(landing) { pull(); renderSphere(landing); renderLoad(); renderPool(); renderHud(); }
+  function render(landing) { pull(); renderSphere(landing); renderLoad(); renderPool(); renderHud(); renderDbBtn(); }
+  function nominees() { return sorted(ROWS.filter(function (r) { return r.nom && ST.five.indexOf(r.id) < 0; })); }
+  function renderDbBtn() { var b = $("sdDbGo"), n = nominees().length; if (b) b.textContent = "\u2605 Debate the Five" + (n ? " \u00b7 " + n : ""); }
   var poolOnly = renderPool; renderPool = function () { poolOnly(); shrinkNames(); };   // v117: every redraw re-fits the names
   var sphereOnly = renderSphere; renderSphere = function (l) { sphereOnly(l); shrinkNames(); };
 
@@ -252,7 +254,7 @@
       '<div class="sd-isec"><h4>Open tasks <span>' + (it.open || []).length + '</span></h4>' + tasks + '</div>' +
       (it.notes ? '<div class="sd-isec"><h4>Notes</h4><p class="sd-notes">' + esc(it.notes) + '</p></div>' : '') +
       logoSec(k, it) +
-      '<div class="sd-iact">' + primary + '<div class="sd-iplace"><span>' + (w ? "Move it to" : "Or place it at") + '</span><div class="sd-slots">' + slots + '</div></div></div>' +
+      '<div class="sd-iact">' + primary + (w && w.five != null ? '' : '<button type="button" class="sd-btn sd-nombtn' + (it.nom ? " sd-on" : "") + '" data-sd="nom" aria-pressed="' + (it.nom ? "true" : "false") + '">' + (it.nom ? "\u2605 Nominated for the Five \u00b7 remove" : "\u2606 Nominate for the Five") + '</button>') + '<div class="sd-iplace"><span>' + (w ? "Move it to" : "Or place it at") + '</span><div class="sd-slots">' + slots + '</div></div></div>' +
       (H.openCard ? '<button type="button" class="sd-link" data-sd="card">Open the full card to edit</button>' : '');
     $("sdInfo").hidden = false;
     var b = $("sdInfoCard").querySelector(".sd-big"); if (b) b.focus({ preventScroll: true });
@@ -332,6 +334,72 @@
   }
   function undo() { if (!hist.length) return; H.restore(hist.pop()); render(); checkIgnite(); toast("Undone", false); }
 
+  /* ---------------- v133 · Five debate: nominees are argued out in a Claude chat; you place the winners here ----------------
+     The message carries the current Five, the nominees (priority, progress, last activity, open tasks, notes) and the rest of
+     the orbit by name. Belay (career) and Apperse are not built yet: the message says so, and they join here later. */
+  function nomToggle(k) { if (!BY[k] || !H.nominate) return; var on = !BY[k].nom; H.nominate(k, on); pull(); render(); toast(on ? BY[k].name + " is nominated for the Five" : BY[k].name + " is no longer a nominee", false); }
+  function clip(x, n) { x = String(x || "").replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n - 1) + "…" : x; }
+  function dbLine(it, rank) {
+    var p = PRI[it.pri] || PRI[""], open = it.open || [];
+    var head = (rank ? "#" + rank + " " : "- ") + it.name + " — " + KIND[it.kind].l + " · " + it.group + (p.l ? " · priority " + p.l : "") +
+      " · " + (it.total ? it.done + "/" + it.total + " subtasks done" : "no subtasks") + " · last activity " + ageTxt(it.age);
+    var t = "\n   Open tasks: " + (open.length ? open.slice(0, 5).map(function (x) { return clip(x, 80); }).join("; ") + (open.length > 5 ? " (+" + (open.length - 5) + " more)" : "") : "none");
+    return head + t + (it.notes ? "\n   Notes: " + clip(it.notes, 200) : "");
+  }
+  function dbText() {
+    pull();
+    var five = ST.five.map(function (k, i) { return dbLine(BY[k], i + 1); }), noms = nominees().map(function (it) { return dbLine(it, 0); });
+    var rest = ST.orbit.filter(function (k) { return !BY[k].nom; }).map(function (k) { return BY[k].name; });
+    var c = H.core ? H.core() : null;
+    var today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    var L = [
+      "I use Weekly Focus to pick \"The Five\": at most " + H.max + " targets I commit to this week (#1 = must do). Several apps are competing for a place and I can't decide. Debate it with me.",
+      "",
+      "How to help:",
+      "1. For each nominee and each current target, give the strongest case for and against having it in this week's Five, using the data below.",
+      "2. Point out conflicts: two that compete for the same time or goal, something untouched for weeks, something almost done.",
+      "3. Ask me up to 3 short questions about my goals for this week if the answer would change the pick. Wait for my answers before deciding.",
+      "4. Then recommend a ranked Five with one line why for each, and say which go to orbit (kept in view, not targets).",
+      "I will set the Five myself in the app afterwards.",
+      "",
+      "Today: " + today + "."
+    ];
+    if (c) L.push("Core (always in focus, not one of the Five): " + c.name + (c.open ? " — " + c.open + " open" : " — all clear") + ".");
+    L.push("", "CURRENT FIVE" + (ST.five.length < H.max ? " (" + (H.max - ST.five.length) + " empty)" : ""), five.length ? five.join("\n") : "(none set yet)",
+      "", "NOMINEES", noms.length ? noms.join("\n") : "(none)",
+      "", "ALSO IN ORBIT, not nominated: " + (rest.length ? rest.join(", ") : "none"),
+      "", "Not connected yet: my career direction (Belay) and Apperse. If career goals matter for this choice, ask me directly.");
+    return L.join("\n");
+  }
+  function copyOld(t) { var a = document.createElement("textarea"); a.value = t; a.setAttribute("readonly", ""); a.style.cssText = "position:fixed;top:-1000px;opacity:0"; document.body.appendChild(a); a.select(); var ok = false; try { ok = document.execCommand("copy"); } catch (e) {} a.remove(); return ok; }
+  function copyText(t) {
+    try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t).then(function () { return true; }, function () { return copyOld(t); }); } catch (e) {}
+    return Promise.resolve(copyOld(t));
+  }
+  var DB_URL_MAX = 7000;   // a longer message goes by clipboard: claude.ai opens empty and you paste
+  function dbOpen() {
+    pull(); INFO = "@debate"; if (!infoFrom || !document.contains(infoFrom) || $("sdInfo").hidden) infoFrom = document.activeElement;
+    var noms = nominees();
+    var row = function (it, rank) { return '<li class="sd-db-row"><span class="sd-db-rk">' + (rank ? "#" + rank : "★") + '</span><span class="sd-db-nm">' + esc(it.name) + '<small>' + esc(it.group) + ' · ' + ageTxt(it.age) + '</small></span>' +
+      (rank ? '' : '<button type="button" class="sd-x sd-db-x" data-sd="dbunnom" data-sdk="' + esc(it.id) + '" aria-label="Remove ' + esc(it.name) + ' from the nominees">×</button>') + '</li>'; };
+    $("sdInfoCard").innerHTML =
+      '<div class="sd-ih"><div class="sd-ih-t"><h3 id="sdInfoT">★ Debate the Five</h3><div class="sd-ih-m">Claude argues for and against each nominee, asks what matters this week, then suggests a Five. You place the winners here.</div></div>' +
+        '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
+      '<div class="sd-isec"><h4>Current Five <span>' + ST.five.length + '/' + H.max + '</span></h4>' + (ST.five.length ? '<ul class="sd-db-list">' + ST.five.map(function (k, i) { return row(BY[k], i + 1); }).join("") + '</ul>' : '<p class="sd-none-txt">No targets yet.</p>') + '</div>' +
+      '<div class="sd-isec"><h4>Nominees <span>' + noms.length + '</span></h4>' + (noms.length ? '<ul class="sd-db-list">' + noms.map(function (it) { return row(it, 0); }).join("") + '</ul>'
+        : '<p class="sd-none-txt">No nominees yet. Tap a bubble or planet → <b>Nominate for the Five</b>, or nominate in <b>Review one by one</b>.</p>') + '</div>' +
+      '<div class="sd-iact"><button type="button" class="sd-btn sd-primary sd-big" data-sd="dbclaude"' + (noms.length ? "" : " disabled") + '>Open the debate in Claude</button>' +
+        '<button type="button" class="sd-btn" data-sd="dbcopy"' + (noms.length ? "" : " disabled") + '>Copy the message</button></div>' +
+      '<p class="sd-db-note">The message includes each one’s priority, progress, last activity, open tasks and notes. Career (Belay) and Apperse join when those apps exist.</p>';
+    $("sdInfo").hidden = false;
+    var b = $("sdInfoCard").querySelector(".sd-big:not([disabled])") || $("sdInfoCard").querySelector(".sd-x"); if (b) b.focus({ preventScroll: true });
+  }
+  function dbClaude() {
+    var t = dbText(), enc = encodeURIComponent(t), short = enc.length <= DB_URL_MAX;
+    window.open(short ? "https://claude.ai/new?q=" + enc : "https://claude.ai/new", "_blank", "noopener");
+    copyText(t).then(function (ok) { toast(short ? "Opened Claude with the nominees" + (ok ? " (also copied)" : "") : ok ? "Long list: copied. Paste it into the new Claude chat" : "Couldn’t copy. Use Copy the message", false); });
+  }
+
   /* ---------------- v132 · Review: one card at a time, swipe right = in orbit, left = not in orbit ----------------
      The Five are not in the queue (they are chosen on purpose). Each decision is applied at once and is one Undo step;
      Back inside the review steps to the previous card and puts its decision back. */
@@ -375,14 +443,15 @@
         '<span class="sd-rv-stamp sd-rv-sin" aria-hidden="true">In orbit</span><span class="sd-rv-stamp sd-rv-sout" aria-hidden="true">Not in orbit</span>' +
         '<div class="sd-ih"><span class="sd-ih-logo" style="--pc:' + (p.l ? p.c : "var(--hair)") + ';--kc:' + KIND[it.kind].c + '">' + logo + '</span>' +
           '<div class="sd-ih-t"><h3>' + esc(it.name) + '</h3><div class="sd-ih-m">' + KIND[it.kind].l + ' · ' + esc(it.group) + (p.l ? ' · <b style="color:' + p.c + '">' + p.l + '</b>' : '') + '</div>' +
-          '<div class="sd-rv-now' + (w && w.orbit ? " sd-in" : "") + '">' + (w && w.orbit ? "Now: in orbit" : "Now: not in orbit") + '</div></div></div>' +
+          '<div class="sd-rv-now' + (w && w.orbit ? " sd-in" : "") + '">' + (w && w.orbit ? "Now: in orbit" : "Now: not in orbit") + '</div>' + (it.nom ? ' <span class="sd-rv-nom">\u2605 Nominee</span>' : '') + '</div></div>' +
         '<div class="sd-rv-age' + (rvFresh(it.age) ? " sd-fresh" : it.age != null && it.age >= 14 ? " sd-stale" : "") + '">' + (rvFresh(it.age) ? "Updated " : "Last activity: ") + ageTxt(it.age) + '</div>' +
         '<div class="sd-ip">' + (it.total ? '<span class="sd-ip-bar"><i style="width:' + pct + '%;background:' + KIND[it.kind].c + '"></i></span><span>' + it.done + '/' + it.total + ' done</span>' : '<span>No subtasks yet</span>') + '</div>' +
         '<div class="sd-isec"><h4>Open tasks <span>' + open.length + '</span></h4>' + (open.length ? '<ul class="sd-tasks">' + open.slice(0, 4).map(function (t) { return '<li>' + esc(t) + '</li>'; }).join("") + (open.length > 4 ? '<li class="sd-rv-more">+' + (open.length - 4) + ' more</li>' : '') + '</ul>' : '<p class="sd-none-txt">No open subtasks.</p>') + '</div>' +
         (it.notes ? '<p class="sd-rv-notes">' + esc(it.notes.slice(0, 180)) + (it.notes.length > 180 ? "…" : "") + '</p>' : '') +
       '</div>' +
       '<div class="sd-rv-acts"><button type="button" class="sd-btn sd-rv-out" data-sd="rvout">← Not in orbit</button><button type="button" class="sd-btn sd-rv-skip" data-sd="rvskip">Skip</button><button type="button" class="sd-btn sd-rv-inb" data-sd="rvin">In orbit →</button></div>' +
-      '<p class="sd-rv-tip">Swipe the card, or use ← → keys. ↓ skips.</p>';
+      '<button type="button" class="sd-btn sd-nombtn' + (it.nom ? " sd-on" : "") + '" data-sd="rvnom" aria-pressed="' + (it.nom ? "true" : "false") + '">' + (it.nom ? "\u2605 Nominated for the Five \u00b7 remove" : "\u2606 Nominate for the Five") + '</button>' +
+      '<p class="sd-rv-tip">Swipe the card, or use ← → keys. ↓ skips, N nominates.</p>';
     var c = $("sdRvCard"); if (c) c.focus({ preventScroll: true });
   }
   function rvDecide(c) {
@@ -449,6 +518,12 @@
       else if (a === "lgemosave") { var ev = $("sdEmo").value; logoRun(function (kk) { return H.logo.emoji(kk, ev); }, "Emoji saved."); }
       else if (a === "lgsite") logoRun(function (kk) { return H.logo.site(kk); }, "Back to the site's icon. It shows once the store has fetched it.");
       else if (a === "rvopen") rvOpen();
+      else if (a === "nom") { var nk = ik; nomToggle(nk); if (BY[nk]) openInfo(nk); }
+      else if (a === "rvnom") { if (RV && RV.i < RV.ids.length) { nomToggle(RV.ids[RV.i]); rvRender(); } }
+      else if (a === "dbopen") dbOpen();
+      else if (a === "dbunnom") { nomToggle(k); dbOpen(); }
+      else if (a === "dbclaude") dbClaude();
+      else if (a === "dbcopy") copyText(dbText()).then(function (ok) { toast(ok ? "Copied. Paste it into a Claude chat" : "Couldn\u2019t copy on this device", false); });
       else if (a === "rvin") rvDecide("in");
       else if (a === "rvout") rvDecide("out");
       else if (a === "rvskip") rvDecide("skip");
@@ -465,6 +540,7 @@
         var rk = { ArrowRight: "in", ArrowLeft: "out", ArrowDown: "skip" }[e.key];
         if (rk) { e.preventDefault(); rvDecide(rk); }
         else if (e.key === "Backspace") { e.preventDefault(); rvBack(); }
+        else if ((e.key === "n" || e.key === "N") && RV.i < RV.ids.length) { e.preventDefault(); nomToggle(RV.ids[RV.i]); rvRender(); }
         else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); rvClose(); }
         return;
       }

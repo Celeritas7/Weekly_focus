@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v132", BUILD_N = 132;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v133", BUILD_N = 133;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1676,12 +1676,14 @@
           pri: SD_PRI[getEntry(it.id).pri] || "", done: pr ? pr.done : 0, total: pr ? pr.total : 0, next: nextSub(it.id),
           age: last ? Math.max(0, Math.floor((now - last) / 864e5)) : null, logo: window.WFLogos ? window.WFLogos.logoFor(it) : null,
           open: activeSubs(subs(it.id)).filter(function (x) { return !x.done; }).map(function (x) { return x.t || ""; }).slice(0, 40),
-          notes: typeof getEntry(it.id).notes === "string" ? getEntry(it.id).notes.slice(0, 1200) : "" });
+          notes: typeof getEntry(it.id).notes === "string" ? getEntry(it.id).notes.slice(0, 1200) : "",
+          nom: getEntry(it.id).nom === true });   // v133: nominated for the Five (per-item flag, synced like sph)
       });
     });
     return rows;
   }
   function sdCommit() { save(); cloudPushBoard(); syncRanks(); renderAll(); }
+  function sdNomWon(k) { if (isTarget(k) && getEntry(k).nom === true) patch(k, { nom: false }); }   // v133: a nominee placed in the Five has won
   var SD_HOST = {
     max: MAX_TARGETS,
     core: function () { var k = coreId(); if (!k) return null; var o = coreOpen(); return { id: k, name: labelFor(k).name, open: o.length, next: o.length ? (o[0].t || "") : "", logo: window.WFLogos ? window.WFLogos.logoFor(itemById(k)) : null }; },
@@ -1696,13 +1698,15 @@
       site: function (k) { return window.WFLogos.useSite(itemById(k)); }
     },
     state: function () { return { five: targetOrder.slice(), orbit: sphereExtras() }; },
-    add: function (k) { if (inSphere(k)) return; sphereAdd(k); renderAll(); },
+    add: function (k) { if (inSphere(k)) return; sphereAdd(k); sdNomWon(k); renderAll(); },
     /* slot i (0-based): a target moves within the Five; anything else is placed there and the last target drops to orbit */
     place: function (k, i) {
       var from = targetOrder.indexOf(k);
       if (from >= 0) { if (from === i) return; targetOrder.splice(from, 1); targetOrder.splice(Math.min(i, targetOrder.length), 0, k); sdCommit(); return; }
-      sphereAdd(k, Math.min(i, targetOrder.length)); renderAll();
+      sphereAdd(k, Math.min(i, targetOrder.length)); sdNomWon(k); renderAll();
     },
+    /* v133: nominee for the Five. The debate happens in Claude; the winner is placed here as usual */
+    nominate: function (k, on) { if (isCore(k) || !itemById(k)) return; on = !!on; if ((getEntry(k).nom === true) !== on) patch(k, { nom: on }); renderAll(); },
     /* orbit: a target only leaves the Five when an orbit item can take its slot (a free slot always pulls the next one up) */
     orbit: function (k) {
       /* v131: a new item goes straight to orbit, even while the Five has a free slot (before: it took the slot) */
@@ -3085,7 +3089,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 review mode"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 five debate"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
