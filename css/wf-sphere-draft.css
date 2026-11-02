@@ -351,3 +351,8 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 .sd-db-form input { font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--hair); border-radius: 10px; background: var(--canvas); color: var(--ink); min-width: 0; }
 .sd-db-form .sd-btn { min-height: 42px; }
 @media (max-width: 600px) { .sd-tapn { padding: 6px 9px; } }
+
+/* v135 · debate sheet: items with no tasks written */
+.sd-db-warn { color: var(--sd-warn); font-weight: 800; }
+.sd-db-task { flex: 0 0 auto; padding: 4px 10px; min-height: 30px; font-size: 12px; border-color: var(--sd-warn); color: var(--sd-warn); }
+.sd-db-hint { margin: 0; padding: 8px 10px; border-radius: 10px; font-size: 13px; background: color-mix(in oklch, var(--sd-warn) 12%, var(--card)); color: var(--ink); }

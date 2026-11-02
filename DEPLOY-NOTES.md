@@ -1,3 +1,16 @@
+# v135 — fuller Debate message, apps with no tasks flagged · built on v134
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v135`). **No SQL ships with this build.**
+
+Found in the first real debate: tasks were cut at 80 characters mid-word ("review the app for iss..."), and an app with no tasks read like a finished one.
+- **Open tasks up to 200 characters**, always cut at a word. If the whole message is too long for the claude.ai link, the link version shortens the tasks (140 → 100 → 80 characters) before giving up; the clipboard always gets the full text.
+- An app with no tasks says **NO TASKS WRITTEN YET (nothing defined to do, not finished)**; one with every task done says **(all done)**. "last activity no activity yet" is no longer printed.
+- **Debate sheet**: such apps show **no tasks yet** and a **+ Task** button that opens the app's card to write a first step; a line above the buttons counts them.
+
+Check: footer reads **build v135 · opens offline · fuller debate**.
+
+---
+
 # v134 — one-tap star, and apps not started yet · built on v133
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v134`). **No SQL ships with this build.**
