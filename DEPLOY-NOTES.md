@@ -1,3 +1,13 @@
+# v143 — goals on the app card · built on v142
+
+Upload `js/weekly-focus-app.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v143`). **No SQL ships with this build.**
+
+The full app card (and an app opened in the Week columns) now has a **◎ Goals** row under the Objective: every goal as a chip, ✓ and coloured when the app serves it. Tap a chip to switch it; **+ New goal** makes a goal and gives it to this app. Same goals as the Sphere Draft, the board packages and the Debate message.
+
+Check: footer reads **build v143 · opens offline · goals on cards**.
+
+---
+
 # v142 — compact goal cards in the Sphere Draft · built on v141
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v142`). **No SQL ships with this build.**
