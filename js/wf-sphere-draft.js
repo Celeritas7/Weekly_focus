@@ -359,7 +359,8 @@
     else if (ts !== "idea") head += " · " + it.done + "/" + it.total + " subtasks done" + (ts === "done" ? " (all done)" : "");
     if (ts !== "idea" && it.age != null) head += " · last activity " + ageTxt(it.age);
     var t = ts === "open" ? "\n   Open tasks: " + open.slice(0, 5).map(function (x) { return clip(x, tl); }).join("; ") + (open.length > 5 ? " (+" + (open.length - 5) + " more)" : "") : "";
-    return head + t + (it.notes ? "\n   Notes: " + clip(it.notes, Math.max(200, tl)) : "");
+    var pu = (it.purposes || []).length ? "\n   Purpose: " + it.purposes.join(", ") : "";   // v137
+    return head + pu + t + (it.notes ? "\n   Notes: " + clip(it.notes, Math.max(200, tl)) : "");
   }
   function dbText(tl) {
     pull();
@@ -375,6 +376,7 @@
       "2. Point out conflicts: two that compete for the same time or goal, something untouched for weeks, something almost done.",
       "3. Ask me up to 3 short questions about my goals for this week if the answer would change the pick. Wait for my answers before deciding.",
       "4. Then recommend a ranked Five with one line why for each, and say which go to orbit (kept in view, not targets).",
+      "Weigh every app against the goal of its purpose (listed under PURPOSES). Apps that share a purpose form a package: say when one app in a package should lead and the others follow.",
       "I will set the Five myself in the app afterwards.",
       "",
       "Today: " + today + "."
@@ -383,6 +385,7 @@
     L.push("", "CURRENT FIVE" + (ST.five.length < H.max ? " (" + (H.max - ST.five.length) + " empty)" : ""), five.length ? five.join("\n") : "(none set yet)",
       "", "NOMINEES", noms.length ? noms.join("\n") : "(none)",
       "", "ALSO IN ORBIT, not nominated: " + (rest.length ? rest.join(", ") : "none"),
+      "", "PURPOSES (why these apps exist)", (function () { var ps = H.purposes ? H.purposes() : []; return ps.length ? ps.map(function (p) { return "- " + p.name + ": " + (p.goal ? clip(p.goal, 240) : "(goal not written yet)") + " \u2014 apps in the sphere: " + p.apps.join(", "); }).join("\n") : "(no purposes set)"; })(),
       "", "Not connected yet: my career direction (Belay) and Apperse. If career goals matter for this choice, ask me directly.");
     return L.join("\n");
   }

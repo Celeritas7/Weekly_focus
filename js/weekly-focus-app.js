@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v136", BUILD_N = 136;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v137", BUILD_N = 137;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -430,7 +430,8 @@
     d.innerHTML = '<button type="button" class="fg-cv" data-act="fgcoll" data-fg="' + esc(g.id) + '" title="' + (coll ? "Expand" : "Collapse") + '">▾</button>' +
       '<span class="fg-nm" data-act="fgcoll" data-fg="' + esc(g.id) + '">' + esc(g.name) + '</span><span class="fg-n">' + n + '</span>' + fgSphTag(sN) + (g.focus ? '<span class="fg-tag">Focus</span>' : '') +
       '<span class="fg-acts"><button type="button" class="fg-ib add" data-act="fgadd" data-fg="' + esc(g.id) + '" title="Add apps to this group">+ Apps</button><button type="button" class="fg-ib' + (g.focus ? " on" : "") + '" data-act="fgfocus" data-fg="' + esc(g.id) + '" title="' + (g.focus ? "Remove focus" : "Put this group in focus — shows first") + '">★</button>' +
-      '<button type="button" class="fg-ib" data-act="fgren" data-fg="' + esc(g.id) + '" title="Rename">✎</button>' +
+      '<button type="button" class="fg-ib" data-act="fggoal" data-fg="' + esc(g.id) + '" title="' + (g.note ? "Edit the goal" : "Write the goal of this purpose") + '">' + (g.note ? "Goal" : "+ Goal") + '</button>' +
+      '<button type="button" class="fg-ib" data-act="fgren" data-fg="' + esc(g.id) + '" title="Rename">\u270e</button>' +
       '<button type="button" class="fg-ib arch" data-act="fgarch" data-fg="' + esc(g.id) + '" title="Archive group — hides its apps everywhere">Archive</button></span>';
     return d;
   }
@@ -508,13 +509,62 @@
       '<div class="sph-nm">' + esc(lab.name) + '</div>' + (nx ? '<div class="sph-nx">' + esc(nx) + '</div>' : '') +
       (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div><div class="sph-m">' + prog.done + '/' + prog.total + ' subtasks</div>' : '') + '</div>';
   }
+  /* ---- v137 · purposes: the focus groups are the purposes. Apps in the sphere are packed by purpose:
+     one tile per purpose = its lead app (planet) + the purpose's other sphere apps as moons. An app in several
+     purposes appears in each package (a copy). A purpose with an app in the Five rides on that target card
+     instead. Below the Five at most SPH_SHOW tiles show (Five + 5 = 10 on screen); the rest fold away. ---- */
+  var SPH_SHOW = 5, SPH_MORE_OPEN = false;
+  function sphLive(k) { var it = itemById(k); return !!it && inSphere(k) && !isCore(k) && isActive(it) && !isSpecialItem(it); }
+  function purposeGroups(k) { return fgIds(k).map(fgById).filter(function (g) { return g && !g.archived_at; }).sort(fgSort); }
+  function purposeMembers(gid) { return fgMembers(gid).filter(sphLive); }
+  function sphOrder() { return targetOrder.concat(sphereExtras()); }
+  function pkgLeadOf(g, mem) {
+    var L = meta.fgLead && meta.fgLead[g.id]; if (L && mem.indexOf(L) >= 0) return L;
+    var o = sphOrder(); return mem.slice().sort(function (a, b) { var ia = o.indexOf(a), ib = o.indexOf(b); return (ia < 0 ? 1e6 : ia) - (ib < 0 ? 1e6 : ib); })[0];
+  }
+  function spherePackages() {
+    var o = sphOrder(), pos = function (k) { var i = o.indexOf(k); return i < 0 ? 1e6 : i; }, tiles = [], covered = {};
+    fgLive().forEach(function (g) {
+      var m = purposeMembers(g.id); if (!m.length) return;
+      m.forEach(function (k) { covered[k] = 1; });
+      if (m.some(isTarget)) return;   // rides on its target card in the Five
+      var lead = pkgLeadOf(g, m);
+      tiles.push({ g: g, lead: lead, moons: m.filter(function (k) { return k !== lead; }).sort(function (a, b) { return pos(a) - pos(b); }), pos: pos(lead) });
+    });
+    sphereExtras().forEach(function (k) { if (!covered[k]) tiles.push({ g: null, lead: k, moons: [], pos: pos(k) }); });
+    return tiles.sort(function (a, b) { return a.pos - b.pos || (a.g ? 0 : 1) - (b.g ? 0 : 1); });
+  }
+  /* moons riding on a target card: the other sphere apps of the target's purposes (not other targets) */
+  function targetMoons(k) {
+    var seen = {}, out = [];
+    purposeGroups(k).forEach(function (g) { purposeMembers(g.id).forEach(function (m) { if (m !== k && !isTarget(m) && !seen[m]) { seen[m] = 1; out.push(m); } }); });
+    return out;
+  }
+  function moonChips(ks, max) {
+    max = max || 4;
+    return ks.slice(0, max).map(function (m) { return '<button type="button" class="sph-moon k-' + kindOf(m) + '" data-act="pkgopen" data-key="' + esc(m) + '" title="Open ' + esc(labelFor(m).name) + '">' + esc(labelFor(m).name) + '</button>'; }).join("") +
+      (ks.length > max ? '<span class="sph-moon more">+' + (ks.length - max) + '</span>' : '');
+  }
+  function pkgTile(t) {
+    if (!t.g) return sphTile(t.lead);
+    var g = t.g, n = t.moons.length;
+    return '<div class="sph-pk" style="--fh:' + fgHue(g) + '">' +
+      '<div class="sph-pkh"><span class="sph-pkn">' + esc(g.name) + '</span>' +
+        (n ? '<button type="button" class="sph-pkb" data-act="pkglead" data-fg="' + esc(g.id) + '" title="Make the next app the lead">⇄ lead</button>' : '') +
+        '<button type="button" class="sph-pkb" data-act="fggoal" data-fg="' + esc(g.id) + '" title="' + (g.note ? "Edit the goal" : "Write the goal of this purpose") + '">' + (g.note ? "✎ goal" : "+ goal") + '</button></div>' +
+      (g.note ? '<div class="sph-pkg">' + esc(g.note) + '</div>' : '') +
+      sphTile(t.lead) +
+      (n ? '<div class="sph-moons" aria-label="Also in this purpose">' + moonChips(t.moons, 6) + '</div>' : '') + '</div>';
+  }
   function renderSphereMore() {
     var mh = $("sphereMore"); if (!mh) return;
     var ex = sphereExtras(), full = targetOrder.length >= MAX_TARGETS;
     var add = full ? '<button type="button" class="sph-add" data-act="tpick">+ Add to sphere<br><span>or drag a card up here</span></button>' : '';
-    mh.innerHTML = ex.length
-      ? '<div class="sph-div"><span class="sph-dl">Also in the sphere</span><i></i><span class="sph-dh">' + ex.length + ' \u00b7 rank one 1\u20135 or drag it into the top row to make it a target</span></div><div class="sph-grid">' + ex.map(sphTile).join("") + add + '</div>'
-      : (add ? '<div class="sph-grid sph-grid-solo">' + add + '</div>' : '');
+    if (!ex.length) { mh.innerHTML = add ? '<div class="sph-grid sph-grid-solo">' + add + '</div>' : ''; return; }
+    var tiles = spherePackages(), shown = SPH_MORE_OPEN ? tiles : tiles.slice(0, SPH_SHOW), rest = tiles.length - SPH_SHOW, np = tiles.filter(function (t) { return t.g; }).length;
+    mh.innerHTML = '<div class="sph-div"><span class="sph-dl">Also in the sphere</span><i></i><span class="sph-dh">' + ex.length + ' apps' + (np ? ' · ' + np + ' purpose' + (np === 1 ? '' : 's') : '') + ' · rank one 1–5 or drag it into the top row to make it a target</span></div>' +
+      '<div class="sph-grid">' + shown.map(pkgTile).join("") + (rest <= 0 || SPH_MORE_OPEN ? add : '') + '</div>' +
+      (rest > 0 ? '<button type="button" class="sph-morebtn" data-act="sphmore" aria-expanded="' + (SPH_MORE_OPEN ? "true" : "false") + '">' + (SPH_MORE_OPEN ? "Show less" : "+" + rest + " more · " + tiles.slice(SPH_SHOW).map(function (t) { return t.g ? t.g.name : labelFor(t.lead).name; }).slice(0, 4).join(", ") + (rest > 4 ? "…" : "")) + '</button>' : '');
   }
 
   /* ============================================================
@@ -604,6 +654,7 @@
         '<div class="tmeta">' + m + '</div>' +
         (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div>' : '') +
         subList +
+        (function () { var tm = targetMoons(k), gs = purposeGroups(k).filter(function (g) { return purposeMembers(g.id).length > 1; }); return tm.length ? '<div class="tmoons"><span class="tmoons-k">' + esc(gs.map(function (g) { return g.name; }).join(" \u00b7 ")) + '</span>' + moonChips(tm, 4) + '</div>' : ''; })() +
         '<button class="tdrop" data-act="tdrop" title="Take out of the sphere">\u00d7</button>';
       grid.appendChild(card);
     });
@@ -1677,7 +1728,8 @@
           age: last ? Math.max(0, Math.floor((now - last) / 864e5)) : null, logo: window.WFLogos ? window.WFLogos.logoFor(it) : null,
           open: activeSubs(subs(it.id)).filter(function (x) { return !x.done; }).map(function (x) { return x.t || ""; }).slice(0, 40),
           notes: typeof getEntry(it.id).notes === "string" ? getEntry(it.id).notes.slice(0, 1200) : "",
-          nom: getEntry(it.id).nom === true, idea: getEntry(it.id).idea === true });   // v133: nominated for the Five (per-item flag, synced like sph)
+          nom: getEntry(it.id).nom === true, idea: getEntry(it.id).idea === true,
+          purposes: purposeGroups(it.id).map(function (g) { return g.name; }) });   // v137   // v133: nominated for the Five (per-item flag, synced like sph)
       });
     });
     return rows;
@@ -1713,6 +1765,8 @@
       var p = { nom: true, idea: true }; note = (note || "").trim(); if (note) p.notes = note;
       patch(id, p); renderAll(); return id;
     },
+    /* v137: purposes (focus groups) with their goal and sphere apps, for the debate message */
+    purposes: function () { return fgLive().map(function (g) { return { name: g.name, goal: g.note || "", apps: purposeMembers(g.id).map(function (k) { return labelFor(k).name; }) }; }).filter(function (p) { return p.apps.length; }); },
     groups: function () { var g = {}; state.apps.forEach(function (a) { if (a.group) g[a.group] = 1; }); return Object.keys(g).sort(); },
     nominate: function (k, on) { if (isCore(k) || !itemById(k)) return; on = !!on; if ((getEntry(k).nom === true) !== on) patch(k, { nom: on }); renderAll(); },
     /* orbit: a target only leaves the Five when an orbit item can take its slot (a free slot always pulls the next one up) */
@@ -1787,6 +1841,21 @@
       toastMaybeDone(); return;
     }
     if (a === "tdrop") { var tdk = act.closest("[data-tkey]").getAttribute("data-tkey"); sphereRemove(tdk); renderAll(); toast(labelFor(tdk).name + " taken out of the sphere"); return; }
+    if (a === "pkgopen") { var pk = act.getAttribute("data-key"); if (pk && itemById(pk)) openBuildSheet(pk); return; }
+    if (a === "sphmore") { SPH_MORE_OPEN = !SPH_MORE_OPEN; renderSphereMore(); return; }
+    if (a === "pkglead") {
+      var lg = fgById(act.getAttribute("data-fg")); if (!lg) return;
+      var lm = purposeMembers(lg.id); if (lm.length < 2) return;
+      var cur = pkgLeadOf(lg, lm), o = sphOrder(); lm.sort(function (x, y) { var ix = o.indexOf(x), iy = o.indexOf(y); return (ix < 0 ? 1e6 : ix) - (iy < 0 ? 1e6 : iy); });
+      if (!meta.fgLead || typeof meta.fgLead !== "object") meta.fgLead = {};
+      meta.fgLead[lg.id] = lm[(lm.indexOf(cur) + 1) % lm.length]; save(); cloudPushBoard(); renderSphereMore();
+      toast(labelFor(meta.fgLead[lg.id]).name + " leads " + lg.name); return;
+    }
+    if (a === "fggoal") {
+      var gg = fgById(act.getAttribute("data-fg")); if (!gg) return;
+      var gv = prompt("Goal of \u201c" + gg.name + "\u201d \u2014 why these apps exist (one line). Claude uses it when you debate the Five.", gg.note || "");
+      if (gv === null) return; gg.note = gv.trim() || null; fgPushGroup(gg); fgSaveLocal(); renderAll(); toast(gg.note ? "Goal saved for " + gg.name : "Goal cleared"); return;
+    }
     if (a === "sphrm") { var srk = keyOf(act); if (srk) { sphereRemove(srk); renderAll(); toast(labelFor(srk).name + " taken out of the sphere"); } return; }
 
     var key = keyOf(act);
@@ -3097,7 +3166,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 orbit 8"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 purposes"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
