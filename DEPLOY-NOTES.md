@@ -1,3 +1,15 @@
+# v140 — goals show the apps already in the sphere · built on v139
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v140`). **No SQL ships with this build.**
+
+Found right after v139: tagging Chatak app (#5) with "Shopping assistence" showed nowhere — its goal section said "already in the sphere" and the target card only showed goals that had other apps.
+- **Sphere Draft → By goal**: each goal section now lists every app serving it — the ones in the Five (gold **#N** badge) and in orbit (**orbit** badge) first, then those on the table. The header counts them ("3 · 2 in the sphere"). Tapping a marked bubble opens its details; Tap → Orbit / Tap → ★ don't move it.
+- **Week board**: a target card always shows its goals (**◎ Shopping assistence**), with moons when other sphere apps serve the same goal.
+
+Check: footer reads **build v140 · opens offline · goals shown**.
+
+---
+
 # v139 — goals are their own groups · built on v138
 
 Upload `js/weekly-focus-app.js`, `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css` and `sw.js` (cache → `weekly-focus-v139`). **No SQL ships with this build.** Goals live on the board row as `meta.goals = [{id, name, ord}]`; an app's goals are `entries[id].goals = [goalId, …]`. Both sync like the rest of the board.
