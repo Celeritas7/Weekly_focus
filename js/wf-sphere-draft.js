@@ -85,7 +85,7 @@
             '<div class="sd-grid" id="sdGrid"></div>' +
           '</section>' +
         '</div>' +
-        '<details class="sd-howto"><summary>How to play</summary><p>Tap a bubble to read its details and add it in one tap. <b>Review one by one</b> shows every app outside The Five as a card: swipe right for orbit, left for not. Switch on <b>Tap → Orbit</b> to send each bubble you tap straight to orbit, or press <b>All to orbit</b> on a category. The ring colour is its priority. Drag a bubble onto a number to rank it, or onto the dashed ring for orbit; on a phone, press and hold to drag. Tap a planet to see it or send it back. Keys on a focused bubble: <kbd>Enter</kbd> details, <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit. <kbd>Esc</kbd> closes.</p></details>' +
+        '<details class="sd-howto"><summary>How to play</summary><p>Tap a bubble to read its details and add it in one tap. Drag a bubble onto a goal to file it there, or use <b>+ Add apps</b> on a goal to search and tick. <b>Review one by one</b> shows every app outside The Five as a card: swipe right for orbit, left for not. Switch on <b>Tap → Orbit</b> to send each bubble you tap straight to orbit, or press <b>All to orbit</b> on a category. The ring colour is its priority. Drag a bubble onto a number to rank it, or onto the dashed ring for orbit; on a phone, press and hold to drag. Tap a planet to see it or send it back. Keys on a focused bubble: <kbd>Enter</kbd> details, <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit. <kbd>Esc</kbd> closes.</p></details>' +
       '</div>' +
       '<div class="sd-info" id="sdInfo" data-sd="infoclose" hidden><div class="sd-info-card" id="sdInfoCard" data-sd="stay" role="dialog" aria-modal="true" aria-labelledby="sdInfoT"></div></div>' +
       '<div class="sd-rv" id="sdRv" role="dialog" aria-modal="true" aria-label="Review: orbit or not" hidden><div class="sd-rv-in" id="sdRvIn"></div></div>' +
@@ -185,14 +185,15 @@
       var its = list.filter(function (r) { return (r.goals || []).indexOf(gg.id) >= 0; });
       its.forEach(function (r) { placed[r.id] = 1; });
       if (!its.length && !inS.length && (q || kindF !== "all")) return;   // filtered out: hide the empty section
-      out.push('<section class="sd-cat sd-pur" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span>' + (its.length + inS.length) + (inS.length ? ' \u00b7 ' + inS.length + ' in the sphere' : '') + '</span>' +
-        '<button type="button" class="sd-pgoal sd-has" data-sd="gedit" data-goal="' + esc(gg.id) + '" aria-label="Rename or delete the goal ' + esc(gg.name) + '">✎</button>' +
+      out.push('<section class="sd-cat sd-pur" data-sddrop="goal" data-goal="' + esc(gg.id) + '" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span>' + (its.length + inS.length) + (inS.length ? ' \u00b7 ' + inS.length + ' in the sphere' : '') + '</span>' +
+        '<button type="button" class="sd-pgoal sd-has" data-sd="gedit" data-goal="' + esc(gg.id) + '" aria-label="Rename or delete the goal ' + esc(gg.name) + '">\u270e</button>' +
+        '<button type="button" class="sd-pgoal sd-gpick" data-sd="gpick" data-goal="' + esc(gg.id) + '" aria-label="Add apps to ' + esc(gg.name) + '">+ Add apps</button>' +
         (its.length ? '<button type="button" class="sd-catorb" data-sd="catorb" data-goal="' + esc(gg.id) + '" aria-label="Send all ' + its.length + ' serving ' + esc(gg.name) + ' to orbit">All to orbit</button>' : '') + '</h3>' +
-        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(sphCard).join("") + its.map(cardHtml).join("") + '</div>' : '<p class="sd-pur-goal sd-none">No app serves this goal yet. Open an app and tap this goal under <b>Goals</b>.</p>') + '</section>');
+        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(sphCard).join("") + its.map(cardHtml).join("") + '</div>' : '<p class="sd-pur-goal sd-none">No app serves this goal yet. Tap <b>+ Add apps</b>, or drag a bubble here.</p>') + '</section>');
     });
     var rest = list.filter(function (r) { return !placed[r.id]; });
     if (rest.length) out.push('<section class="sd-cat sd-pur sd-nopur" style="--cc:var(--faint)" aria-label="No goal yet"><h3 class="sd-cat-h"><i></i>No goal yet <span>' + rest.length + '</span></h3>' +
-      '<p class="sd-pur-goal sd-none">' + (gs.length ? "Open an app and tap a goal under Goals to file it." : "Make your first goal below, then open an app and tap it under Goals.") + '</p><div class="sd-bubs">' + rest.map(cardHtml).join("") + '</div></section>');
+      '<p class="sd-pur-goal sd-none">' + (gs.length ? "Drag a bubble onto a goal above, or use + Add apps on the goal." : "Make your first goal below, then open an app and tap it under Goals.") + '</p><div class="sd-bubs">' + rest.map(cardHtml).join("") + '</div></section>');
     out.push('<button type="button" class="sd-gnew" data-sd="gnew">+ New goal</button>');
     return out.join("");
   }
@@ -342,7 +343,7 @@
     });
   }
   function closeInfo() {
-    if (!INFO) return; INFO = null; $("sdInfo").hidden = true;
+    if (!INFO) return; INFO = null; GP = null; $("sdInfo").hidden = true;
     if (infoFrom && infoFrom.focus && document.contains(infoFrom)) try { infoFrom.focus({ preventScroll: true }); } catch (e) {}
   }
 
@@ -570,6 +571,39 @@
     rv.addEventListener("pointerup", up); rv.addEventListener("pointercancel", up);
   }
 
+  /* ---------------- v141 · filing apps into a goal: drag a bubble onto a goal section, or + Add apps (search + tick) ---------------- */
+  function goalDrop(k, gid) {
+    var g = goalOf(gid); if (!g || !BY[k] || !H.goalToggle) { render(); return; }
+    if ((BY[k].goals || []).indexOf(gid) >= 0) { render(); toast(BY[k].name + " already serves " + g.name, false); return; }
+    H.goalToggle(k, gid); pull(); render(); toast(BY[k].name + " now serves " + g.name, false);
+  }
+  var GP = null;   // {gid, q}
+  function gpOpen(gid) { var g = goalOf(gid); if (!g) return; GP = { gid: gid, q: "" }; INFO = "@goalpick"; infoFrom = document.activeElement; gpRender(true); $("sdInfo").hidden = false; }
+  function gpRows() {
+    var q2 = GP.q.trim().toLowerCase();
+    return ROWS.filter(function (r) { return !q2 || (r.name + " " + r.group).toLowerCase().indexOf(q2) >= 0; })
+      .sort(function (a, b) { var ia = (a.goals || []).indexOf(GP.gid) >= 0 ? 0 : 1, ib = (b.goals || []).indexOf(GP.gid) >= 0 ? 0 : 1; return ia - ib || a.name.localeCompare(b.name); });
+  }
+  function gpList() {
+    var rows = gpRows();
+    return rows.length ? rows.map(function (r) { var on = (r.goals || []).indexOf(GP.gid) >= 0, w = where(r.id);
+        return '<li><button type="button" class="sd-gp-row' + (on ? " sd-on" : "") + '" data-sd="gptog" data-sdk="' + esc(r.id) + '" aria-pressed="' + (on ? "true" : "false") + '"><span class="sd-gp-box" aria-hidden="true">' + (on ? "✓" : "") + '</span><span class="sd-gp-nm">' + esc(r.name) + '<small>' + KIND[r.kind].l + ' · ' + esc(r.group) + (w ? (w.orbit ? ' · in orbit' : ' · #' + (w.five + 1)) : '') + '</small></span></button></li>'; }).join("")
+      : '<li class="sd-none-txt">Nothing matches “' + esc(GP.q) + '”.</li>';
+  }
+  function gpRender(first) {
+    var g = goalOf(GP.gid); if (!g) { closeInfo(); return; }
+    var n = ROWS.filter(function (r) { return (r.goals || []).indexOf(GP.gid) >= 0; }).length;
+    if (first || !$("sdGpList")) {
+      $("sdInfoCard").innerHTML =
+        '<div class="sd-ih"><div class="sd-ih-t"><h3 id="sdInfoT">◎ ' + esc(g.name) + '</h3><div class="sd-ih-m" id="sdGpN">' + n + (n === 1 ? ' app serves' : ' apps serve') + ' this goal. Tick the apps that serve it.</div></div>' +
+          '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
+        '<input id="sdGpQ" type="search" class="sd-gp-q" placeholder="Search apps…" autocomplete="off" aria-label="Search apps" value="' + esc(GP.q) + '">' +
+        '<ul class="sd-gp-list" id="sdGpList">' + gpList() + '</ul>' +
+        '<div class="sd-iact"><button type="button" class="sd-btn sd-primary sd-big" data-sd="infoclose">Done</button></div>';
+      var qi = $("sdGpQ"); if (qi) { qi.addEventListener("input", function () { GP.q = this.value; $("sdGpList").innerHTML = gpList(); }); if (first && !matchMedia("(hover: none)").matches) qi.focus({ preventScroll: true }); }
+    } else { $("sdGpList").innerHTML = gpList(); $("sdGpN").textContent = n + (n === 1 ? ' app serves' : ' apps serve') + ' this goal. Tick the apps that serve it.'; }
+  }
+
   /* ---------------- input ---------------- */
   var drag = null, suppressClick = false, overEl = null;
   function wire() {
@@ -589,6 +623,8 @@
         pull(); render(); if (fk) { if (RV && !$("sdRv").hidden) rvRender(); else openInfo(fk); }
         toast(fk ? BY[fk].name + " now serves " + nn.trim() : "Goal added: " + nn.trim(), false);
       }
+      else if (a === "gpick") gpOpen(el.getAttribute("data-goal"));
+      else if (a === "gptog") { if (!GP || !H.goalToggle) return; H.goalToggle(k, GP.gid); pull(); render(); gpRender(false); }
       else if (a === "gedit") {
         var eg = goalOf(el.getAttribute("data-goal")); if (!eg) return;
         var en = prompt("Rename the goal (clear the name to delete it)", eg.name); if (en === null) return;
@@ -710,7 +746,7 @@
       if (overEl) overEl.classList.remove("sd-over");
       var t = drop ? targetAt(d.x, d.y) : null;
       d.g.remove(); d.src.classList.remove("sd-dragging");
-      if (t) { var kind = t.getAttribute("data-sddrop"); if (kind === "slot") act(d.k, "slot", +t.getAttribute("data-i")); else if (kind === "orbit") act(d.k, "orbit"); else if (kind === "pool") act(d.k, "back"); else if (kind === "center") act(d.k, "center"); }
+      if (t) { var kind = t.getAttribute("data-sddrop"); if (kind === "goal") goalDrop(d.k, t.getAttribute("data-goal")); else if (kind === "slot") act(d.k, "slot", +t.getAttribute("data-i")); else if (kind === "orbit") act(d.k, "orbit"); else if (kind === "pool") act(d.k, "back"); else if (kind === "center") act(d.k, "center"); }
       else if (pendingRefresh) { pendingRefresh = false; render(); }
     }
     overEl = null;
