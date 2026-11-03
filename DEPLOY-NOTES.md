@@ -1,3 +1,18 @@
+# v139 — goals are their own groups · built on v138
+
+Upload `js/weekly-focus-app.js`, `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css` and `sw.js` (cache → `weekly-focus-v139`). **No SQL ships with this build.** Goals live on the board row as `meta.goals = [{id, name, ord}]`; an app's goals are `entries[id].goals = [goalId, …]`. Both sync like the rest of the board.
+
+v137–v138 used the Week tab's groups (Commonplace, Finance, …) as "purposes" with an optional goal line, which read like a category with a note. Now a **goal** is what apps are built for ("Pass JLPT N2", "Grow at Persol"), and goals group the apps the way categories do.
+- **Sphere Draft → By goal** (the default; By category and No groups remain): one section per goal with its apps, **✎** to rename (clear the name to delete), **All to orbit**; **No goal yet** last; **+ New goal** at the end. An app serving several goals appears in each.
+- **Tagging**: the details window and each review card list every goal as a chip; tap to switch it on or off for that app; **+ New goal** creates one and tags the app.
+- **Week board**: the packages below the Five (lead app + moons) and the moons on the Five's cards are built from goals now. The Week tab's groups are unchanged and no longer carry goal lines (the v137 Goal button is gone).
+- **Debate message**: each app lists its **Goals** (or "none set"); a **GOALS** section lists each goal with its apps in the sphere and those serving it outside; Claude is asked to weigh apps against their goals, pick a lead per goal and question apps that serve no goal.
+- Group notes written in v137–v138 stay on the groups; they are just not shown as goals.
+
+Check: footer reads **build v139 · opens offline · goals**.
+
+---
+
 # v138 — purposes and goals in the Sphere Draft · built on v137
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v138`). **No SQL ships with this build.**

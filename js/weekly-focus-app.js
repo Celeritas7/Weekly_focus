@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v138", BUILD_N = 138;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v139", BUILD_N = 139;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -430,7 +430,6 @@
     d.innerHTML = '<button type="button" class="fg-cv" data-act="fgcoll" data-fg="' + esc(g.id) + '" title="' + (coll ? "Expand" : "Collapse") + '">▾</button>' +
       '<span class="fg-nm" data-act="fgcoll" data-fg="' + esc(g.id) + '">' + esc(g.name) + '</span><span class="fg-n">' + n + '</span>' + fgSphTag(sN) + (g.focus ? '<span class="fg-tag">Focus</span>' : '') +
       '<span class="fg-acts"><button type="button" class="fg-ib add" data-act="fgadd" data-fg="' + esc(g.id) + '" title="Add apps to this group">+ Apps</button><button type="button" class="fg-ib' + (g.focus ? " on" : "") + '" data-act="fgfocus" data-fg="' + esc(g.id) + '" title="' + (g.focus ? "Remove focus" : "Put this group in focus — shows first") + '">★</button>' +
-      '<button type="button" class="fg-ib" data-act="fggoal" data-fg="' + esc(g.id) + '" title="' + (g.note ? "Edit the goal" : "Write the goal of this purpose") + '">' + (g.note ? "Goal" : "+ Goal") + '</button>' +
       '<button type="button" class="fg-ib" data-act="fgren" data-fg="' + esc(g.id) + '" title="Rename">\u270e</button>' +
       '<button type="button" class="fg-ib arch" data-act="fgarch" data-fg="' + esc(g.id) + '" title="Archive group — hides its apps everywhere">Archive</button></span>';
     return d;
@@ -509,14 +508,38 @@
       '<div class="sph-nm">' + esc(lab.name) + '</div>' + (nx ? '<div class="sph-nx">' + esc(nx) + '</div>' : '') +
       (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div><div class="sph-m">' + prog.done + '/' + prog.total + ' subtasks</div>' : '') + '</div>';
   }
-  /* ---- v137 · purposes: the focus groups are the purposes. Apps in the sphere are packed by purpose:
-     one tile per purpose = its lead app (planet) + the purpose's other sphere apps as moons. An app in several
-     purposes appears in each package (a copy). A purpose with an app in the Five rides on that target card
-     instead. Below the Five at most SPH_SHOW tiles show (Five + 5 = 10 on screen); the rest fold away. ---- */
+  /* ---- v139 · GOALS. A goal is what apps are built for ("Pass JLPT N2", "Grow at Persol"). Goals are their own list,
+     separate from the Week tab's groups: meta.goals = [{id, name, ord}] on the board row, and each app's goals are
+     entries[id].goals = [goalId, …] (an app can serve several goals). Both sync like the rest of the board.
+     Below the Five the sphere apps are packed by goal: one tile per goal = its lead app (planet) + the goal's other sphere
+     apps as moons; an app serving several goals appears in each. A goal with an app in the Five rides on that target card
+     instead. At most SPH_SHOW tiles show below the Five (Five + 5 = 10 on screen); the rest fold away. ---- */
   var SPH_SHOW = 5, SPH_MORE_OPEN = false;
+  function goalList() { if (!Array.isArray(meta.goals)) return []; return meta.goals.filter(function (g) { return g && g.id && g.name; }).slice().sort(function (a, b) { return (a.ord || 0) - (b.ord || 0) || String(a.name).localeCompare(String(b.name)); }); }
+  function goalById(id) { var l = goalList(); for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
+  function goalHue(g) { return hueFor(String(g.name || "")); }
+  function goalsOf(k) { var e = getEntry(k).goals; return (Array.isArray(e) ? e : []).map(goalById).filter(Boolean); }
+  function goalMembers(gid) { return Object.keys(itemIndex).filter(function (k) { var e = getEntry(k).goals; return Array.isArray(e) && e.indexOf(gid) >= 0; }); }
+  function goalSet(k, gid, on) {
+    var cur = (Array.isArray(getEntry(k).goals) ? getEntry(k).goals : []).filter(goalById), i = cur.indexOf(gid);
+    if (on && i < 0) cur.push(gid); else if (!on && i >= 0) cur.splice(i, 1); else return false;
+    patch(k, { goals: cur }); return true;
+  }
+  function goalAdd(name) {
+    name = String(name || "").trim().slice(0, 80); if (!name) return null;
+    var ex = goalList().filter(function (g) { return g.name.toLowerCase() === name.toLowerCase(); })[0]; if (ex) return ex.id;
+    var gl = Array.isArray(meta.goals) ? meta.goals.slice() : [], ord = gl.reduce(function (m, g) { return Math.max(m, g.ord || 0); }, 0) + 1;
+    var g = { id: "go_" + uid(), name: name, ord: ord }; gl.push(g); meta.goals = gl; save(); cloudPushBoard(); return g.id;
+  }
+  function goalRename(id, name) { name = String(name || "").trim().slice(0, 80); if (!name) return; meta.goals = (meta.goals || []).map(function (g) { return g.id === id ? Object.assign({}, g, { name: name }) : g; }); save(); cloudPushBoard(); }
+  function goalDelete(id) {
+    goalMembers(id).forEach(function (k) { goalSet(k, id, false); });
+    meta.goals = (meta.goals || []).filter(function (g) { return g.id !== id; });
+    if (meta.fgLead && meta.fgLead[id]) { meta.fgLead = Object.assign({}, meta.fgLead); delete meta.fgLead[id]; }
+    save(); cloudPushBoard();
+  }
   function sphLive(k) { var it = itemById(k); return !!it && inSphere(k) && !isCore(k) && isActive(it) && !isSpecialItem(it); }
-  function purposeGroups(k) { return fgIds(k).map(fgById).filter(function (g) { return g && !g.archived_at; }).sort(fgSort); }
-  function purposeMembers(gid) { return fgMembers(gid).filter(sphLive); }
+  function goalSphere(gid) { return goalMembers(gid).filter(sphLive); }
   function sphOrder() { return targetOrder.concat(sphereExtras()); }
   function pkgLeadOf(g, mem) {
     var L = meta.fgLead && meta.fgLead[g.id]; if (L && mem.indexOf(L) >= 0) return L;
@@ -524,8 +547,8 @@
   }
   function spherePackages() {
     var o = sphOrder(), pos = function (k) { var i = o.indexOf(k); return i < 0 ? 1e6 : i; }, tiles = [], covered = {};
-    fgLive().forEach(function (g) {
-      var m = purposeMembers(g.id); if (!m.length) return;
+    goalList().forEach(function (g) {
+      var m = goalSphere(g.id); if (!m.length) return;
       m.forEach(function (k) { covered[k] = 1; });
       if (m.some(isTarget)) return;   // rides on its target card in the Five
       var lead = pkgLeadOf(g, m);
@@ -534,10 +557,10 @@
     sphereExtras().forEach(function (k) { if (!covered[k]) tiles.push({ g: null, lead: k, moons: [], pos: pos(k) }); });
     return tiles.sort(function (a, b) { return a.pos - b.pos || (a.g ? 0 : 1) - (b.g ? 0 : 1); });
   }
-  /* moons riding on a target card: the other sphere apps of the target's purposes (not other targets) */
+  /* moons riding on a target card: the other sphere apps serving the target's goals (not other targets) */
   function targetMoons(k) {
     var seen = {}, out = [];
-    purposeGroups(k).forEach(function (g) { purposeMembers(g.id).forEach(function (m) { if (m !== k && !isTarget(m) && !seen[m]) { seen[m] = 1; out.push(m); } }); });
+    goalsOf(k).forEach(function (g) { goalSphere(g.id).forEach(function (m) { if (m !== k && !isTarget(m) && !seen[m]) { seen[m] = 1; out.push(m); } }); });
     return out;
   }
   function moonChips(ks, max) {
@@ -548,13 +571,11 @@
   function pkgTile(t) {
     if (!t.g) return sphTile(t.lead);
     var g = t.g, n = t.moons.length;
-    return '<div class="sph-pk" style="--fh:' + fgHue(g) + '">' +
-      '<div class="sph-pkh"><span class="sph-pkn">' + esc(g.name) + '</span>' +
-        (n ? '<button type="button" class="sph-pkb" data-act="pkglead" data-fg="' + esc(g.id) + '" title="Make the next app the lead">⇄ lead</button>' : '') +
-        '<button type="button" class="sph-pkb" data-act="fggoal" data-fg="' + esc(g.id) + '" title="' + (g.note ? "Edit the goal" : "Write the goal of this purpose") + '">' + (g.note ? "✎ goal" : "+ goal") + '</button></div>' +
-      (g.note ? '<div class="sph-pkg">' + esc(g.note) + '</div>' : '') +
+    return '<div class="sph-pk" style="--fh:' + goalHue(g) + '">' +
+      '<div class="sph-pkh"><span class="sph-pkn" title="Goal">◎ ' + esc(g.name) + '</span>' +
+        (n ? '<button type="button" class="sph-pkb" data-act="pkglead" data-goal="' + esc(g.id) + '" title="Make the next app the lead">⇄ lead</button>' : '') + '</div>' +
       sphTile(t.lead) +
-      (n ? '<div class="sph-moons" aria-label="Also in this purpose">' + moonChips(t.moons, 6) + '</div>' : '') + '</div>';
+      (n ? '<div class="sph-moons" aria-label="Also serving this goal">' + moonChips(t.moons, 6) + '</div>' : '') + '</div>';
   }
   function renderSphereMore() {
     var mh = $("sphereMore"); if (!mh) return;
@@ -562,7 +583,7 @@
     var add = full ? '<button type="button" class="sph-add" data-act="tpick">+ Add to sphere<br><span>or drag a card up here</span></button>' : '';
     if (!ex.length) { mh.innerHTML = add ? '<div class="sph-grid sph-grid-solo">' + add + '</div>' : ''; return; }
     var tiles = spherePackages(), shown = SPH_MORE_OPEN ? tiles : tiles.slice(0, SPH_SHOW), rest = tiles.length - SPH_SHOW, np = tiles.filter(function (t) { return t.g; }).length;
-    mh.innerHTML = '<div class="sph-div"><span class="sph-dl">Also in the sphere</span><i></i><span class="sph-dh">' + ex.length + ' apps' + (np ? ' · ' + np + ' purpose' + (np === 1 ? '' : 's') : '') + ' · rank one 1–5 or drag it into the top row to make it a target</span></div>' +
+    mh.innerHTML = '<div class="sph-div"><span class="sph-dl">Also in the sphere</span><i></i><span class="sph-dh">' + ex.length + ' apps' + (np ? ' · ' + np + ' goal' + (np === 1 ? '' : 's') : '') + ' · rank one 1–5 or drag it into the top row to make it a target</span></div>' +
       '<div class="sph-grid">' + shown.map(pkgTile).join("") + (rest <= 0 || SPH_MORE_OPEN ? add : '') + '</div>' +
       (rest > 0 ? '<button type="button" class="sph-morebtn" data-act="sphmore" aria-expanded="' + (SPH_MORE_OPEN ? "true" : "false") + '">' + (SPH_MORE_OPEN ? "Show less" : "+" + rest + " more · " + tiles.slice(SPH_SHOW).map(function (t) { return t.g ? t.g.name : labelFor(t.lead).name; }).slice(0, 4).join(", ") + (rest > 4 ? "…" : "")) + '</button>' : '');
   }
@@ -654,7 +675,7 @@
         '<div class="tmeta">' + m + '</div>' +
         (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div>' : '') +
         subList +
-        (function () { var tm = targetMoons(k), gs = purposeGroups(k).filter(function (g) { return purposeMembers(g.id).length > 1; }); return tm.length ? '<div class="tmoons"><span class="tmoons-k">' + esc(gs.map(function (g) { return g.name; }).join(" \u00b7 ")) + '</span>' + moonChips(tm, 4) + '</div>' : ''; })() +
+        (function () { var tm = targetMoons(k), gs = goalsOf(k).filter(function (g) { return goalSphere(g.id).length > 1; }); return tm.length ? '<div class="tmoons"><span class="tmoons-k">\u25ce ' + esc(gs.map(function (g) { return g.name; }).join(" \u00b7 ")) + '</span>' + moonChips(tm, 4) + '</div>' : ''; })() +
         '<button class="tdrop" data-act="tdrop" title="Take out of the sphere">\u00d7</button>';
       grid.appendChild(card);
     });
@@ -1729,8 +1750,7 @@
           open: activeSubs(subs(it.id)).filter(function (x) { return !x.done; }).map(function (x) { return x.t || ""; }).slice(0, 40),
           notes: typeof getEntry(it.id).notes === "string" ? getEntry(it.id).notes.slice(0, 1200) : "",
           nom: getEntry(it.id).nom === true, idea: getEntry(it.id).idea === true,
-          purposes: purposeGroups(it.id).map(function (g) { return g.name; }),   // v137
-          pur: purposeGroups(it.id).map(function (g) { return g.id; }) });   // v138: purpose ids, for grouping in the Sphere Draft   // v133: nominated for the Five (per-item flag, synced like sph)
+          goals: goalsOf(it.id).map(function (g) { return g.id; }) });   // v139: the goals this app serves   // v133: nominated for the Five (per-item flag, synced like sph)
       });
     });
     return rows;
@@ -1766,11 +1786,14 @@
       var p = { nom: true, idea: true }; note = (note || "").trim(); if (note) p.notes = note;
       patch(id, p); renderAll(); return id;
     },
-    /* v137: purposes (focus groups) with their goal and sphere apps, for the debate message */
-    purposes: function () { return fgLive().map(function (g) { return { name: g.name, goal: g.note || "", apps: purposeMembers(g.id).map(function (k) { return labelFor(k).name; }) }; }).filter(function (p) { return p.apps.length; }); },
-    /* v138: every live purpose (focus group), for the Sphere Draft's "By purpose" view, and setting a goal from there */
-    purposeList: function () { return fgLive().map(function (g) { return { id: g.id, name: g.name, goal: g.note || "", hue: fgHue(g) }; }); },
-    setGoal: function (gid, text) { var g = fgById(gid); if (!g) return false; g.note = String(text || "").trim() || null; fgPushGroup(g); fgSaveLocal(); renderAll(); return true; },
+    /* v139: goals for the draft (grouping, tagging) and the debate message */
+    goalList: function () { return goalList().map(function (g) { return { id: g.id, name: g.name, hue: goalHue(g), apps: goalMembers(g.id).filter(function (k) { var it = itemById(k); return it && isActive(it); }).length }; }); },
+    goalAdd: function (name) { var id = goalAdd(name); renderAll(); return id; },
+    goalRename: function (id, name) { goalRename(id, name); renderAll(); },
+    goalDelete: function (id) { goalDelete(id); renderAll(); },
+    goalToggle: function (k, gid) { if (!itemById(k) || !goalById(gid)) return; var on = goalsOf(k).every(function (g) { return g.id !== gid; }); goalSet(k, gid, on); renderAll(); return on; },
+    goalReport: function () { return goalList().map(function (g) { var mem = goalMembers(g.id).filter(function (k) { var it = itemById(k); return it && isActive(it) && !isCore(k); });
+      return { name: g.name, sphere: mem.filter(function (k) { return inSphere(k); }).map(function (k) { return labelFor(k).name; }), table: mem.filter(function (k) { return !inSphere(k); }).map(function (k) { return labelFor(k).name; }) }; }); },
     groups: function () { var g = {}; state.apps.forEach(function (a) { if (a.group) g[a.group] = 1; }); return Object.keys(g).sort(); },
     nominate: function (k, on) { if (isCore(k) || !itemById(k)) return; on = !!on; if ((getEntry(k).nom === true) !== on) patch(k, { nom: on }); renderAll(); },
     /* orbit: a target only leaves the Five when an orbit item can take its slot (a free slot always pulls the next one up) */
@@ -1848,17 +1871,11 @@
     if (a === "pkgopen") { var pk = act.getAttribute("data-key"); if (pk && itemById(pk)) openBuildSheet(pk); return; }
     if (a === "sphmore") { SPH_MORE_OPEN = !SPH_MORE_OPEN; renderSphereMore(); return; }
     if (a === "pkglead") {
-      var lg = fgById(act.getAttribute("data-fg")); if (!lg) return;
-      var lm = purposeMembers(lg.id); if (lm.length < 2) return;
+      var lg = goalById(act.getAttribute("data-goal")); if (!lg) return;
+      var lm = goalSphere(lg.id); if (lm.length < 2) return;
       var cur = pkgLeadOf(lg, lm), o = sphOrder(); lm.sort(function (x, y) { var ix = o.indexOf(x), iy = o.indexOf(y); return (ix < 0 ? 1e6 : ix) - (iy < 0 ? 1e6 : iy); });
-      if (!meta.fgLead || typeof meta.fgLead !== "object") meta.fgLead = {};
-      meta.fgLead[lg.id] = lm[(lm.indexOf(cur) + 1) % lm.length]; save(); cloudPushBoard(); renderSphereMore();
+      meta.fgLead = Object.assign({}, meta.fgLead || {}); meta.fgLead[lg.id] = lm[(lm.indexOf(cur) + 1) % lm.length]; save(); cloudPushBoard(); renderSphereMore();
       toast(labelFor(meta.fgLead[lg.id]).name + " leads " + lg.name); return;
-    }
-    if (a === "fggoal") {
-      var gg = fgById(act.getAttribute("data-fg")); if (!gg) return;
-      var gv = prompt("Goal of \u201c" + gg.name + "\u201d \u2014 why these apps exist (one line). Claude uses it when you debate the Five.", gg.note || "");
-      if (gv === null) return; gg.note = gv.trim() || null; fgPushGroup(gg); fgSaveLocal(); renderAll(); toast(gg.note ? "Goal saved for " + gg.name : "Goal cleared"); return;
     }
     if (a === "sphrm") { var srk = keyOf(act); if (srk) { sphereRemove(srk); renderAll(); toast(labelFor(srk).name + " taken out of the sphere"); } return; }
 
@@ -3170,7 +3187,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 draft purposes"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 goals"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
