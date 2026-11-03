@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v137", BUILD_N = 137;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v138", BUILD_N = 138;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1729,7 +1729,8 @@
           open: activeSubs(subs(it.id)).filter(function (x) { return !x.done; }).map(function (x) { return x.t || ""; }).slice(0, 40),
           notes: typeof getEntry(it.id).notes === "string" ? getEntry(it.id).notes.slice(0, 1200) : "",
           nom: getEntry(it.id).nom === true, idea: getEntry(it.id).idea === true,
-          purposes: purposeGroups(it.id).map(function (g) { return g.name; }) });   // v137   // v133: nominated for the Five (per-item flag, synced like sph)
+          purposes: purposeGroups(it.id).map(function (g) { return g.name; }),   // v137
+          pur: purposeGroups(it.id).map(function (g) { return g.id; }) });   // v138: purpose ids, for grouping in the Sphere Draft   // v133: nominated for the Five (per-item flag, synced like sph)
       });
     });
     return rows;
@@ -1767,6 +1768,9 @@
     },
     /* v137: purposes (focus groups) with their goal and sphere apps, for the debate message */
     purposes: function () { return fgLive().map(function (g) { return { name: g.name, goal: g.note || "", apps: purposeMembers(g.id).map(function (k) { return labelFor(k).name; }) }; }).filter(function (p) { return p.apps.length; }); },
+    /* v138: every live purpose (focus group), for the Sphere Draft's "By purpose" view, and setting a goal from there */
+    purposeList: function () { return fgLive().map(function (g) { return { id: g.id, name: g.name, goal: g.note || "", hue: fgHue(g) }; }); },
+    setGoal: function (gid, text) { var g = fgById(gid); if (!g) return false; g.note = String(text || "").trim() || null; fgPushGroup(g); fgSaveLocal(); renderAll(); return true; },
     groups: function () { var g = {}; state.apps.forEach(function (a) { if (a.group) g[a.group] = 1; }); return Object.keys(g).sort(); },
     nominate: function (k, on) { if (isCore(k) || !itemById(k)) return; on = !!on; if ((getEntry(k).nom === true) !== on) patch(k, { nom: on }); renderAll(); },
     /* orbit: a target only leaves the Five when an orbit item can take its slot (a free slot always pulls the next one up) */
@@ -3166,7 +3170,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 purposes"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 draft purposes"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });

@@ -1,3 +1,17 @@
+# v138 — purposes and goals in the Sphere Draft · built on v137
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v138`). **No SQL ships with this build.**
+
+v137 packed apps by purpose on the Week board and in the Debate message only; the Sphere Draft still grouped its table by each app's category.
+- **By purpose** is now the table's default grouping (the select next to Find: By purpose / By category / No groups). Each purpose is a section with its **goal** under the name, **+ goal / ✎** to write it, and **All to orbit** for that purpose. An app in several purposes appears in each; apps in none are last under **No purpose**.
+- The **details window** and the **swipe-review card** show the app's purposes with their goals (✎ edits the goal there too).
+- **Orbit chips** are sorted by purpose and carry the purpose's colour; hovering one shows the purpose and its goal.
+- Goals written in the draft are the same goals as on the board (the focus group's note) and in the Debate message.
+
+Check: footer reads **build v138 · opens offline · draft purposes**.
+
+---
+
 # v137 — purposes: apps packed by purpose, 10 on screen · built on v136
 
 Upload `js/weekly-focus-app.js`, `js/wf-sphere-draft.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v137`). **No SQL ships with this build.** The purposes are the existing focus groups (`weekly_focus_groups`); a purpose's goal is the group's `note`; the chosen lead of a package is `meta.fgLead[groupId]` on the board row.

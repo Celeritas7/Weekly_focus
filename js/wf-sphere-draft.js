@@ -7,11 +7,11 @@
    ============================================================ */
 (function () {
   "use strict";
-  var H = null, root = null, isOpen = false, hist = [], kindF = "all", sortBy = "pri", q = "", GROUP = true, TAPO = false, TAPN = false, lastFull = false, io = null;
+  var H = null, root = null, isOpen = false, hist = [], kindF = "all", sortBy = "pri", q = "", GROUP = true, GRP = "purpose", TAPO = false, TAPN = false, lastFull = false, io = null;
   var BY = {}, ROWS = [];
   var PREF = "wf_sd_prefs";
-  try { var pf = JSON.parse(localStorage.getItem(PREF) || "{}"); if (pf.group === false) GROUP = false; if (pf.sort) sortBy = pf.sort; if (pf.tapo === true) TAPO = true; if (pf.tapn === true && !TAPO) TAPN = true; } catch (e) {}
-  function savePref() { try { localStorage.setItem(PREF, JSON.stringify({ group: GROUP, sort: sortBy, tapo: TAPO, tapn: TAPN })); } catch (e) {} }
+  try { var pf = JSON.parse(localStorage.getItem(PREF) || "{}"); if (pf.group === false) GROUP = false; if (pf.grp === "purpose" || pf.grp === "cat" || pf.grp === "none") GRP = pf.grp; else if (pf.group === false) GRP = "none"; GROUP = GRP !== "none"; if (pf.sort) sortBy = pf.sort; if (pf.tapo === true) TAPO = true; if (pf.tapn === true && !TAPO) TAPN = true; } catch (e) {}
+  function savePref() { try { localStorage.setItem(PREF, JSON.stringify({ group: GROUP, grp: GRP, sort: sortBy, tapo: TAPO, tapn: TAPN })); } catch (e) {} }
 
   var KIND = { app: { l: "App", c: "var(--brand)" }, study: { l: "Study", c: "var(--study)" }, office: { l: "Office", c: "var(--office, oklch(0.55 0.13 70))" } };
   var PRI = { high: { l: "High", c: "var(--pri-h)", w: 3 }, medium: { l: "Medium", c: "var(--pri-m)", w: 2 }, low: { l: "Low", c: "var(--pri-l)", w: 1 }, "": { l: "", c: "transparent", w: 0 } };
@@ -79,7 +79,7 @@
               '<button type="button" class="sd-tapo" id="sdTapO" aria-pressed="false" title="When on, tapping a bubble sends it straight to orbit">Tap \u2192 Orbit</button>' +
               '<button type="button" class="sd-tapo sd-tapn" id="sdTapN" aria-pressed="false" title="When on, tapping a bubble stars it as a nominee for the Five (tap again to remove)">Tap \u2192 \u2605</button>' +
               '<button type="button" class="sd-more" id="sdMore" aria-expanded="false" aria-controls="sdTools" aria-label="Search, group and sort"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><i class="sd-more-dot" aria-hidden="true"></i></button>' +
-              '<div class="sd-tools" id="sdTools"><input id="sdQ" type="search" placeholder="Find…" autocomplete="off" aria-label="Find"><button type="button" class="sd-tog" id="sdGrp">By category</button>' +
+              '<div class="sd-tools" id="sdTools"><input id="sdQ" type="search" placeholder="Find…" autocomplete="off" aria-label="Find"><select id="sdGrp" aria-label="Group the table"><option value="purpose">By purpose</option><option value="cat">By category</option><option value="none">No groups</option></select>' +
               '<select id="sdSort" aria-label="Sort"><option value="pri">Priority first</option><option value="open">Most open tasks</option><option value="stale">Longest untouched</option><option value="az">A–Z</option></select></div></div>' +
             '<div class="sd-legend" aria-hidden="true"><span><i style="--pc:var(--pri-h)"></i>High</span><span><i style="--pc:var(--pri-m)"></i>Medium</span><span><i style="--pc:var(--pri-l)"></i>Low</span><span class="sd-legend-tip">Tap a bubble for details</span></div>' +
             '<div class="sd-grid" id="sdGrid"></div>' +
@@ -142,7 +142,8 @@
     v.className = "sd-v" + (over ? " sd-heavy" : "");
     v.textContent = over ? "Heavy · " + ST.orbit.length + " in orbit, drop " + over : total === 0 ? "Empty" : ST.five.length < MAX ? "Light · room for " + (MAX - ST.five.length) + " more" : ST.orbit.length ? "Balanced · " + ST.orbit.length + " in orbit" : "Focused";
     /* v131: orbit chips sorted by category, each with its category colour */
-    $("sdChips").innerHTML = ST.orbit.slice().sort(function (a, b) { return BY[a].group.localeCompare(BY[b].group) || BY[a].name.localeCompare(BY[b].name); }).map(function (k) { var it = BY[k]; return '<span class="sd-chip' + (it.nom ? " sd-chip-nom" : "") + '" style="--cc:' + catCol(it.group) + '" title="' + esc(it.group) + '">' +
+    var p1 = function (k) { var x = (BY[k].pur || [])[0]; return x ? purposeOf(x) : null; }, pn = function (k) { var q = p1(k); return q ? q.name : "\uffff"; };   // v138: by first purpose
+    $("sdChips").innerHTML = ST.orbit.slice().sort(function (a, b) { return pn(a).localeCompare(pn(b)) || BY[a].name.localeCompare(BY[b].name); }).map(function (k) { var it = BY[k]; var cp = p1(k); return '<span class="sd-chip' + (it.nom ? " sd-chip-nom" : "") + '" style="--cc:' + (cp ? purCol(cp.hue) : "var(--faint)") + '" title="' + esc(cp ? cp.name + (cp.goal ? ": " + cp.goal : "") : "No purpose") + '">' +
       '<button type="button" class="sd-chip-star" data-sd="chipnom" data-sdk="' + esc(k) + '" aria-pressed="' + (it.nom ? "true" : "false") + '" aria-label="' + (it.nom ? "Remove the star from " : "Nominate ") + esc(it.name) + (it.nom ? "" : " for the Five") + '">' + (it.nom ? "\u2605" : "\u2606") + '</button>' +
       '<button type="button" class="sd-chip-nm" data-sd="info" data-sdk="' + esc(k) + '" aria-label="' + esc(it.name) + ': show details"><i aria-hidden="true"></i><span>' + esc(it.name) + '</span></button>' +
       '<button type="button" class="sd-chip-x" data-sd="back" data-sdk="' + esc(k) + '" aria-label="Send ' + esc(it.name) + ' back to the table">\u00d7</button></span>'; }).join("");
@@ -166,6 +167,33 @@
     return '<button type="button" class="sd-bub" data-sdk="' + esc(it.id) + '" data-sd="info" style="--kc:' + KIND[it.kind].c + ';--pc:' + (p.l ? p.c : "var(--hair)") + '" title="' + esc(it.name) + '" aria-label="' + esc(it.name) + (p.l ? ", " + p.l + " priority" : "") + (it.nom ? ", nominated for the Five" : "") + (TAPO ? '. Send to orbit">' : TAPN ? (it.nom ? '. Remove the star">' : '. Nominate for the Five">') : '. Show details">') +
       '<span class="sd-bub-c">' + inner + '</span>' + (it.nom ? '<span class="sd-nomb" title="Nominated for the Five" aria-hidden="true">\u2605</span>' : '') + (L ? '<span class="sd-bub-l">' + esc(it.name) + '</span>' : '') + '</button>';
   }
+  /* v138: the table by purpose (the focus groups). Each section shows the purpose's goal; an app in several purposes
+     appears in each section; apps in none are last, under "No purpose". */
+  function purposes() { return H.purposeList ? H.purposeList() : []; }
+  function purCol(h) { return "oklch(0.58 0.14 " + (h == null ? 283 : h) + ")"; }
+  function purposeOf(id) { var ps = purposes(); for (var i = 0; i < ps.length; i++) if (ps[i].id === id) return ps[i]; return null; }
+  function goalBtn(pp) { return '<button type="button" class="sd-pgoal' + (pp.goal ? " sd-has" : "") + '" data-sd="pgoal" data-p="' + esc(pp.id) + '" aria-label="' + (pp.goal ? "Edit the goal of " : "Write the goal of ") + esc(pp.name) + '">' + (pp.goal ? "✎" : "+ goal") + '</button>'; }
+  function purposeHtml(list) {
+    var ps = purposes(), out = [], placed = {};
+    ps.forEach(function (pp) {
+      var its = list.filter(function (r) { return (r.pur || []).indexOf(pp.id) >= 0; }); if (!its.length) return;
+      its.forEach(function (r) { placed[r.id] = 1; });
+      out.push('<section class="sd-cat sd-pur" style="--cc:' + purCol(pp.hue) + '" aria-label="' + esc(pp.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(pp.name) + ' <span>' + its.length + '</span>' + goalBtn(pp) +
+        '<button type="button" class="sd-catorb" data-sd="catorb" data-p="' + esc(pp.id) + '" aria-label="Send all ' + its.length + ' in ' + esc(pp.name) + ' to orbit">All to orbit</button></h3>' +
+        '<p class="sd-pur-goal' + (pp.goal ? "" : " sd-none") + '">' + (pp.goal ? esc(pp.goal) : "No goal yet. Why do these apps exist? Claude uses it when you debate the Five.") + '</p>' +
+        '<div class="sd-bubs">' + its.map(cardHtml).join("") + '</div></section>');
+    });
+    var rest = list.filter(function (r) { return !placed[r.id]; });
+    if (rest.length) out.push('<section class="sd-cat sd-pur sd-nopur" style="--cc:var(--faint)" aria-label="No purpose"><h3 class="sd-cat-h"><i></i>No purpose <span>' + rest.length + '</span></h3>' +
+      '<p class="sd-pur-goal sd-none">Not in any purpose yet. Add them to a group on the Week tab to pack them with their purpose.</p><div class="sd-bubs">' + rest.map(cardHtml).join("") + '</div></section>');
+    return out.join("");
+  }
+  /* the purposes of one item, with their goals (details window and review card) */
+  function purLines(it) {
+    var ps = (it.pur || []).map(purposeOf).filter(Boolean);
+    if (!ps.length) return '<div class="sd-ipur sd-none">No purpose yet</div>';
+    return '<div class="sd-ipur">' + ps.map(function (pp) { return '<div class="sd-ipur-r" style="--cc:' + purCol(pp.hue) + '"><b><i></i>' + esc(pp.name) + '</b><span>' + (pp.goal ? esc(pp.goal) : '<em>no goal yet</em>') + '</span>' + goalBtn(pp) + '</div>'; }).join("") + '</div>';
+  }
   function groupedHtml(list) {
     var order = [], by = {};
     list.forEach(function (it) { if (!by[it.group]) { by[it.group] = []; order.push(it.group); } by[it.group].push(it); });
@@ -181,16 +209,16 @@
     var list = visible();
     $("sdGrid").innerHTML = !list.length
       ? '<div class="sd-empty-pool">' + (q || kindF !== "all" ? "Nothing matches. Clear the search or pick another filter." : ROWS.length ? "Everything is in the sphere. Tap a planet to send it back." : "No active items yet. Switch on an app or topic on the board first.") + '</div>'
-      : GROUP ? groupedHtml(list) : '<div class="sd-bubs">' + list.map(cardHtml).join("") + '</div>';
+      : GRP === "purpose" ? purposeHtml(list) : GRP === "cat" ? groupedHtml(list) : '<div class="sd-bubs">' + list.map(cardHtml).join("") + '</div>';
     root.querySelectorAll("#sdSeg button").forEach(function (b) {
       var kd = b.getAttribute("data-kind"), n = kd === "all" ? left.length : left.filter(function (x) { return x.kind === kd; }).length;
       b.textContent = (kd === "all" ? "All" : kd === "app" ? "Apps" : KIND[kd].l) + " " + n; b.setAttribute("aria-pressed", kindF === kd ? "true" : "false");
     });
-    $("sdGrp").setAttribute("aria-pressed", GROUP ? "true" : "false");
+    $("sdGrp").value = GRP;
     $("sdTapO").setAttribute("aria-pressed", TAPO ? "true" : "false"); root.classList.toggle("sd-tapo-on", TAPO);
     $("sdTapN").setAttribute("aria-pressed", TAPN ? "true" : "false"); root.classList.toggle("sd-tapn-on", TAPN);
     $("sdSort").value = sortBy;
-    $("sdMore").classList.toggle("sd-active", !!q || !GROUP || sortBy !== "pri");
+    $("sdMore").classList.toggle("sd-active", !!q || GRP !== "purpose" || sortBy !== "pri");
     $("sdT5").textContent = ST.five.length + "/" + H.max; $("sdTO").textContent = ST.orbit.length; $("sdTP").textContent = left.length;
   }
   function renderHud() {
@@ -254,6 +282,7 @@
       '<div class="sd-ih"><span class="sd-ih-logo" style="--pc:' + (p.l ? p.c : "var(--hair)") + ';--kc:' + KIND[it.kind].c + '">' + logo + '</span>' +
         '<div class="sd-ih-t"><h3 id="sdInfoT">' + esc(it.name) + '</h3><div class="sd-ih-m">' + KIND[it.kind].l + ' · ' + esc(it.group) + (p.l ? ' · <b style="color:' + p.c + '">' + p.l + '</b>' : '') + '</div><div class="sd-ih-s">' + status + '</div></div>' +
         '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
+      purLines(it) +
       (w && w.five != null ? '' : '<button type="button" class="sd-btn sd-nombtn sd-nomtop' + (it.nom ? " sd-on" : "") + '" data-sd="nom" aria-pressed="' + (it.nom ? "true" : "false") + '">' + (it.nom ? "\u2605 Nominated for the Five \u00b7 remove" : "\u2606 Nominate for the Five") + '</button>') +
       '<div class="sd-ip">' + (it.total ? '<span class="sd-ip-bar"><i style="width:' + pct + '%;background:' + KIND[it.kind].c + '"></i></span><span>' + it.done + '/' + it.total + ' done</span>' : '<span>No subtasks yet</span>') +
         '<span class="sd-ip-age' + (it.age != null && it.age >= 14 ? " sd-stale" : "") + '">' + ageTxt(it.age) + '</span></div>' +
@@ -479,6 +508,7 @@
         '<div class="sd-ih"><span class="sd-ih-logo" style="--pc:' + (p.l ? p.c : "var(--hair)") + ';--kc:' + KIND[it.kind].c + '">' + logo + '</span>' +
           '<div class="sd-ih-t"><h3>' + esc(it.name) + '</h3><div class="sd-ih-m">' + KIND[it.kind].l + ' · ' + esc(it.group) + (p.l ? ' · <b style="color:' + p.c + '">' + p.l + '</b>' : '') + '</div>' +
           '<div class="sd-rv-now' + (w && w.orbit ? " sd-in" : "") + '">' + (w && w.orbit ? "Now: in orbit" : "Now: not in orbit") + '</div>' + (it.nom ? ' <span class="sd-rv-nom">\u2605 Nominee</span>' : '') + '</div></div>' +
+        purLines(it) +
         '<div class="sd-rv-age' + (rvFresh(it.age) ? " sd-fresh" : it.age != null && it.age >= 14 ? " sd-stale" : "") + '">' + (rvFresh(it.age) ? "Updated " : "Last activity: ") + ageTxt(it.age) + '</div>' +
         '<div class="sd-ip">' + (it.total ? '<span class="sd-ip-bar"><i style="width:' + pct + '%;background:' + KIND[it.kind].c + '"></i></span><span>' + it.done + '/' + it.total + ' done</span>' : '<span>No subtasks yet</span>') + '</div>' +
         '<div class="sd-isec"><h4>Open tasks <span>' + open.length + '</span></h4>' + (open.length ? '<ul class="sd-tasks">' + open.slice(0, 4).map(function (t) { return '<li>' + esc(t) + '</li>'; }).join("") + (open.length > 4 ? '<li class="sd-rv-more">+' + (open.length - 4) + ' more</li>' : '') + '</ul>' : '<p class="sd-none-txt">No open subtasks.</p>') + '</div>' +
@@ -541,6 +571,12 @@
       var a = el.getAttribute("data-sd"), k = el.getAttribute("data-sdk");
       var ik = INFO;   // buttons inside the details window act on the item it shows
       if (a === "info") { if (TAPO && el.classList.contains("sd-bub")) act(k, "orbit"); else if (TAPN && el.classList.contains("sd-bub")) nomToggle(k); else openInfo(k); }
+      else if (a === "catorb" && el.getAttribute("data-p")) { var pp = purposeOf(el.getAttribute("data-p")); if (pp) orbitMany(visible().filter(function (r) { return (r.pur || []).indexOf(pp.id) >= 0; }).map(function (r) { return r.id; }), pp.name); }
+      else if (a === "pgoal") {
+        var gp = purposeOf(el.getAttribute("data-p")); if (!gp || !H.setGoal) return;
+        var gv = prompt("Goal of “" + gp.name + "” — why these apps exist (one line). Claude uses it when you debate the Five.", gp.goal || "");
+        if (gv === null) return; H.setGoal(gp.id, gv); pull(); render(); if (INFO && INFO !== "@debate" && BY[INFO]) openInfo(INFO); if (RV) rvRender(); toast(gv.trim() ? "Goal saved for " + gp.name : "Goal cleared", false);
+      }
       else if (a === "catorb") { var g = el.getAttribute("data-g"); orbitMany(visible().filter(function (r) { return r.group === g; }).map(function (r) { return r.id; }), g); }
       else if (a === "infoclose") closeInfo();
       else if (a === "add") { closeInfo(); act(ik, "add"); }
@@ -610,7 +646,7 @@
     $("sdSeg").addEventListener("click", function (e) { var b = e.target.closest("button[data-kind]"); if (!b) return; kindF = b.getAttribute("data-kind"); renderPool(); });
     $("sdSort").addEventListener("change", function () { sortBy = this.value; savePref(); renderPool(); });
     $("sdQ").addEventListener("input", function () { q = this.value.trim().toLowerCase(); renderPool(); });
-    $("sdGrp").addEventListener("click", function () { GROUP = !GROUP; savePref(); renderPool(); });
+    $("sdGrp").addEventListener("change", function () { GRP = this.value; GROUP = GRP !== "none"; savePref(); renderPool(); });
     $("sdTapN").addEventListener("click", function () { TAPN = !TAPN; if (TAPN) TAPO = false; savePref(); renderPool(); toast(TAPN ? "Tap a bubble to star it for the Five. Tap the switch again for details." : "Tap a bubble for its details", false); });
     $("sdTapO").addEventListener("click", function () { TAPO = !TAPO; if (TAPO) TAPN = false; savePref(); renderPool(); toast(TAPO ? "Tap a bubble to send it to orbit. Tap the switch again for details." : "Tap a bubble for its details", false); });
     $("sdMore").addEventListener("click", function () {   // v114: on phones the search / group / sort row folds away

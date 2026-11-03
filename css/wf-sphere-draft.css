@@ -356,3 +356,22 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 .sd-db-warn { color: var(--sd-warn); font-weight: 800; }
 .sd-db-task { flex: 0 0 auto; padding: 4px 10px; min-height: 30px; font-size: 12px; border-color: var(--sd-warn); color: var(--sd-warn); }
 .sd-db-hint { margin: 0; padding: 8px 10px; border-radius: 10px; font-size: 13px; background: color-mix(in oklch, var(--sd-warn) 12%, var(--card)); color: var(--ink); }
+
+/* v138 · purposes in the Sphere Draft: table by purpose with goals; purposes in details + review */
+#sdGrp { font: inherit; font-size: 13px; font-weight: 700; padding: 7px 10px; border: 1px solid var(--hair); border-radius: 10px; background: var(--card); color: var(--ink); }
+.sd-pur { padding: 12px 12px 14px; border-radius: 16px; background: color-mix(in oklch, var(--cc) 7%, var(--card)); border: 1px solid color-mix(in oklch, var(--cc) 28%, var(--hair)); }
+.sd-pur.sd-nopur { background: transparent; border-style: dashed; }
+.sd-pur-goal { margin: -4px 0 2px; font-size: 13.5px; line-height: 1.4; color: var(--ink); font-weight: 600; }
+.sd-pur-goal.sd-none { color: var(--faint); font-weight: 500; font-style: italic; font-size: 12.5px; }
+.sd-pgoal { flex: 0 0 auto; border: 1px dashed var(--cc); background: transparent; color: var(--cc); border-radius: 999px; padding: 3px 9px; font: inherit; font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: none; cursor: pointer; min-height: 26px; }
+.sd-pgoal.sd-has { border-style: solid; padding: 3px 8px; }
+.sd-pgoal:hover, .sd-pgoal:focus-visible { background: var(--cc); color: #fff; }
+.sd-pur .sd-catorb { margin-left: 0; }
+.sd-pur .sd-cat-h > span { margin-right: auto; }
+.sd-ipur { display: flex; flex-direction: column; gap: 6px; }
+.sd-ipur.sd-none { font-size: 12.5px; color: var(--faint); font-style: italic; }
+.sd-ipur-r { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px; background: color-mix(in oklch, var(--cc) 9%, var(--card)); border: 1px solid color-mix(in oklch, var(--cc) 30%, var(--hair)); font-size: 13px; min-width: 0; }
+.sd-ipur-r b { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; color: var(--cc); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.sd-ipur-r b i { width: 8px; height: 8px; border-radius: 50%; background: var(--cc); }
+.sd-ipur-r span { flex: 1 1 auto; min-width: 0; color: var(--ink); line-height: 1.35; }
+.sd-ipur-r em { color: var(--faint); }
