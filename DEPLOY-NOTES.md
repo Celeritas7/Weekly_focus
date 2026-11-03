@@ -1,3 +1,15 @@
+# v141 — file apps into a goal: drag, or search and tick · built on v140
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v141`). **No SQL ships with this build.**
+
+Filing an app meant opening it and tapping a goal chip; dragging onto a goal did nothing, and there was no search.
+- **Drag onto a goal**: in Sphere Draft → By goal, drag any bubble onto a goal section (the section outlines while you're over it); the app now serves that goal. On a phone: press and hold, then drag. The app keeps its other goals.
+- **+ Add apps** on every goal section opens a list of all apps with a **search box**. Tick or untick; apps already serving the goal are at the top; each row says whether the app is in the Five (#N) or in orbit. Done closes it.
+
+Check: footer reads **build v141 · opens offline · goal add apps**.
+
+---
+
 # v140 — goals show the apps already in the sphere · built on v139
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v140`). **No SQL ships with this build.**
