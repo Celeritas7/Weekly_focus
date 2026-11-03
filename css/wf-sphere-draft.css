@@ -430,3 +430,10 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
   .sd-goalgrid .sd-pur:not(.sd-nopur) .sd-bub { width: 52px; }
   .sd-goalgrid .sd-pur:not(.sd-nopur) .sd-bub-c { width: 44px; height: 44px; }
 }
+
+/* v145 · the core bar stays when the core has nothing open, dimmed */
+.core-bar.core-dim { background: var(--card); border-color: var(--hair); opacity: .72; }
+.core-bar.core-dim:hover, .core-bar.core-dim:focus-visible { opacity: 1; border-color: color-mix(in oklch, var(--core) 40%, var(--hair)); }
+.core-bar.core-dim .core-moon { filter: saturate(.25); box-shadow: none; animation: none; }
+.core-bar.core-dim .core-k { color: var(--mid); }
+.core-bar.core-dim .core-n { background: var(--hair); color: var(--mid); }
