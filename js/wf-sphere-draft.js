@@ -177,6 +177,11 @@
     var w = where(it.id); if (!w) return cardHtml(it);
     return cardHtml(it).replace('class="sd-bub"', 'class="sd-bub sd-insph"').replace('<span class="sd-bub-c">', '<span class="sd-inb' + (w.orbit ? '' : ' sd-inb5') + '">' + (w.orbit ? 'orbit' : '#' + (w.five + 1)) + '</span><span class="sd-bub-c">');
   }
+  /* v146: links on a goal (Claude chats, Claude Code sessions, web pages): tiles under the goal's apps, tap opens */
+  var LK = { chat: { i: "\ud83d\udcac", l: "Chat" }, code: { i: "</>", l: "Code" }, web: { i: "\ud83d\udd17", l: "Link" } };
+  function linkTile(l) { var K = LK[l.kind] || LK.web;
+    return '<a class="sd-glink sd-gl-' + esc(l.kind in LK ? l.kind : "web") + '" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="' + esc(l.t + " \u2014 " + l.url) + '"><span class="sd-gl-i" aria-hidden="true">' + esc(K.i) + '</span><span class="sd-gl-t">' + esc(l.t) + '</span><small>' + K.l + '</small></a>'; }
+  function linksHtml(g) { var ls = g.links || []; return ls.length ? '<div class="sd-glinks" aria-label="Links for ' + esc(g.name) + '">' + ls.map(linkTile).join("") + '</div>' : ''; }
   function goalHtml(list) {
     var gs = goals(), out = [], placed = {};
     var sph = sorted(ROWS.filter(function (r) { return where(r.id) && (kindF === "all" || r.kind === kindF) && (!q || (r.name + " " + r.group).toLowerCase().indexOf(q) >= 0); }));
@@ -187,9 +192,9 @@
       if (!its.length && !inS.length && (q || kindF !== "all")) return;   // filtered out: hide the empty section
       out.push('<section class="sd-cat sd-pur" data-sddrop="goal" data-goal="' + esc(gg.id) + '" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span title="' + (its.length + inS.length) + ' apps' + (inS.length ? ', ' + inS.length + ' in the sphere' : '') + '">' + (its.length + inS.length) + '</span>' +
         '<button type="button" class="sd-pgoal sd-has" data-sd="gedit" data-goal="' + esc(gg.id) + '" aria-label="Rename or delete the goal ' + esc(gg.name) + '">\u270e</button>' +
-        '<button type="button" class="sd-pgoal sd-gpick" data-sd="gpick" data-goal="' + esc(gg.id) + '" aria-label="Add apps to ' + esc(gg.name) + '">+ Add</button>' +
+        '<button type="button" class="sd-pgoal sd-gpick" data-sd="gpick" data-goal="' + esc(gg.id) + '" aria-label="Add apps or links to ' + esc(gg.name) + '">+ Add</button>' +
         (its.length ? '<button type="button" class="sd-catorb" data-sd="catorb" data-goal="' + esc(gg.id) + '" aria-label="Send all ' + its.length + ' serving ' + esc(gg.name) + ' to orbit" title="Send the table apps of this goal to orbit">Orbit all</button>' : '') + '</h3>' +
-        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(sphCard).join("") + its.map(cardHtml).join("") + '</div>' : '<p class="sd-pur-goal sd-none">No apps yet. <b>+ Add</b> or drag one here.</p>') + '</section>');
+        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(sphCard).join("") + its.map(cardHtml).join("") + '</div>' : (gg.links || []).length ? '' : '<p class="sd-pur-goal sd-none">No apps yet. <b>+ Add</b> or drag one here.</p>') + linksHtml(gg) + '</section>');
     });
     var rest = list.filter(function (r) { return !placed[r.id]; });
     if (rest.length) out.push('<section class="sd-cat sd-pur sd-nopur" style="--cc:var(--faint)" aria-label="No goal yet"><h3 class="sd-cat-h"><i></i>No goal yet <span>' + rest.length + '</span></h3>' +
@@ -425,7 +430,7 @@
     L.push("", "CURRENT FIVE" + (ST.five.length < H.max ? " (" + (H.max - ST.five.length) + " empty)" : ""), five.length ? five.join("\n") : "(none set yet)",
       "", "NOMINEES", noms.length ? noms.join("\n") : "(none)",
       "", "ALSO IN ORBIT, not nominated: " + (rest.length ? rest.join(", ") : "none"),
-      "", "GOALS (what my apps are for)", (function () { var gr = H.goalReport ? H.goalReport() : []; return gr.length ? gr.map(function (g) { return "- " + g.name + " \u2014 in the sphere: " + (g.sphere.length ? g.sphere.join(", ") : "none") + (g.table.length ? "; also serving it, not in the sphere: " + g.table.join(", ") : ""); }).join("\n") : "(no goals set yet)"; })(),
+      "", "GOALS (what my apps are for)", (function () { var gr = H.goalReport ? H.goalReport() : []; return gr.length ? gr.map(function (g) { return "- " + g.name + " \u2014 in the sphere: " + (g.sphere.length ? g.sphere.join(", ") : "none") + (g.table.length ? "; also serving it, not in the sphere: " + g.table.join(", ") : "") + (g.links && g.links.length ? "; links: " + g.links.map(function (l) { return l.t + " (" + (LK[l.kind] || LK.web).l.toLowerCase() + ")"; }).join(", ") : ""); }).join("\n") : "(no goals set yet)"; })(),
       "", "Not connected yet: my career direction (Belay) and Apperse. If career goals matter for this choice, ask me directly.");
     return L.join("\n");
   }
@@ -589,7 +594,26 @@
     var rows = gpRows();
     return rows.length ? rows.map(function (r) { var on = (r.goals || []).indexOf(GP.gid) >= 0, w = where(r.id);
         return '<li><button type="button" class="sd-gp-row' + (on ? " sd-on" : "") + '" data-sd="gptog" data-sdk="' + esc(r.id) + '" aria-pressed="' + (on ? "true" : "false") + '"><span class="sd-gp-box" aria-hidden="true">' + (on ? "✓" : "") + '</span><span class="sd-gp-nm">' + esc(r.name) + '<small>' + KIND[r.kind].l + ' · ' + esc(r.group) + (w ? (w.orbit ? ' · in orbit' : ' · #' + (w.five + 1)) : '') + '</small></span></button></li>'; }).join("")
-      : '<li class="sd-none-txt">Nothing matches “' + esc(GP.q) + '”.</li>';
+      : '<li class="sd-none-txt">No app matches “' + esc(GP.q) + '”.</li>';
+  }
+  /* v146: links in the picker. Paste a URL, or tick a chat saved in the Chats tab; the goal's links are listed with × */
+  function gpLinks() {
+    var g = goalOf(GP.gid), ls = g ? g.links || [] : [];
+    return ls.length ? ls.map(function (l) { var K = LK[l.kind] || LK.web; return '<li class="sd-gl-row sd-gl-' + esc(l.kind in LK ? l.kind : "web") + '"><span class="sd-gl-i" aria-hidden="true">' + esc(K.i) + '</span><a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.t) + '<small>' + K.l + ' · ' + esc(l.url.replace(/^https?:\/\//, "")) + '</small></a><button type="button" class="sd-x" data-sd="gldel" data-lid="' + esc(l.id) + '" aria-label="Remove the link ' + esc(l.t) + '">×</button></li>'; }).join("") : '';
+  }
+  function gpChats() {
+    if (!H.chats) return ""; var g = goalOf(GP.gid), have = {}, q2 = GP.q.trim().toLowerCase();
+    (g ? g.links || [] : []).forEach(function (l) { have[l.url] = l.id; if (l.cid) have["c:" + l.cid] = l.id; });
+    var cs = H.chats().filter(function (c) { return !q2 || (c.t + " " + c.fold).toLowerCase().indexOf(q2) >= 0; }).sort(function (a, b) { return (have[a.url] || have["c:" + a.id] ? 0 : 1) - (have[b.url] || have["c:" + b.id] ? 0 : 1) || a.t.localeCompare(b.t); });
+    if (!cs.length) return "";
+    return '<li class="sd-gp-sec">Saved chats</li>' + cs.slice(0, q2 ? 40 : 12).map(function (c) { var on = !!(have[c.url] || have["c:" + c.id]);
+      return '<li><button type="button" class="sd-gp-row' + (on ? " sd-on" : "") + '" data-sd="gpchat" data-cid="' + esc(c.id) + '" aria-pressed="' + (on ? "true" : "false") + '"><span class="sd-gp-box" aria-hidden="true">' + (on ? "✓" : "") + '</span><span class="sd-gp-nm">\ud83d\udcac ' + esc(c.t) + '<small>Chat' + (c.fold ? ' · ' + esc(c.fold) : '') + '</small></span></button></li>'; }).join("");
+  }
+  function gpLinkAdd() {
+    var u = $("sdGlU"), t = $("sdGlT"); if (!u || !GP || !H.goalLinkAdd) return;
+    var v = u.value.trim(); if (!v) { u.focus(); return; }
+    var id = H.goalLinkAdd(GP.gid, v, t ? t.value : ""); if (!id) { toast("That doesn’t look like a web address", false); u.focus(); return; }
+    u.value = ""; if (t) t.value = ""; pull(); render(); gpRender(false); toast("Link added", false);
   }
   function gpRender(first) {
     var g = goalOf(GP.gid); if (!g) { closeInfo(); return; }
@@ -598,11 +622,13 @@
       $("sdInfoCard").innerHTML =
         '<div class="sd-ih"><div class="sd-ih-t"><h3 id="sdInfoT">◎ ' + esc(g.name) + '</h3><div class="sd-ih-m" id="sdGpN">' + n + (n === 1 ? ' app serves' : ' apps serve') + ' this goal. Tick the apps that serve it.</div></div>' +
           '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
-        '<input id="sdGpQ" type="search" class="sd-gp-q" placeholder="Search apps…" autocomplete="off" aria-label="Search apps" value="' + esc(GP.q) + '">' +
-        '<ul class="sd-gp-list" id="sdGpList">' + gpList() + '</ul>' +
+        (H.goalLinkAdd ? '<form class="sd-gl-form" data-sdform="glink" novalidate><input id="sdGlU" type="text" inputmode="url" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Paste a Claude chat, Claude Code or web link" aria-label="Link"><input id="sdGlT" type="text" autocomplete="off" placeholder="Name (optional)" aria-label="Name for the link"><button type="submit" class="sd-btn">Add link</button></form>' +
+          '<ul class="sd-gl-cur" id="sdGlCur">' + gpLinks() + '</ul>' : '') +
+        '<input id="sdGpQ" type="search" class="sd-gp-q" placeholder="Search apps' + (H.chats ? ' and saved chats' : '') + '…" autocomplete="off" aria-label="Search apps" value="' + esc(GP.q) + '">' +
+        '<ul class="sd-gp-list" id="sdGpList">' + gpList() + gpChats() + '</ul>' +
         '<div class="sd-iact"><button type="button" class="sd-btn sd-primary sd-big" data-sd="infoclose">Done</button></div>';
-      var qi = $("sdGpQ"); if (qi) { qi.addEventListener("input", function () { GP.q = this.value; $("sdGpList").innerHTML = gpList(); }); if (first && !matchMedia("(hover: none)").matches) qi.focus({ preventScroll: true }); }
-    } else { $("sdGpList").innerHTML = gpList(); $("sdGpN").textContent = n + (n === 1 ? ' app serves' : ' apps serve') + ' this goal. Tick the apps that serve it.'; }
+      var qi = $("sdGpQ"); if (qi) { qi.addEventListener("input", function () { GP.q = this.value; $("sdGpList").innerHTML = gpList() + gpChats(); }); if (first && !matchMedia("(hover: none)").matches) qi.focus({ preventScroll: true }); }
+    } else { $("sdGpList").innerHTML = gpList() + gpChats(); if ($("sdGlCur")) $("sdGlCur").innerHTML = gpLinks(); $("sdGpN").textContent = n + (n === 1 ? ' app serves' : ' apps serve') + ' this goal. Tick the apps that serve it.'; }
   }
 
   /* ---------------- input ---------------- */
@@ -625,6 +651,10 @@
         toast(fk ? BY[fk].name + " now serves " + nn.trim() : "Goal added: " + nn.trim(), false);
       }
       else if (a === "gpick") gpOpen(el.getAttribute("data-goal"));
+      else if (a === "gldel") { if (!GP || !H.goalLinkDel) return; H.goalLinkDel(GP.gid, el.getAttribute("data-lid")); pull(); render(); gpRender(false); toast("Link removed", false); }
+      else if (a === "gpchat") { if (!GP || !H.chats) return; var ch = H.chats().filter(function (c) { return c.id === el.getAttribute("data-cid"); })[0]; if (!ch) return;
+        var cg = goalOf(GP.gid), hv = (cg && cg.links || []).filter(function (l) { return l.url === ch.url || l.cid === ch.id; })[0];
+        if (hv) H.goalLinkDel(GP.gid, hv.id); else H.goalLinkAdd(GP.gid, ch.url, ch.t, ch.id); pull(); render(); gpRender(false); }
       else if (a === "gptog") { if (!GP || !H.goalToggle) return; H.goalToggle(k, GP.gid); pull(); render(); gpRender(false); }
       else if (a === "gedit") {
         var eg = goalOf(el.getAttribute("data-goal")); if (!eg) return;
@@ -691,7 +721,7 @@
       var host = t.parentNode; t.remove(); if (host && host.classList) host.classList.add("sd-noimg");
     }, true);
     $("sdUndo").addEventListener("click", undo);
-    root.addEventListener("submit", function (e) { if (e.target.getAttribute("data-sdform") !== "idea") return; e.preventDefault(); ideaAdd(); });
+    root.addEventListener("submit", function (e) { var fm = e.target.getAttribute("data-sdform"); if (fm === "glink") { e.preventDefault(); gpLinkAdd(); return; } if (fm !== "idea") return; e.preventDefault(); ideaAdd(); });
     root.addEventListener("toggle", function (e) { if (e.target.classList && e.target.classList.contains("sd-db-idea")) { DB_IDEA_OPEN = e.target.open; if (e.target.open) { var n = $("sdIdeaN"); if (n) n.focus(); } } }, true);
     rvWire();
     $("sdAuto").addEventListener("click", function () {

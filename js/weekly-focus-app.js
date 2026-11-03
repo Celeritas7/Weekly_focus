@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v145", BUILD_N = 145;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v146", BUILD_N = 146;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -538,6 +538,25 @@
     if (meta.fgLead && meta.fgLead[id]) { meta.fgLead = Object.assign({}, meta.fgLead); delete meta.fgLead[id]; }
     save(); cloudPushBoard();
   }
+  /* v146 · LINKS on a goal: Claude chats, Claude Code sessions and plain web pages that serve the goal too.
+     meta.goals[i].links = [{id, kind: "chat"|"code"|"web", t, url, cid?}] (cid = a saved chat from the Chats tab). Syncs with meta.goals. */
+  function linkKind(u) { u = String(u || ""); if (/^https?:\/\/(www\.)?(claude\.ai\/code\b|code\.claude\.com)/i.test(u)) return "code"; if (/^https?:\/\/(www\.)?claude\.ai\//i.test(u)) return "chat"; return "web"; }
+  function cleanUrl(u) {
+    u = String(u || "").trim(); if (!u) return "";
+    if (!/^https?:\/\//i.test(u)) { if (/^[\w-]+(\.[\w-]+)+(\/|$)/.test(u)) u = "https://" + u; else return ""; }
+    try { var x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch (e) { return ""; }
+  }
+  function linkDefName(url, kind) { if (kind === "chat") return "Claude chat"; if (kind === "code") return "Claude Code session"; try { return new URL(url).hostname.replace(/^www\./, ""); } catch (e) { return "Link"; } }
+  function goalLinks(gid) { var g = goalById(gid); return g && Array.isArray(g.links) ? g.links.filter(function (l) { return l && l.id && l.url; }) : []; }
+  function goalLinksSet(gid, fn) { meta.goals = (meta.goals || []).map(function (g) { return g && g.id === gid ? Object.assign({}, g, { links: fn(Array.isArray(g.links) ? g.links.slice() : []) }) : g; }); save(); cloudPushBoard(); }
+  function goalLinkAdd(gid, url, t, cid) {
+    if (!goalById(gid)) return null; url = cleanUrl(url); if (!url) return null;
+    var ex = goalLinks(gid).filter(function (l) { return l.url === url; })[0]; if (ex) return ex.id;
+    var kind = linkKind(url), l = { id: "gl_" + uid(), kind: kind, t: String(t || "").trim().slice(0, 120) || linkDefName(url, kind), url: url };
+    if (cid) l.cid = String(cid);
+    goalLinksSet(gid, function (a) { a.push(l); return a; }); return l.id;
+  }
+  function goalLinkDel(gid, lid) { goalLinksSet(gid, function (a) { return a.filter(function (l) { return !l || l.id !== lid; }); }); }
   function sphLive(k) { var it = itemById(k); return !!it && inSphere(k) && !isCore(k) && isActive(it) && !isSpecialItem(it); }
   function goalSphere(gid) { return goalMembers(gid).filter(sphLive); }
   function sphOrder() { return targetOrder.concat(sphereExtras()); }
@@ -1797,13 +1816,18 @@
       patch(id, p); renderAll(); return id;
     },
     /* v139: goals for the draft (grouping, tagging) and the debate message */
-    goalList: function () { return goalList().map(function (g) { return { id: g.id, name: g.name, hue: goalHue(g), apps: goalMembers(g.id).filter(function (k) { var it = itemById(k); return it && isActive(it); }).length }; }); },
+    goalList: function () { return goalList().map(function (g) { return { id: g.id, name: g.name, hue: goalHue(g), links: goalLinks(g.id), apps: goalMembers(g.id).filter(function (k) { var it = itemById(k); return it && isActive(it); }).length }; }); },
     goalAdd: function (name) { var id = goalAdd(name); renderAll(); return id; },
     goalRename: function (id, name) { goalRename(id, name); renderAll(); },
     goalDelete: function (id) { goalDelete(id); renderAll(); },
+    /* v146: links on a goal (Claude chats, Claude Code sessions, web pages) and the saved chats to pick from */
+    goalLinkAdd: function (gid, url, t, cid) { var id = goalLinkAdd(gid, url, t, cid); if (id) renderAll(); return id; },
+    goalLinkDel: function (gid, lid) { goalLinkDel(gid, lid); renderAll(); },
+    linkKind: linkKind,
+    chats: function () { return (Array.isArray(meta.cchats) ? meta.cchats : []).filter(function (c) { return c && c.id && c.url; }).map(function (c) { return { id: c.id, t: c.t || "Untitled discussion", url: c.url, fold: c.fold || "" }; }); },
     goalToggle: function (k, gid) { if (!itemById(k) || !goalById(gid)) return; var on = goalsOf(k).every(function (g) { return g.id !== gid; }); goalSet(k, gid, on); renderAll(); return on; },
     goalReport: function () { return goalList().map(function (g) { var mem = goalMembers(g.id).filter(function (k) { var it = itemById(k); return it && isActive(it) && !isCore(k); });
-      return { name: g.name, sphere: mem.filter(function (k) { return inSphere(k); }).map(function (k) { return labelFor(k).name; }), table: mem.filter(function (k) { return !inSphere(k); }).map(function (k) { return labelFor(k).name; }) }; }); },
+      return { name: g.name, sphere: mem.filter(function (k) { return inSphere(k); }).map(function (k) { return labelFor(k).name; }), table: mem.filter(function (k) { return !inSphere(k); }).map(function (k) { return labelFor(k).name; }), links: goalLinks(g.id).map(function (l) { return { t: l.t, kind: l.kind }; }) }; }); },
     groups: function () { var g = {}; state.apps.forEach(function (a) { if (a.group) g[a.group] = 1; }); return Object.keys(g).sort(); },
     nominate: function (k, on) { if (isCore(k) || !itemById(k)) return; on = !!on; if ((getEntry(k).nom === true) !== on) patch(k, { nom: on }); renderAll(); },
     /* orbit: a target only leaves the Five when an orbit item can take its slot (a free slot always pulls the next one up) */
@@ -3205,7 +3229,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 core bar"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 goal links"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
