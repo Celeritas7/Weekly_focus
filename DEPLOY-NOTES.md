@@ -1,3 +1,13 @@
+# v145 — the core bar always shows (dimmed when all clear) · built on v144
+
+Upload `js/weekly-focus-app.js`, `css/wf-sphere-draft.css` and `sw.js` (cache → `weekly-focus-v145`). **No SQL ships with this build.**
+
+The **Core · Akatsuki** bar above the Five (and on Today) disappeared whenever Akatsuki had no open subtasks. It now stays: with open tasks it is red as before ("Next: …", "N open"); with none it is grey and faded, reads "Nothing open — tap to add the next phase" with an **All clear** badge, and still opens Akatsuki's card when tapped.
+
+Check: footer reads **build v145 · opens offline · core bar**.
+
+---
+
 # v144 — logos offline · built on v143
 
 Upload `js/wf-logos.js`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v144`). **No SQL ships with this build.**

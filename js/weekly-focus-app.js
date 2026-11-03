@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v144", BUILD_N = 144;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v145", BUILD_N = 145;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -653,10 +653,11 @@
     var bb = $("buildBand"), k = coreId(), o = coreOpen(), lg = k && window.WFLogos ? window.WFLogos.logoFor(itemById(k)) : null;
     [coreBarIn("coreBar", $("fiveGrid")), coreBarIn("coreBarToday", bb && bb.previousElementSibling)].forEach(function (cb) {
       if (!cb) return;
-      cb.hidden = !k || !o.length; if (cb.hidden) return;
-      cb.setAttribute("aria-label", labelFor(k).name + ", core of the sphere: " + o.length + " open. Open it");
+      cb.hidden = !k; if (cb.hidden) return;   // v145: always shown while there is a core; dimmed when it has nothing open
+      var clear = !o.length; cb.classList.toggle("core-dim", clear);
+      cb.setAttribute("aria-label", labelFor(k).name + ", core of the sphere: " + (clear ? "all clear" : o.length + " open") + ". Open it");
       cb.innerHTML = '<span class="core-moon" aria-hidden="true">' + (lg && lg.url ? '<img src="' + esc(lg.url) + '" alt="" referrerpolicy="no-referrer">' : lg && lg.emoji ? esc(lg.emoji) : '') + '</span><span class="core-txt"><span class="core-k">Core \u00b7 ' + esc(labelFor(k).name) + '</span>' +
-        '<span class="core-next">Next: ' + esc(o[0].t || "") + '</span></span><span class="core-n">' + o.length + ' open</span>';
+        '<span class="core-next">' + (clear ? "Nothing open \u2014 tap to add the next phase" : "Next: " + esc(o[0].t || "")) + '</span></span><span class="core-n">' + (clear ? "All clear" : o.length + " open") + '</span>';
     });
   }
   function renderFive() {
@@ -3204,7 +3205,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 logos offline"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 core bar"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
