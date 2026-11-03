@@ -1963,3 +1963,24 @@ body.wdrag .wtile.empty{opacity:1;filter:none}
 
 /* v129: split 番地 in the Edit form */
 .vm-split{margin-top:6px;font-size:12px;padding:5px 10px}
+
+/* ============ v137 · purposes: packages below the Five, moons on target cards ============ */
+.sph-pk{--pk:oklch(0.55 0.13 var(--fh,283));--pk-soft:oklch(0.97 0.025 var(--fh,283));--pk-line:oklch(0.86 0.06 var(--fh,283));display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:16px;background:var(--pk-soft);border:1px solid var(--pk-line);min-width:0}
+.sph-pk .sph-t{border-color:var(--pk-line)}
+.sph-pkh{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px}
+.sph-pkn{flex:1 1 auto;min-width:0;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--pk);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sph-pkb{flex:0 0 auto;border:1px solid var(--pk-line);background:var(--card);color:var(--pk);font:700 11px/1 var(--font);padding:5px 8px;border-radius:999px;cursor:pointer}
+.sph-pkb:hover{background:var(--pk);color:#fff;border-color:var(--pk)}
+.sph-pkg{font-size:12px;line-height:1.35;color:var(--ink);padding:0 2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sph-moons,.tmoons{display:flex;flex-wrap:wrap;gap:5px;align-items:center;min-width:0}
+.sph-moon{border:1px solid var(--brand-line);background:var(--card);color:var(--ink);font:600 11.5px/1.2 var(--font);padding:4px 9px 4px 7px;border-radius:999px;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.sph-moon::before{content:"";flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:var(--brand)}
+.sph-moon.k-study::before{background:var(--study)}
+.sph-moon.k-office::before{background:var(--office,oklch(0.55 0.13 70))}
+.sph-moon:hover{border-color:var(--brand);background:var(--brand-soft)}
+.sph-moon.more{cursor:default;color:var(--faint);border-style:dashed}
+.sph-moon.more::before{display:none}
+.tcard .tmoons{margin-top:8px;padding-top:7px;border-top:1px dashed var(--hair)}
+.tmoons-k{flex:1 1 100%;font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sph-morebtn{display:block;width:100%;margin-top:10px;border:1px dashed var(--brand-line);background:oklch(1 0 0 / .55);color:var(--brand);font:700 12px/1.4 var(--font);padding:9px 12px;border-radius:12px;cursor:pointer;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sph-morebtn:hover{background:var(--brand-soft)}

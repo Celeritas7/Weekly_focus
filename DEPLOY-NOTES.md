@@ -1,3 +1,17 @@
+# v137 — purposes: apps packed by purpose, 10 on screen · built on v136
+
+Upload `js/weekly-focus-app.js`, `js/wf-sphere-draft.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v137`). **No SQL ships with this build.** The purposes are the existing focus groups (`weekly_focus_groups`); a purpose's goal is the group's `note`; the chosen lead of a package is `meta.fgLead[groupId]` on the board row.
+
+- **Packages.** Under the Five, apps in the sphere are packed by purpose: one tile per purpose with its **lead app** and the purpose's other sphere apps as **moons** (tap a moon to open its card). An app in several purposes appears in each package. **⇄ lead** makes the next app the lead (saved). Apps in no purpose keep their own tile.
+- **Moons ride on the Five.** When a purpose has an app in the Five, its other sphere apps show as moons on that target card (under the purpose's name) instead of a separate tile.
+- **10 on screen.** Below the Five at most **5 tiles** show; the rest fold into **+N more · names…** (tap to open, **Show less** to fold).
+- **Goals.** **+ goal / ✎ goal** on a package, and **Goal** in each group header on the Week columns, sets the purpose's one-line goal.
+- **Debate message.** Each app lists its **Purpose**; a **PURPOSES** section gives each goal (or "goal not written yet") and its apps; Claude is asked to weigh each app against its purpose's goal and to say which app should lead a package.
+
+Check: footer reads **build v137 · opens offline · purposes**.
+
+---
+
 # v136 — orbit limit 8 · built on v135
 
 Upload `js/wf-sphere-draft.js`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v136`). **No SQL ships with this build.**
