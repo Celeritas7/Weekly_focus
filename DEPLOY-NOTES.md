@@ -1,3 +1,17 @@
+# v146 — links on a goal (Claude chats, Claude Code, web) · built on v145
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v146`). **No SQL ships with this build.**
+
+A goal can now hold links next to its apps: a Claude chat, a Claude Code session, or any web page that serves the goal.
+- **+ Add** on a goal card (Sphere Draft, By goal) has a new top row: paste a link, give it a name (optional), **Add link**. The kind comes from the address: `claude.ai/code/…` or `code.claude.com` → **Code** (`</>`), any other `claude.ai/…` → **Chat** (💬), anything else → **Link** (🔗, named after the site if left blank). The goal's links are listed under it with **×** to remove.
+- The search in the same sheet also finds chats saved in the **Chats** tab (those with a claude.ai link); tick one to put it on the goal, tick again to take it off.
+- Links show as small tiles under the goal's apps; tap opens them in a new tab. A goal with only links no longer says "No apps yet".
+- Stored on the goal itself (`meta.goals[i].links = [{id, kind, t, url, cid?}]`), so they sync with the board like the rest of the goals. **Debate the Five** lists each goal's links in the GOALS section.
+
+Check: footer reads **build v146 · opens offline · goal links**.
+
+---
+
 # v145 — the core bar always shows (dimmed when all clear) · built on v144
 
 Upload `js/weekly-focus-app.js`, `css/wf-sphere-draft.css` and `sw.js` (cache → `weekly-focus-v145`). **No SQL ships with this build.**
