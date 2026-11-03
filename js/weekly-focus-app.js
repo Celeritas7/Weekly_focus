@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v139", BUILD_N = 139;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v140", BUILD_N = 140;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -675,7 +675,7 @@
         '<div class="tmeta">' + m + '</div>' +
         (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div>' : '') +
         subList +
-        (function () { var tm = targetMoons(k), gs = goalsOf(k).filter(function (g) { return goalSphere(g.id).length > 1; }); return tm.length ? '<div class="tmoons"><span class="tmoons-k">\u25ce ' + esc(gs.map(function (g) { return g.name; }).join(" \u00b7 ")) + '</span>' + moonChips(tm, 4) + '</div>' : ''; })() +
+        (function () { var tm = targetMoons(k), gs = goalsOf(k); return gs.length || tm.length ? '<div class="tmoons"><span class="tmoons-k">\u25ce ' + esc(gs.map(function (g) { return g.name; }).join(" \u00b7 ")) + '</span>' + moonChips(tm, 4) + '</div>' : ''; })() +
         '<button class="tdrop" data-act="tdrop" title="Take out of the sphere">\u00d7</button>';
       grid.appendChild(card);
     });
@@ -3188,7 +3188,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 goals"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 goals shown"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });

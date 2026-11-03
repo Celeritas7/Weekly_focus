@@ -172,16 +172,23 @@
   function goals() { return H.goalList ? H.goalList() : []; }
   function goalCol(h) { return "oklch(0.58 0.14 " + (h == null ? 283 : h) + ")"; }
   function goalOf(id) { var gs = goals(); for (var i = 0; i < gs.length; i++) if (gs[i].id === id) return gs[i]; return null; }
+  /* v140: an app already in the Five or in orbit is shown in its goal sections too, marked #N / orbit (tap = details) */
+  function sphCard(it) {
+    var w = where(it.id); if (!w) return cardHtml(it);
+    return cardHtml(it).replace('class="sd-bub"', 'class="sd-bub sd-insph"').replace('<span class="sd-bub-c">', '<span class="sd-inb' + (w.orbit ? '' : ' sd-inb5') + '">' + (w.orbit ? 'orbit' : '#' + (w.five + 1)) + '</span><span class="sd-bub-c">');
+  }
   function goalHtml(list) {
     var gs = goals(), out = [], placed = {};
+    var sph = sorted(ROWS.filter(function (r) { return where(r.id) && (kindF === "all" || r.kind === kindF) && (!q || (r.name + " " + r.group).toLowerCase().indexOf(q) >= 0); }));
     gs.forEach(function (gg) {
+      var inS = sph.filter(function (r) { return (r.goals || []).indexOf(gg.id) >= 0; }).sort(function (a, b) { var wa = where(a.id), wb = where(b.id); return (wa.orbit ? 9 : wa.five) - (wb.orbit ? 9 : wb.five); });
       var its = list.filter(function (r) { return (r.goals || []).indexOf(gg.id) >= 0; });
       its.forEach(function (r) { placed[r.id] = 1; });
-      if (!its.length && (q || kindF !== "all")) return;   // filtered out: hide the empty section
-      out.push('<section class="sd-cat sd-pur" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span>' + its.length + '</span>' +
+      if (!its.length && !inS.length && (q || kindF !== "all")) return;   // filtered out: hide the empty section
+      out.push('<section class="sd-cat sd-pur" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span>' + (its.length + inS.length) + (inS.length ? ' \u00b7 ' + inS.length + ' in the sphere' : '') + '</span>' +
         '<button type="button" class="sd-pgoal sd-has" data-sd="gedit" data-goal="' + esc(gg.id) + '" aria-label="Rename or delete the goal ' + esc(gg.name) + '">✎</button>' +
         (its.length ? '<button type="button" class="sd-catorb" data-sd="catorb" data-goal="' + esc(gg.id) + '" aria-label="Send all ' + its.length + ' serving ' + esc(gg.name) + ' to orbit">All to orbit</button>' : '') + '</h3>' +
-        (its.length ? '<div class="sd-bubs">' + its.map(cardHtml).join("") + '</div>' : '<p class="sd-pur-goal sd-none">' + (gg.apps ? (gg.apps === 1 ? "Its app is" : "All " + gg.apps + " apps serving it are") + " already in the sphere." : "No app serves this goal yet. Open an app and tap this goal under <b>Goals</b>.") + '</p>') + '</section>');
+        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(sphCard).join("") + its.map(cardHtml).join("") + '</div>' : '<p class="sd-pur-goal sd-none">No app serves this goal yet. Open an app and tap this goal under <b>Goals</b>.</p>') + '</section>');
     });
     var rest = list.filter(function (r) { return !placed[r.id]; });
     if (rest.length) out.push('<section class="sd-cat sd-pur sd-nopur" style="--cc:var(--faint)" aria-label="No goal yet"><h3 class="sd-cat-h"><i></i>No goal yet <span>' + rest.length + '</span></h3>' +
@@ -572,7 +579,7 @@
       var el = e.target.closest("[data-sd]"); if (!el) return;
       var a = el.getAttribute("data-sd"), k = el.getAttribute("data-sdk");
       var ik = INFO;   // buttons inside the details window act on the item it shows
-      if (a === "info") { if (TAPO && el.classList.contains("sd-bub")) act(k, "orbit"); else if (TAPN && el.classList.contains("sd-bub")) nomToggle(k); else openInfo(k); }
+      if (a === "info") { var tb = el.classList.contains("sd-bub") && !el.classList.contains("sd-insph"); if (TAPO && tb) act(k, "orbit"); else if (TAPN && tb) nomToggle(k); else openInfo(k); }
       else if (a === "catorb" && el.getAttribute("data-goal")) { var cg = goalOf(el.getAttribute("data-goal")); if (cg) orbitMany(visible().filter(function (r) { return (r.goals || []).indexOf(cg.id) >= 0; }).map(function (r) { return r.id; }), cg.name); }
       else if (a === "gtog") { var tk = RV && !$("sdRv").hidden && RV.i < RV.ids.length ? RV.ids[RV.i] : ik; if (!tk || !H.goalToggle) return; var gon = H.goalToggle(tk, el.getAttribute("data-goal")); pull(); render(); if (RV && !$("sdRv").hidden) rvRender(); else if (BY[tk]) openInfo(tk); var gt = goalOf(el.getAttribute("data-goal")); toast((gon ? BY[tk].name + " now serves " : BY[tk].name + " no longer serves ") + (gt ? gt.name : "that goal"), false); }
       else if (a === "gnew" || a === "gnewfor") {
