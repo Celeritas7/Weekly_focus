@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v142", BUILD_N = 142;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v143", BUILD_N = 143;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -544,6 +544,14 @@
   function pkgLeadOf(g, mem) {
     var L = meta.fgLead && meta.fgLead[g.id]; if (L && mem.indexOf(L) >= 0) return L;
     var o = sphOrder(); return mem.slice().sort(function (a, b) { var ia = o.indexOf(a), ib = o.indexOf(b); return (ia < 0 ? 1e6 : ia) - (ib < 0 ? 1e6 : ib); })[0];
+  }
+  /* v143: the goals row on an app's card (full card and the Week columns): every goal as a chip, tap to switch it for this app */
+  function goalRowHtml(k) {
+    if (isCore(k)) return "";
+    var on = goalsOf(k).map(function (g) { return g.id; });
+    return '<div class="goal-row"><span class="goal-lbl">◎ Goals</span>' + goalList().map(function (g) { var o = on.indexOf(g.id) >= 0;
+        return '<button type="button" class="goal-chip' + (o ? " on" : "") + '" style="--gh:' + goalHue(g) + '" data-act="goaltog" data-goal="' + esc(g.id) + '" aria-pressed="' + (o ? "true" : "false") + '">' + (o ? "✓ " : "") + esc(g.name) + '</button>'; }).join("") +
+      '<button type="button" class="goal-chip add" data-act="goalnew" title="Make a new goal and give it to this app">+ New goal</button></div>';
   }
   function spherePackages() {
     var o = sphOrder(), pos = function (k) { var i = o.indexOf(k); return i < 0 ? 1e6 : i; }, tiles = [], covered = {};
@@ -1681,6 +1689,7 @@
       '</div>';
     return '<div class="detail' + (id === OPENING ? ' opening' : '') + '">' + priCtl +
       '<input class="obj" data-act="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
+      goalRowHtml(id) +
       '<ul class="subs">' + rows + '</ul>' +
       '<div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a checklist subtask\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
       latStripHtml(id) +
@@ -1868,6 +1877,13 @@
       toastMaybeDone(); return;
     }
     if (a === "tdrop") { var tdk = act.closest("[data-tkey]").getAttribute("data-tkey"); sphereRemove(tdk); renderAll(); toast(labelFor(tdk).name + " taken out of the sphere"); return; }
+    if (a === "goaltog" || a === "goalnew") {   // v143: goals on the app card
+      var gk = keyOf(act); if (!gk || !itemById(gk)) return;
+      var gid = act.getAttribute("data-goal");
+      if (a === "goalnew") { var gnm = prompt("New goal \u2014 what is this app for? (e.g. Pass JLPT N2)", ""); if (!gnm || !gnm.trim()) return; gid = goalAdd(gnm); if (!gid) return; if (goalsOf(gk).some(function (g) { return g.id === gid; })) { renderAll(); refreshBuildSheet(); return; } }
+      var gon = goalsOf(gk).every(function (g) { return g.id !== gid; }); goalSet(gk, gid, gon); renderAll(); refreshBuildSheet();
+      var gg = goalById(gid); toast(labelFor(gk).name + (gon ? " now serves " : " no longer serves ") + (gg ? gg.name : "that goal")); return;
+    }
     if (a === "pkgopen") { var pk = act.getAttribute("data-key"); if (pk && itemById(pk)) openBuildSheet(pk); return; }
     if (a === "sphmore") { SPH_MORE_OPEN = !SPH_MORE_OPEN; renderSphereMore(); return; }
     if (a === "pkglead") {
@@ -3188,7 +3204,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 compact goals"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 goals on cards"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });

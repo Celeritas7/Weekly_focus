@@ -1984,3 +1984,11 @@ body.wdrag .wtile.empty{opacity:1;filter:none}
 .tmoons-k{flex:1 1 100%;font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sph-morebtn{display:block;width:100%;margin-top:10px;border:1px dashed var(--brand-line);background:oklch(1 0 0 / .55);color:var(--brand);font:700 12px/1.4 var(--font);padding:9px 12px;border-radius:12px;cursor:pointer;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sph-morebtn:hover{background:var(--brand-soft)}
+
+/* v143 · goals on the app card */
+.goal-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 4px}
+.goal-lbl{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--mid);margin-right:2px}
+.goal-chip{--gc:oklch(0.55 0.14 var(--gh,283));border:1px solid oklch(0.82 0.06 var(--gh,283));background:var(--card);color:var(--ink);border-radius:999px;padding:4px 10px;font:700 12px/1.2 var(--font);cursor:pointer;min-height:28px}
+.goal-chip:hover{border-color:var(--gc)}
+.goal-chip.on{background:var(--gc);border-color:var(--gc);color:#fff}
+.goal-chip.add{border-style:dashed;color:var(--mid);border-color:var(--hair)}
