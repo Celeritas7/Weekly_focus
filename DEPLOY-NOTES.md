@@ -1,3 +1,16 @@
+# v144 — logos offline · built on v143
+
+Upload `js/wf-logos.js`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v144`). **No SQL ships with this build.**
+
+Offline (on the train) the sphere showed names instead of logos: the logo list from Akatsuki's store was only kept in memory, and the service worker sent logo images straight to the network.
+- `wf-logos.js` keeps the last logo list it read (`localStorage` **wf_logo_store_v1**) and uses it until the next successful read, so uploads and emoji show offline too.
+- `sw.js` caches logo images (Akatsuki's logo store in Supabase storage, and sibling apps' icons on GitHub Pages) in their own cache **wf-logos-v1**, which survives build updates. A cached logo shows at once and is refreshed in the background, so a changed logo appears on the next open. At most 300 images are kept.
+- The logos are cached the first time they are seen online after this build.
+
+Check: footer reads **build v144 · opens offline · logos offline**. Open the Sphere Draft once online, then in airplane mode: the logos are still there.
+
+---
+
 # v143 — goals on the app card · built on v142
 
 Upload `js/weekly-focus-app.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v143`). **No SQL ships with this build.**

@@ -3,7 +3,11 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v143";
+const CACHE = "weekly-focus-v144";
+/* v144: app logos (Akatsuki's logo store, sibling apps' icons) live in their own cache, kept across builds, so the
+   sphere shows them offline. Served from the cache at once and refreshed in the background (a changed logo shows on
+   the next open). Capped at LOGO_MAX entries. */
+const LOGOS = "wf-logos-v1", LOGO_MAX = 300;
 /* v105: the Supabase library is cached too. Without it the app had no client offline, so the
    stored session could not be read and every offline open landed on the sign-in screen. */
 const SUPA = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
@@ -26,7 +30,7 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== LOGOS).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -43,6 +47,19 @@ self.addEventListener("fetch", (e) => {
         return hit || net;
       })
     );
+    return;
+  }
+
+  // v144: logo images — cached copy at once, refreshed in the background; offline the cached copy is all there is.
+  if (req.method === "GET" && req.destination === "image" && isLogo(url)) {
+    e.respondWith(caches.open(LOGOS).then((c) => c.match(req).then((hit) => {
+      const net = fetch(req).then((r) => {
+        if (r && (r.ok || r.type === "opaque")) { c.put(req, r.clone()).then(() => trimLogos(c)); }
+        return r;
+      }).catch(() => hit || new Response("", { status: 504, statusText: "offline" }));
+      if (hit) { e.waitUntil(net.catch(() => {})); return hit; }
+      return net;
+    })));
     return;
   }
 
@@ -75,3 +92,17 @@ self.addEventListener("fetch", (e) => {
     }).catch(() => c || new Response("", { status: 504, statusText: "offline" })))
   );
 });
+
+/* v144: which images are logos — Akatsuki's logo store (Supabase storage) and icons of sibling apps on GitHub Pages
+   (same origin as this app but outside its folder). This app's own icons stay in the build cache. */
+function isLogo(url) {
+  if (url.pathname.includes("/storage/v1/object/")) return true;
+  if (/\.github\.io$/.test(url.hostname)) {
+    const scope = new URL(self.registration.scope);
+    return !(url.origin === scope.origin && url.pathname.startsWith(scope.pathname));
+  }
+  return false;
+}
+function trimLogos(c) {
+  return c.keys().then((ks) => { if (ks.length <= LOGO_MAX) return; return Promise.all(ks.slice(0, ks.length - LOGO_MAX).map((k) => c.delete(k))); });
+}
