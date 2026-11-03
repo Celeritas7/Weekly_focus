@@ -375,3 +375,13 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 .sd-ipur-r b i { width: 8px; height: 8px; border-radius: 50%; background: var(--cc); }
 .sd-ipur-r span { flex: 1 1 auto; min-width: 0; color: var(--ink); line-height: 1.35; }
 .sd-ipur-r em { color: var(--faint); }
+
+/* v139 · goals: chips to tag an app, + New goal */
+.sd-igoals { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sd-igoals-k { flex: 0 0 auto; font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--mid); margin-right: 2px; }
+.sd-gchip { border: 1px solid color-mix(in oklch, var(--cc, var(--brand)) 45%, var(--hair)); background: var(--card); color: var(--ink); border-radius: 999px; padding: 5px 11px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; min-height: 32px; }
+.sd-gchip:hover { border-color: var(--cc); }
+.sd-gchip.sd-on { background: var(--cc); border-color: var(--cc); color: #fff; }
+.sd-gchip.sd-gadd { border-style: dashed; color: var(--mid); --cc: var(--faint); }
+.sd-gnew { align-self: flex-start; border: 1.5px dashed var(--brand-line, var(--hair)); background: transparent; color: var(--brand); border-radius: 12px; padding: 10px 16px; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.sd-gnew:hover { background: var(--brand-soft); }
