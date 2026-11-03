@@ -185,11 +185,11 @@
       var its = list.filter(function (r) { return (r.goals || []).indexOf(gg.id) >= 0; });
       its.forEach(function (r) { placed[r.id] = 1; });
       if (!its.length && !inS.length && (q || kindF !== "all")) return;   // filtered out: hide the empty section
-      out.push('<section class="sd-cat sd-pur" data-sddrop="goal" data-goal="' + esc(gg.id) + '" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span>' + (its.length + inS.length) + (inS.length ? ' \u00b7 ' + inS.length + ' in the sphere' : '') + '</span>' +
+      out.push('<section class="sd-cat sd-pur" data-sddrop="goal" data-goal="' + esc(gg.id) + '" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span title="' + (its.length + inS.length) + ' apps' + (inS.length ? ', ' + inS.length + ' in the sphere' : '') + '">' + (its.length + inS.length) + '</span>' +
         '<button type="button" class="sd-pgoal sd-has" data-sd="gedit" data-goal="' + esc(gg.id) + '" aria-label="Rename or delete the goal ' + esc(gg.name) + '">\u270e</button>' +
-        '<button type="button" class="sd-pgoal sd-gpick" data-sd="gpick" data-goal="' + esc(gg.id) + '" aria-label="Add apps to ' + esc(gg.name) + '">+ Add apps</button>' +
-        (its.length ? '<button type="button" class="sd-catorb" data-sd="catorb" data-goal="' + esc(gg.id) + '" aria-label="Send all ' + its.length + ' serving ' + esc(gg.name) + ' to orbit">All to orbit</button>' : '') + '</h3>' +
-        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(sphCard).join("") + its.map(cardHtml).join("") + '</div>' : '<p class="sd-pur-goal sd-none">No app serves this goal yet. Tap <b>+ Add apps</b>, or drag a bubble here.</p>') + '</section>');
+        '<button type="button" class="sd-pgoal sd-gpick" data-sd="gpick" data-goal="' + esc(gg.id) + '" aria-label="Add apps to ' + esc(gg.name) + '">+ Add</button>' +
+        (its.length ? '<button type="button" class="sd-catorb" data-sd="catorb" data-goal="' + esc(gg.id) + '" aria-label="Send all ' + its.length + ' serving ' + esc(gg.name) + ' to orbit" title="Send the table apps of this goal to orbit">Orbit all</button>' : '') + '</h3>' +
+        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(sphCard).join("") + its.map(cardHtml).join("") + '</div>' : '<p class="sd-pur-goal sd-none">No apps yet. <b>+ Add</b> or drag one here.</p>') + '</section>');
     });
     var rest = list.filter(function (r) { return !placed[r.id]; });
     if (rest.length) out.push('<section class="sd-cat sd-pur sd-nopur" style="--cc:var(--faint)" aria-label="No goal yet"><h3 class="sd-cat-h"><i></i>No goal yet <span>' + rest.length + '</span></h3>' +
@@ -217,6 +217,7 @@
   function renderPool() {
     var left = ROWS.filter(function (r) { return !where(r.id); });
     var list = visible();
+    $("sdGrid").classList.toggle("sd-goalgrid", GRP === "goal");   // v142: goals as compact cards
     $("sdGrid").innerHTML = !list.length
       ? '<div class="sd-empty-pool">' + (q || kindF !== "all" ? "Nothing matches. Clear the search or pick another filter." : ROWS.length ? "Everything is in the sphere. Tap a planet to send it back." : "No active items yet. Switch on an app or topic on the board first.") + '</div>'
       : GRP === "goal" ? goalHtml(list) : GRP === "cat" ? groupedHtml(list) : '<div class="sd-bubs">' + list.map(cardHtml).join("") + '</div>';

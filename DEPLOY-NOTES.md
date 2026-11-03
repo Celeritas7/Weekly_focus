@@ -1,3 +1,15 @@
+# v142 — compact goal cards in the Sphere Draft · built on v141
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v142`). **No SQL ships with this build.**
+
+By goal used one full-width section per goal, so a goal with two apps took a whole row.
+- Goals are now **cards in a grid** (two or three across on a computer, one compact column on a phone) with a one-line header: name, count, **✎**, **+ Add**, **Orbit all** (was "+ Add apps" / "All to orbit"). The count's tooltip says how many are in the sphere.
+- Bubbles inside goal cards are smaller (48 px instead of 64 px). **No goal yet** and **+ New goal** stay full width below. Dragging onto a card still files the app into that goal.
+
+Check: footer reads **build v142 · opens offline · compact goals**.
+
+---
+
 # v141 — file apps into a goal: drag, or search and tick · built on v140
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v141`). **No SQL ships with this build.**
