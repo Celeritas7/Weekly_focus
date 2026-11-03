@@ -14,6 +14,10 @@
   var SITE_KEY = "wf_logo_site_v1", SEED_KEY = "wf_logo_seed_v2", WEEK = 7 * 864e5, DAY = 864e5;
   var STORE = {}, storeState = "unknown", storeAt = 0, nextTry = 0, SITE = {}, pending = {}, subs = [], seeding = false;
   try { SITE = JSON.parse(localStorage.getItem(SITE_KEY) || "{}") || {}; } catch (e) { SITE = {}; }
+  /* v144: the last logo list read from the store is kept on this device, so logos (and emoji / uploads) show offline.
+     It is replaced by every successful read; the images themselves are cached by sw.js (wf-logos cache). */
+  var STORE_KEY = "wf_logo_store_v1";
+  try { var ls0 = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); if (ls0 && ls0.rows && typeof ls0.rows === "object") { STORE = ls0.rows; storeAt = 0; } } catch (e) {}
   function saveSite() { try { localStorage.setItem(SITE_KEY, JSON.stringify(SITE)); } catch (e) {} }
   function changed() { subs.forEach(function (f) { try { f(); } catch (e) {} }); }
 
@@ -47,6 +51,7 @@
       }
       var next = {}; (r.data || []).forEach(function (row) { next[row.app_key] = row; });
       STORE = next; storeState = "ok"; storeAt = Date.now(); changed();
+      try { localStorage.setItem(STORE_KEY, JSON.stringify({ at: storeAt, rows: next })); } catch (e) {}   // v144
     }, function () { storeState = "unknown"; nextTry = Date.now() + 60e3; });
   }
 
