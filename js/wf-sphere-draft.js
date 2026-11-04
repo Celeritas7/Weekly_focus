@@ -202,7 +202,26 @@
     out.push('<button type="button" class="sd-gnew" data-sd="gnew">+ New goal</button>');
     return out.join("");
   }
-  /* the goal chips of one item: every goal, tap to switch it on/off for this app (details window and review card) */
+  /* v147: the details window shows only this app's goals and a button to the goals view (all goals, tick, + New goal) */
+  var GSET = false;
+  function goalSum(it) {
+    var on = (it.goals || []).map(goalOf).filter(Boolean);
+    return '<div class="sd-igoals"><span class="sd-igoals-k">Goals</span>' +
+      (on.length ? on.map(function (gg) { return '<span class="sd-gchip sd-on sd-gro" style="--cc:' + goalCol(gg.hue) + '">' + esc(gg.name) + '</span>'; }).join("") : '<span class="sd-none-txt">None yet</span>') +
+      '<button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-label="' + (on.length ? "Change the goals of " : "Add a goal to ") + esc(it.name) + '">' + (on.length ? "\u270e Change" : "+ Add goal") + '</button></div>';
+  }
+  function gsRender() {
+    var it = BY[INFO]; if (!it) { closeInfo(); return; }
+    GSET = true; var gs = goals(), on = it.goals || [];
+    $("sdInfoCard").innerHTML =
+      '<div class="sd-ih"><div class="sd-ih-t"><h3 id="sdInfoT">\u25ce Goals</h3><div class="sd-ih-m">' + esc(it.name) + ' \u00b7 ' + on.filter(goalOf).length + ' of ' + gs.length + ' ticked. Tick the goals this app serves.</div></div>' +
+        '<button type="button" class="sd-gs-back" data-sd="gsback">\u2190 Back</button><button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">\u00d7</button></div>' +
+      '<ul class="sd-gp-list sd-gs-list">' + (gs.length ? gs.map(function (gg) { var o = on.indexOf(gg.id) >= 0;
+          return '<li><button type="button" class="sd-gp-row' + (o ? " sd-on" : "") + '" style="--cc:' + goalCol(gg.hue) + '" data-sd="gtog" data-goal="' + esc(gg.id) + '" aria-pressed="' + (o ? "true" : "false") + '"><span class="sd-gp-box" aria-hidden="true">' + (o ? "\u2713" : "") + '</span><span class="sd-gp-nm">' + esc(gg.name) + '<small>' + gg.apps + (gg.apps === 1 ? ' app' : ' apps') + ((gg.links || []).length ? ' \u00b7 ' + gg.links.length + ((gg.links.length === 1) ? ' link' : ' links') : '') + '</small></span></button></li>'; }).join("") : '<li class="sd-none-txt">No goals yet.</li>') + '</ul>' +
+      '<div class="sd-iact"><button type="button" class="sd-btn" data-sd="gnewfor">+ New goal</button><button type="button" class="sd-btn sd-primary sd-big" data-sd="gsback">Done</button></div>';
+    $("sdInfo").hidden = false;
+  }
+  /* the goal chips of one item: every goal, tap to switch it on/off for this app (review card) */
   function goalChips(it) {
     var gs = goals(), on = it.goals || [];
     return '<div class="sd-igoals"><span class="sd-igoals-k">Goals</span>' + gs.map(function (gg) { var o = on.indexOf(gg.id) >= 0;
@@ -284,7 +303,7 @@
   var INFO = null, infoFrom = null;
   function openInfo(k) {
     var it = BY[k]; if (!it) return;
-    INFO = k; infoFrom = document.activeElement;
+    if (INFO !== k) infoFrom = document.activeElement; INFO = k; GSET = false;
     var w = where(k), p = PRI[it.pri] || PRI[""], L = it.logo, MAX = H.max, free = ST.five.length < MAX, i;
     var pct = it.total ? Math.round(it.done / it.total * 100) : 0;
     var logo = L && L.url ? '<img src="' + esc(L.url) + '" alt="" referrerpolicy="no-referrer">' : L && L.emoji ? '<span class="sd-ih-emo">' + esc(L.emoji) + '</span>' : '<span class="sd-ih-mono">' + esc(mono(it.name)) + '</span>';
@@ -298,7 +317,7 @@
       '<div class="sd-ih"><span class="sd-ih-logo" style="--pc:' + (p.l ? p.c : "var(--hair)") + ';--kc:' + KIND[it.kind].c + '">' + logo + '</span>' +
         '<div class="sd-ih-t"><h3 id="sdInfoT">' + esc(it.name) + '</h3><div class="sd-ih-m">' + KIND[it.kind].l + ' · ' + esc(it.group) + (p.l ? ' · <b style="color:' + p.c + '">' + p.l + '</b>' : '') + '</div><div class="sd-ih-s">' + status + '</div></div>' +
         '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
-      goalChips(it) +
+      goalSum(it) +
       (w && w.five != null ? '' : '<button type="button" class="sd-btn sd-nombtn sd-nomtop' + (it.nom ? " sd-on" : "") + '" data-sd="nom" aria-pressed="' + (it.nom ? "true" : "false") + '">' + (it.nom ? "\u2605 Nominated for the Five \u00b7 remove" : "\u2606 Nominate for the Five") + '</button>') +
       '<div class="sd-ip">' + (it.total ? '<span class="sd-ip-bar"><i style="width:' + pct + '%;background:' + KIND[it.kind].c + '"></i></span><span>' + it.done + '/' + it.total + ' done</span>' : '<span>No subtasks yet</span>') +
         '<span class="sd-ip-age' + (it.age != null && it.age >= 14 ? " sd-stale" : "") + '">' + ageTxt(it.age) + '</span></div>' +
@@ -349,7 +368,7 @@
     });
   }
   function closeInfo() {
-    if (!INFO) return; INFO = null; GP = null; $("sdInfo").hidden = true;
+    if (!INFO) return; INFO = null; GP = null; GSET = false; $("sdInfo").hidden = true;
     if (infoFrom && infoFrom.focus && document.contains(infoFrom)) try { infoFrom.focus({ preventScroll: true }); } catch (e) {}
   }
 
@@ -642,14 +661,16 @@
       var ik = INFO;   // buttons inside the details window act on the item it shows
       if (a === "info") { var tb = el.classList.contains("sd-bub") && !el.classList.contains("sd-insph"); if (TAPO && tb) act(k, "orbit"); else if (TAPN && tb) nomToggle(k); else openInfo(k); }
       else if (a === "catorb" && el.getAttribute("data-goal")) { var cg = goalOf(el.getAttribute("data-goal")); if (cg) orbitMany(visible().filter(function (r) { return (r.goals || []).indexOf(cg.id) >= 0; }).map(function (r) { return r.id; }), cg.name); }
-      else if (a === "gtog") { var tk = RV && !$("sdRv").hidden && RV.i < RV.ids.length ? RV.ids[RV.i] : ik; if (!tk || !H.goalToggle) return; var gon = H.goalToggle(tk, el.getAttribute("data-goal")); pull(); render(); if (RV && !$("sdRv").hidden) rvRender(); else if (BY[tk]) openInfo(tk); var gt = goalOf(el.getAttribute("data-goal")); toast((gon ? BY[tk].name + " now serves " : BY[tk].name + " no longer serves ") + (gt ? gt.name : "that goal"), false); }
+      else if (a === "gtog") { var tk = RV && !$("sdRv").hidden && RV.i < RV.ids.length ? RV.ids[RV.i] : ik; if (!tk || !H.goalToggle) return; var gon = H.goalToggle(tk, el.getAttribute("data-goal")); pull(); render(); if (RV && !$("sdRv").hidden) rvRender(); else if (GSET && BY[tk]) gsRender(); else if (BY[tk]) openInfo(tk); var gt = goalOf(el.getAttribute("data-goal")); toast((gon ? BY[tk].name + " now serves " : BY[tk].name + " no longer serves ") + (gt ? gt.name : "that goal"), false); }
       else if (a === "gnew" || a === "gnewfor") {
         if (!H.goalAdd) return; var nn = prompt("New goal — what are these apps for? (e.g. Pass JLPT N2, Grow at Persol)", ""); if (!nn || !nn.trim()) return;
         var nid = H.goalAdd(nn), fk = a === "gnewfor" ? (RV && !$("sdRv").hidden && RV.i < RV.ids.length ? RV.ids[RV.i] : ik) : null;
         if (fk && nid && H.goalToggle && (BY[fk].goals || []).indexOf(nid) < 0) H.goalToggle(fk, nid);
-        pull(); render(); if (fk) { if (RV && !$("sdRv").hidden) rvRender(); else openInfo(fk); }
+        pull(); render(); if (fk) { if (RV && !$("sdRv").hidden) rvRender(); else if (GSET) gsRender(); else openInfo(fk); }
         toast(fk ? BY[fk].name + " now serves " + nn.trim() : "Goal added: " + nn.trim(), false);
       }
+      else if (a === "gset") { if (INFO && BY[INFO]) gsRender(); }
+      else if (a === "gsback") { if (INFO && BY[INFO]) openInfo(INFO); }
       else if (a === "gpick") gpOpen(el.getAttribute("data-goal"));
       else if (a === "gldel") { if (!GP || !H.goalLinkDel) return; H.goalLinkDel(GP.gid, el.getAttribute("data-lid")); pull(); render(); gpRender(false); toast("Link removed", false); }
       else if (a === "gpchat") { if (!GP || !H.chats) return; var ch = H.chats().filter(function (c) { return c.id === el.getAttribute("data-cid"); })[0]; if (!ch) return;

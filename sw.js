@@ -3,7 +3,7 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v146";
+const CACHE = "weekly-focus-v147";
 /* v144: app logos (Akatsuki's logo store, sibling apps' icons) live in their own cache, kept across builds, so the
    sphere shows them offline. Served from the cache at once and refreshed in the background (a changed logo shows on
    the next open). Capped at LOGO_MAX entries. */

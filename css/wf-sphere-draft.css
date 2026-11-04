@@ -456,3 +456,16 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 .sd-gl-row a { flex: 1 1 auto; min-width: 0; color: var(--ink); text-decoration: none; font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sd-gl-row a small { display: block; font-weight: 500; font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
 .sd-gp-sec { margin: 8px 2px 2px; font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--mid); }
+
+/* v147 · the full card opens over the Sphere Draft (the draft is z-index 250) */
+.bsheet-bg.over-sd { z-index: 320; }
+
+/* v147 · details window: only the app's own goals + a button to the goals view */
+.sd-igoals .sd-gchip.sd-gro { cursor: default; }
+.sd-igoals .sd-none-txt { margin: 0; font-size: 12.5px; }
+.sd-gs-list { max-height: min(56vh, 480px); }
+.sd-gs-back { flex: 0 0 auto; border: 1px solid var(--hair); background: var(--card); color: var(--ink); border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; min-height: 32px; margin-right: 6px; }
+.sd-gs-back:hover { border-color: var(--brand); }
+/* v147 · the toast covers the window's bottom buttons for a few seconds: let taps through, except on its own Undo */
+.sd-toast { pointer-events: none; }
+.sd-toast button { pointer-events: auto; }
