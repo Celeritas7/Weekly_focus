@@ -2001,3 +2001,7 @@ body.wdrag .wtile.empty{opacity:1;filter:none}
 .sph-glink .gl-i{flex:0 0 auto;width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:11px;background:var(--pk-soft,var(--brand-soft))}
 .sph-glink.gl-code .gl-i{font:800 8.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff;background:#2b2b33}
 .sph-glink .gl-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* v150 · inactive apps (moons) and links on the board tiles: dimmed, after the active ones */
+.sph-moon.dim,.sph-glink.off{opacity:.45;filter:grayscale(.8)}
+.sph-glink.off{border-style:dashed}

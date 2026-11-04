@@ -1,3 +1,18 @@
+# v150 — active / inactive apps and links in the goals (dimmed, still visible) · built on v149
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v150`). **No SQL ships with this build.**
+
+Apps and links can be marked **inactive**: they stay in their goal box, faded and slightly blurred, after the active ones.
+- **An app:** tap it in the Sphere Draft. The Goals row of its details window has **● Active** / **◌ Inactive**; tap to switch. One setting per app (`entries[id].gdim`), so it is dimmed in every goal it serves.
+- **A link:** **+ Add** on the goal. Each link in the list has **● Active** / **◌ Inactive** next to its **×**. Per link on that goal (`links[i].off`).
+- Order in a goal box: the **Lead** app (never dimmed), then active apps, then inactive ones; links active first, then inactive (dashed, faded).
+- The board does the same: inactive apps (moons) and links on the goal tiles below the Five and on the Five cards are faded and listed last.
+- Being inactive changes nothing else: the app keeps its rank, sphere place, goals and tasks.
+
+Check: footer reads **build v150 · opens offline · active / inactive**.
+
+---
+
 # v149 — mark a goal's lead app in the Sphere Draft · built on v148
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v149`). **No SQL ships with this build.**

@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v149", BUILD_N = 149;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v150", BUILD_N = 150;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -593,15 +593,17 @@
   }
   function moonChips(ks, max) {
     max = max || 4;
-    return ks.slice(0, max).map(function (m) { return '<button type="button" class="sph-moon k-' + kindOf(m) + '" data-act="pkgopen" data-key="' + esc(m) + '" title="Open ' + esc(labelFor(m).name) + '">' + esc(labelFor(m).name) + '</button>'; }).join("") +
+    ks = ks.filter(function (m) { return getEntry(m).gdim !== true; }).concat(ks.filter(function (m) { return getEntry(m).gdim === true; }));   // v150: inactive apps last, dimmed
+    return ks.slice(0, max).map(function (m) { return '<button type="button" class="sph-moon k-' + kindOf(m) + (getEntry(m).gdim === true ? ' dim' : '') + '" data-act="pkgopen" data-key="' + esc(m) + '" title="Open ' + esc(labelFor(m).name) + '">' + esc(labelFor(m).name) + '</button>'; }).join("") +
       (ks.length > max ? '<span class="sph-moon more">+' + (ks.length - max) + '</span>' : '');
   }
   /* v148: a goal's links (Claude chats, Claude Code sessions, web pages) as small chips on the board: goal tiles and Five cards */
   var GL_ICO = { chat: "\ud83d\udcac", code: "</>", web: "\ud83d\udd17" };
   function goalLinkChips(ls, max) {
     max = max || 3;
+    ls = ls.filter(function (l) { return !l.off; }).concat(ls.filter(function (l) { return l.off; }));   // v150: inactive links last, dimmed
     return ls.slice(0, max).map(function (l) { var kd = GL_ICO[l.kind] ? l.kind : "web";
-        return '<a class="sph-glink gl-' + kd + '" href="' + esc(l.url) + '" target="_blank" rel="noopener" draggable="false" title="' + esc(l.t + " \u2014 " + l.url) + '"><span class="gl-i" aria-hidden="true">' + esc(GL_ICO[kd]) + '</span><span class="gl-t">' + esc(l.t) + '</span></a>'; }).join("") +
+        return '<a class="sph-glink gl-' + kd + (l.off ? ' off' : '') + '" href="' + esc(l.url) + '" target="_blank" rel="noopener" draggable="false" title="' + esc(l.t + " \u2014 " + l.url) + '"><span class="gl-i" aria-hidden="true">' + esc(GL_ICO[kd]) + '</span><span class="gl-t">' + esc(l.t) + '</span></a>'; }).join("") +
       (ls.length > max ? '<span class="sph-moon more" title="All links are in the Sphere Draft, By goal">+' + (ls.length - max) + '</span>' : '');
   }
   function linksOfGoals(gs) { var seen = {}, out = []; gs.forEach(function (g) { goalLinks(g.id).forEach(function (l) { if (!seen[l.url]) { seen[l.url] = 1; out.push(l); } }); }); return out; }
@@ -1790,7 +1792,7 @@
           open: activeSubs(subs(it.id)).filter(function (x) { return !x.done; }).map(function (x) { return x.t || ""; }).slice(0, 40),
           notes: typeof getEntry(it.id).notes === "string" ? getEntry(it.id).notes.slice(0, 1200) : "",
           nom: getEntry(it.id).nom === true, idea: getEntry(it.id).idea === true,
-          goals: goalsOf(it.id).map(function (g) { return g.id; }) });   // v139: the goals this app serves   // v133: nominated for the Five (per-item flag, synced like sph)
+          goals: goalsOf(it.id).map(function (g) { return g.id; }), gdim: getEntry(it.id).gdim === true });   // v150: inactive in its goals (shown dimmed)   // v139: the goals this app serves   // v133: nominated for the Five (per-item flag, synced like sph)
       });
     });
     return rows;
@@ -1834,6 +1836,9 @@
     /* v146: links on a goal (Claude chats, Claude Code sessions, web pages) and the saved chats to pick from */
     /* v149: the goal's lead app (the one to build first for it). Same setting as the board's "⇄ lead": meta.fgLead[goalId] */
     goalLeadSet: function (gid, k) { if (!goalById(gid)) return; meta.fgLead = Object.assign({}, meta.fgLead || {}); if (k && itemById(k)) meta.fgLead[gid] = k; else delete meta.fgLead[gid]; save(); cloudPushBoard(); renderAll(); },
+    /* v150: active / inactive. An inactive app (entries[k].gdim) or link (links[i].off) stays visible in its goals, dimmed */
+    appDim: function (k, on) { if (!itemById(k)) return; patch(k, { gdim: !!on }); renderAll(); },
+    goalLinkOff: function (gid, lid, off) { goalLinksSet(gid, function (a) { return a.map(function (l) { return l && l.id === lid ? Object.assign({}, l, { off: !!off }) : l; }); }); renderAll(); },
     goalLinkAdd: function (gid, url, t, cid) { var id = goalLinkAdd(gid, url, t, cid); if (id) renderAll(); return id; },
     goalLinkDel: function (gid, lid) { goalLinkDel(gid, lid); renderAll(); },
     linkKind: linkKind,
@@ -3242,7 +3247,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 goal leads"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 active / inactive"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });

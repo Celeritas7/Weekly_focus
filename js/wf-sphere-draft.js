@@ -180,8 +180,8 @@
   /* v146: links on a goal (Claude chats, Claude Code sessions, web pages): tiles under the goal's apps, tap opens */
   var LK = { chat: { i: "\ud83d\udcac", l: "Chat" }, code: { i: "</>", l: "Code" }, web: { i: "\ud83d\udd17", l: "Link" } };
   function linkTile(l) { var K = LK[l.kind] || LK.web;
-    return '<a class="sd-glink sd-gl-' + esc(l.kind in LK ? l.kind : "web") + '" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="' + esc(l.t + " \u2014 " + l.url) + '"><span class="sd-gl-i" aria-hidden="true">' + esc(K.i) + '</span><span class="sd-gl-t">' + esc(l.t) + '</span><small>' + K.l + '</small></a>'; }
-  function linksHtml(g) { var ls = g.links || []; return ls.length ? '<div class="sd-glinks" aria-label="Links for ' + esc(g.name) + '">' + ls.map(linkTile).join("") + '</div>' : ''; }
+    return '<a class="sd-glink sd-gl-' + esc(l.kind in LK ? l.kind : "web") + (l.off ? ' sd-off' : '') + '" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="' + esc(l.t + " \u2014 " + l.url) + '"><span class="sd-gl-i" aria-hidden="true">' + esc(K.i) + '</span><span class="sd-gl-t">' + esc(l.t) + '</span><small>' + K.l + '</small></a>'; }
+  function linksHtml(g) { var ls = g.links || []; ls = ls.filter(function (l) { return !l.off; }).concat(ls.filter(function (l) { return l.off; })); return ls.length ? '<div class="sd-glinks" aria-label="Links for ' + esc(g.name) + '">' + ls.map(linkTile).join("") + '</div>' : ''; }
   function goalHtml(list) {
     var gs = goals(), out = [], placed = {};
     var sph = sorted(ROWS.filter(function (r) { return where(r.id) && (kindF === "all" || r.kind === kindF) && (!q || (r.name + " " + r.group).toLowerCase().indexOf(q) >= 0); }));
@@ -189,9 +189,9 @@
       var inS = sph.filter(function (r) { return (r.goals || []).indexOf(gg.id) >= 0; }).sort(function (a, b) { var wa = where(a.id), wb = where(b.id); return (wa.orbit ? 9 : wa.five) - (wb.orbit ? 9 : wb.five); });
       var its = list.filter(function (r) { return (r.goals || []).indexOf(gg.id) >= 0; });
       its.forEach(function (r) { placed[r.id] = 1; });
-      var lead = gg.lead, isL = function (r) { return r.id === lead; }, lf = function (a, b) { return (isL(b) ? 1 : 0) - (isL(a) ? 1 : 0); };   // v149: the goal's lead app comes first, badged
+      var lead = gg.lead, isL = function (r) { return r.id === lead; }, rk = function (r) { return isL(r) ? 0 : r.gdim ? 2 : 1; }, lf = function (a, b) { return rk(a) - rk(b); };   // v150: lead, then active, then inactive   // v149: the goal's lead app comes first, badged
       inS.sort(lf); its = its.slice().sort(lf);
-      var mk = function (h, r) { return isL(r) ? h.replace('class="sd-bub', 'class="sd-bub sd-lead').replace('<span class="sd-bub-c">', '<span class="sd-leadb" title="Lead app for ' + esc(gg.name) + '">Lead</span><span class="sd-bub-c">') : h; };
+      var mk = function (h, r) { if (r.gdim && !isL(r)) h = h.replace('class="sd-bub', 'class="sd-bub sd-dim').replace('aria-label="', 'aria-label="Inactive: '); return isL(r) ? h.replace('class="sd-bub', 'class="sd-bub sd-lead').replace('<span class="sd-bub-c">', '<span class="sd-leadb" title="Lead app for ' + esc(gg.name) + '">Lead</span><span class="sd-bub-c">') : h; };
       if (!its.length && !inS.length && (q || kindF !== "all")) return;   // filtered out: hide the empty section
       out.push('<section class="sd-cat sd-pur" data-sddrop="goal" data-goal="' + esc(gg.id) + '" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span title="' + (its.length + inS.length) + ' apps' + (inS.length ? ', ' + inS.length + ' in the sphere' : '') + '">' + (its.length + inS.length) + '</span>' +
         '<button type="button" class="sd-pgoal sd-has" data-sd="gedit" data-goal="' + esc(gg.id) + '" aria-label="Rename or delete the goal ' + esc(gg.name) + '">\u270e</button>' +
@@ -213,6 +213,7 @@
       (on.length ? on.map(function (gg) { var L = gg.lead === it.id;
           return '<button type="button" class="sd-gchip sd-on' + (L ? ' sd-glead' : '') + '" style="--cc:' + goalCol(gg.hue) + '" data-sd="glead" data-goal="' + esc(gg.id) + '" aria-pressed="' + (L ? "true" : "false") + '" title="' + (L ? "Lead app for this goal. Tap to clear" : "Tap to make " + esc(it.name) + " the lead app for this goal") + '">' + (L ? "\u2605 " : "") + esc(gg.name) + (L ? ' \u00b7 lead' : '') + '</button>'; }).join("") : '<span class="sd-none-txt">None yet</span>') +
       '<button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-label="' + (on.length ? "Change the goals of " : "Add a goal to ") + esc(it.name) + '">' + (on.length ? "\u270e Change" : "+ Add goal") + '</button>' +
+      (H.appDim ? '<button type="button" class="sd-gchip sd-gact' + (it.gdim ? ' sd-isdim' : '') + '" data-sd="gdim" aria-pressed="' + (it.gdim ? "false" : "true") + '" title="' + (it.gdim ? 'Inactive: shown dimmed in its goals. Tap to make it active' : 'Active. Tap to mark it inactive (dimmed in its goals, still visible)') + '">' + (it.gdim ? '\u25cc Inactive' : '\u25cf Active') + '</button>' : '') +
       (on.length && H.goalLeadSet ? '<span class="sd-glead-hint">Tap a goal to make this app its lead (the one to build first).</span>' : '') + '</div>';
   }
   function gsRender() {
@@ -623,7 +624,7 @@
   /* v146: links in the picker. Paste a URL, or tick a chat saved in the Chats tab; the goal's links are listed with × */
   function gpLinks() {
     var g = goalOf(GP.gid), ls = g ? g.links || [] : [];
-    return ls.length ? ls.map(function (l) { var K = LK[l.kind] || LK.web; return '<li class="sd-gl-row sd-gl-' + esc(l.kind in LK ? l.kind : "web") + '"><span class="sd-gl-i" aria-hidden="true">' + esc(K.i) + '</span><a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.t) + '<small>' + K.l + ' · ' + esc(l.url.replace(/^https?:\/\//, "")) + '</small></a><button type="button" class="sd-x" data-sd="gldel" data-lid="' + esc(l.id) + '" aria-label="Remove the link ' + esc(l.t) + '">×</button></li>'; }).join("") : '';
+    return ls.length ? ls.map(function (l) { var K = LK[l.kind] || LK.web; return '<li class="sd-gl-row sd-gl-' + esc(l.kind in LK ? l.kind : "web") + '"><span class="sd-gl-i" aria-hidden="true">' + esc(K.i) + '</span><a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.t) + '<small>' + K.l + ' · ' + esc(l.url.replace(/^https?:\/\//, "")) + '</small></a>' + (H.goalLinkOff ? '<button type="button" class="sd-gl-act' + (l.off ? ' sd-isdim' : '') + '" data-sd="gloff" data-lid="' + esc(l.id) + '" aria-pressed="' + (l.off ? "false" : "true") + '" title="' + (l.off ? 'Inactive: dimmed in the goal. Tap to make it active' : 'Active. Tap to mark it inactive') + '">' + (l.off ? '\u25cc Inactive' : '\u25cf Active') + '</button>' : '') + '<button type="button" class="sd-x" data-sd="gldel" data-lid="' + esc(l.id) + '" aria-label="Remove the link ' + esc(l.t) + '">×</button></li>'; }).join("") : '';
   }
   function gpChats() {
     if (!H.chats) return ""; var g = goalOf(GP.gid), have = {}, q2 = GP.q.trim().toLowerCase();
@@ -675,6 +676,9 @@
         toast(fk ? BY[fk].name + " now serves " + nn.trim() : "Goal added: " + nn.trim(), false);
       }
       else if (a === "gset") { if (INFO && BY[INFO]) gsRender(); }
+      else if (a === "gdim") { var dk = INFO; if (!dk || !BY[dk] || !H.appDim) return; var dOn = !BY[dk].gdim; H.appDim(dk, dOn); pull(); render(); openInfo(dk); toast(BY[dk].name + (dOn ? " marked inactive: dimmed in its goals" : " is active again"), false); }
+      else if (a === "gloff") { if (!GP || !H.goalLinkOff) return; var og = goalOf(GP.gid), ol = og && (og.links || []).filter(function (l) { return l.id === el.getAttribute("data-lid"); })[0]; if (!ol) return;
+        H.goalLinkOff(GP.gid, ol.id, !ol.off); pull(); render(); gpRender(false); toast(ol.t + (ol.off ? " is active again" : " marked inactive"), false); }
       else if (a === "glead") { var lk = INFO, lgid = el.getAttribute("data-goal"), lg0 = goalOf(lgid); if (!lk || !BY[lk] || !lg0 || !H.goalLeadSet) return;
         var was = lg0.lead === lk, prev = lg0.lead && BY[lg0.lead] ? BY[lg0.lead].name : ""; H.goalLeadSet(lgid, was ? "" : lk); pull(); render(); openInfo(lk);
         toast(was ? BY[lk].name + " is no longer the lead for " + lg0.name : BY[lk].name + " now leads " + lg0.name + (prev ? " (was " + prev + ")" : ""), false); }
