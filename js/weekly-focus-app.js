@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v147", BUILD_N = 147;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v148", BUILD_N = 148;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -595,6 +595,15 @@
     return ks.slice(0, max).map(function (m) { return '<button type="button" class="sph-moon k-' + kindOf(m) + '" data-act="pkgopen" data-key="' + esc(m) + '" title="Open ' + esc(labelFor(m).name) + '">' + esc(labelFor(m).name) + '</button>'; }).join("") +
       (ks.length > max ? '<span class="sph-moon more">+' + (ks.length - max) + '</span>' : '');
   }
+  /* v148: a goal's links (Claude chats, Claude Code sessions, web pages) as small chips on the board: goal tiles and Five cards */
+  var GL_ICO = { chat: "\ud83d\udcac", code: "</>", web: "\ud83d\udd17" };
+  function goalLinkChips(ls, max) {
+    max = max || 3;
+    return ls.slice(0, max).map(function (l) { var kd = GL_ICO[l.kind] ? l.kind : "web";
+        return '<a class="sph-glink gl-' + kd + '" href="' + esc(l.url) + '" target="_blank" rel="noopener" draggable="false" title="' + esc(l.t + " \u2014 " + l.url) + '"><span class="gl-i" aria-hidden="true">' + esc(GL_ICO[kd]) + '</span><span class="gl-t">' + esc(l.t) + '</span></a>'; }).join("") +
+      (ls.length > max ? '<span class="sph-moon more" title="All links are in the Sphere Draft, By goal">+' + (ls.length - max) + '</span>' : '');
+  }
+  function linksOfGoals(gs) { var seen = {}, out = []; gs.forEach(function (g) { goalLinks(g.id).forEach(function (l) { if (!seen[l.url]) { seen[l.url] = 1; out.push(l); } }); }); return out; }
   function pkgTile(t) {
     if (!t.g) return sphTile(t.lead);
     var g = t.g, n = t.moons.length;
@@ -602,7 +611,8 @@
       '<div class="sph-pkh"><span class="sph-pkn" title="Goal">◎ ' + esc(g.name) + '</span>' +
         (n ? '<button type="button" class="sph-pkb" data-act="pkglead" data-goal="' + esc(g.id) + '" title="Make the next app the lead">⇄ lead</button>' : '') + '</div>' +
       sphTile(t.lead) +
-      (n ? '<div class="sph-moons" aria-label="Also serving this goal">' + moonChips(t.moons, 6) + '</div>' : '') + '</div>';
+      (n ? '<div class="sph-moons" aria-label="Also serving this goal">' + moonChips(t.moons, 6) + '</div>' : '') +
+      (function () { var gl = goalLinks(g.id); return gl.length ? '<div class="sph-moons sph-glinks" aria-label="Links for ' + esc(g.name) + '">' + goalLinkChips(gl, 4) + '</div>' : ''; })() + '</div>';
   }
   function renderSphereMore() {
     var mh = $("sphereMore"); if (!mh) return;
@@ -703,7 +713,7 @@
         '<div class="tmeta">' + m + '</div>' +
         (prog ? '<div class="tbar"><i style="width:' + Math.round(prog.pct * 100) + '%"></i></div>' : '') +
         subList +
-        (function () { var tm = targetMoons(k), gs = goalsOf(k); return gs.length || tm.length ? '<div class="tmoons"><span class="tmoons-k">\u25ce ' + esc(gs.map(function (g) { return g.name; }).join(" \u00b7 ")) + '</span>' + moonChips(tm, 4) + '</div>' : ''; })() +
+        (function () { var tm = targetMoons(k), gs = goalsOf(k), gl = linksOfGoals(gs); return gs.length || tm.length ? '<div class="tmoons"><span class="tmoons-k">\u25ce ' + esc(gs.map(function (g) { return g.name; }).join(" \u00b7 ")) + '</span>' + moonChips(tm, 4) + (gl.length ? '<span class="tglinks">' + goalLinkChips(gl, 3) + '</span>' : '') + '</div>' : ''; })() +
         '<button class="tdrop" data-act="tdrop" title="Take out of the sphere">\u00d7</button>';
       grid.appendChild(card);
     });
@@ -3229,7 +3239,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 card over draft"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 links on tiles"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
