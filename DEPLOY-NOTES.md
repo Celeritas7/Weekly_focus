@@ -1,3 +1,16 @@
+# v148 — goal links on the board tiles · built on v147
+
+Upload `js/weekly-focus-app.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v148`). **No SQL ships with this build.**
+
+The links put on a goal in v146 (Claude chats, Claude Code sessions, web pages) now show on the board too, not only in the Sphere Draft:
+- **Goal tiles below the Five** (lead app + moons): a row of link chips under the moons, up to 4 (💬 chat, `</>` code, 🔗 web, then **+N**).
+- **A Five card** whose app serves a goal: the goal row (◎ goal name · moons) also carries that goal's links, up to 3, de-duplicated across the app's goals.
+- Tap opens the link in a new tab; it does not open or drag the card. All links stay listed in the Sphere Draft, By goal.
+
+Check: footer reads **build v148 · opens offline · links on tiles**.
+
+---
+
 # v147 — full card over the Sphere Draft · goals view on the app card · built on v146
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v147`). **No SQL ships with this build.**
