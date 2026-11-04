@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v148", BUILD_N = 148;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v149", BUILD_N = 149;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -523,6 +523,7 @@
   function goalSet(k, gid, on) {
     var cur = (Array.isArray(getEntry(k).goals) ? getEntry(k).goals : []).filter(goalById), i = cur.indexOf(gid);
     if (on && i < 0) cur.push(gid); else if (!on && i >= 0) cur.splice(i, 1); else return false;
+    if (!on && meta.fgLead && meta.fgLead[gid] === k) { meta.fgLead = Object.assign({}, meta.fgLead); delete meta.fgLead[gid]; save(); cloudPushBoard(); }   // v149: no longer serving it, so no longer its lead
     patch(k, { goals: cur }); return true;
   }
   function goalAdd(name) {
@@ -1826,18 +1827,20 @@
       patch(id, p); renderAll(); return id;
     },
     /* v139: goals for the draft (grouping, tagging) and the debate message */
-    goalList: function () { return goalList().map(function (g) { return { id: g.id, name: g.name, hue: goalHue(g), links: goalLinks(g.id), apps: goalMembers(g.id).filter(function (k) { var it = itemById(k); return it && isActive(it); }).length }; }); },
+    goalList: function () { return goalList().map(function (g) { return { id: g.id, name: g.name, hue: goalHue(g), links: goalLinks(g.id), lead: (meta.fgLead && meta.fgLead[g.id]) || "", apps: goalMembers(g.id).filter(function (k) { var it = itemById(k); return it && isActive(it); }).length }; }); },
     goalAdd: function (name) { var id = goalAdd(name); renderAll(); return id; },
     goalRename: function (id, name) { goalRename(id, name); renderAll(); },
     goalDelete: function (id) { goalDelete(id); renderAll(); },
     /* v146: links on a goal (Claude chats, Claude Code sessions, web pages) and the saved chats to pick from */
+    /* v149: the goal's lead app (the one to build first for it). Same setting as the board's "⇄ lead": meta.fgLead[goalId] */
+    goalLeadSet: function (gid, k) { if (!goalById(gid)) return; meta.fgLead = Object.assign({}, meta.fgLead || {}); if (k && itemById(k)) meta.fgLead[gid] = k; else delete meta.fgLead[gid]; save(); cloudPushBoard(); renderAll(); },
     goalLinkAdd: function (gid, url, t, cid) { var id = goalLinkAdd(gid, url, t, cid); if (id) renderAll(); return id; },
     goalLinkDel: function (gid, lid) { goalLinkDel(gid, lid); renderAll(); },
     linkKind: linkKind,
     chats: function () { return (Array.isArray(meta.cchats) ? meta.cchats : []).filter(function (c) { return c && c.id && c.url; }).map(function (c) { return { id: c.id, t: c.t || "Untitled discussion", url: c.url, fold: c.fold || "" }; }); },
     goalToggle: function (k, gid) { if (!itemById(k) || !goalById(gid)) return; var on = goalsOf(k).every(function (g) { return g.id !== gid; }); goalSet(k, gid, on); renderAll(); return on; },
     goalReport: function () { return goalList().map(function (g) { var mem = goalMembers(g.id).filter(function (k) { var it = itemById(k); return it && isActive(it) && !isCore(k); });
-      return { name: g.name, sphere: mem.filter(function (k) { return inSphere(k); }).map(function (k) { return labelFor(k).name; }), table: mem.filter(function (k) { return !inSphere(k); }).map(function (k) { return labelFor(k).name; }), links: goalLinks(g.id).map(function (l) { return { t: l.t, kind: l.kind }; }) }; }); },
+      return { name: g.name, sphere: mem.filter(function (k) { return inSphere(k); }).map(function (k) { return labelFor(k).name; }), table: mem.filter(function (k) { return !inSphere(k); }).map(function (k) { return labelFor(k).name; }), links: goalLinks(g.id).map(function (l) { return { t: l.t, kind: l.kind }; }), lead: (function () { var L = meta.fgLead && meta.fgLead[g.id]; return L && mem.indexOf(L) >= 0 ? labelFor(L).name : ""; })() }; }); },
     groups: function () { var g = {}; state.apps.forEach(function (a) { if (a.group) g[a.group] = 1; }); return Object.keys(g).sort(); },
     nominate: function (k, on) { if (isCore(k) || !itemById(k)) return; on = !!on; if ((getEntry(k).nom === true) !== on) patch(k, { nom: on }); renderAll(); },
     /* orbit: a target only leaves the Five when an orbit item can take its slot (a free slot always pulls the next one up) */
@@ -3239,7 +3242,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 links on tiles"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 goal leads"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });

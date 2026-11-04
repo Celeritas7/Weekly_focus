@@ -1,3 +1,17 @@
+# v149 — mark a goal's lead app in the Sphere Draft · built on v148
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v149`). **No SQL ships with this build.**
+
+Each goal can now have a **lead app**: the one to develop first for that goal.
+- **Set it:** tap an app in the Sphere Draft. Its goal chips in the details window are now buttons: tap a goal to make this app its lead (★ goal · lead), tap again to clear. A hint under the chips says so. Picking a new lead replaces the old one (the toast names both).
+- **See it:** in **By goal** the lead app comes first in its goal box, with a gold ring and a **Lead** badge on the bottom edge of the bubble.
+- It is the same setting as the board's **⇄ lead** button (`meta.fgLead[goalId]`), so the goal's tile below the Five shows that app as its main card. It syncs with the board.
+- Taking an app off a goal also clears it as that goal's lead. **Debate the Five** lists each goal's lead ("Room finder tool (lead: Setu app) — …").
+
+Check: footer reads **build v149 · opens offline · goal leads**.
+
+---
+
 # v148 — goal links on the board tiles · built on v147
 
 Upload `js/weekly-focus-app.js`, `css/weekly-focus.css` and `sw.js` (cache → `weekly-focus-v148`). **No SQL ships with this build.**

@@ -189,12 +189,15 @@
       var inS = sph.filter(function (r) { return (r.goals || []).indexOf(gg.id) >= 0; }).sort(function (a, b) { var wa = where(a.id), wb = where(b.id); return (wa.orbit ? 9 : wa.five) - (wb.orbit ? 9 : wb.five); });
       var its = list.filter(function (r) { return (r.goals || []).indexOf(gg.id) >= 0; });
       its.forEach(function (r) { placed[r.id] = 1; });
+      var lead = gg.lead, isL = function (r) { return r.id === lead; }, lf = function (a, b) { return (isL(b) ? 1 : 0) - (isL(a) ? 1 : 0); };   // v149: the goal's lead app comes first, badged
+      inS.sort(lf); its = its.slice().sort(lf);
+      var mk = function (h, r) { return isL(r) ? h.replace('class="sd-bub', 'class="sd-bub sd-lead').replace('<span class="sd-bub-c">', '<span class="sd-leadb" title="Lead app for ' + esc(gg.name) + '">Lead</span><span class="sd-bub-c">') : h; };
       if (!its.length && !inS.length && (q || kindF !== "all")) return;   // filtered out: hide the empty section
       out.push('<section class="sd-cat sd-pur" data-sddrop="goal" data-goal="' + esc(gg.id) + '" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span title="' + (its.length + inS.length) + ' apps' + (inS.length ? ', ' + inS.length + ' in the sphere' : '') + '">' + (its.length + inS.length) + '</span>' +
         '<button type="button" class="sd-pgoal sd-has" data-sd="gedit" data-goal="' + esc(gg.id) + '" aria-label="Rename or delete the goal ' + esc(gg.name) + '">\u270e</button>' +
         '<button type="button" class="sd-pgoal sd-gpick" data-sd="gpick" data-goal="' + esc(gg.id) + '" aria-label="Add apps or links to ' + esc(gg.name) + '">+ Add</button>' +
         (its.length ? '<button type="button" class="sd-catorb" data-sd="catorb" data-goal="' + esc(gg.id) + '" aria-label="Send all ' + its.length + ' serving ' + esc(gg.name) + ' to orbit" title="Send the table apps of this goal to orbit">Orbit all</button>' : '') + '</h3>' +
-        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(sphCard).join("") + its.map(cardHtml).join("") + '</div>' : (gg.links || []).length ? '' : '<p class="sd-pur-goal sd-none">No apps yet. <b>+ Add</b> or drag one here.</p>') + linksHtml(gg) + '</section>');
+        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(function (r) { return { r: r, h: mk(sphCard(r), r) }; }).concat(its.map(function (r) { return { r: r, h: mk(cardHtml(r), r) }; })).sort(function (a, b) { return lf(a.r, b.r); }).map(function (x) { return x.h; }).join("") + '</div>' : (gg.links || []).length ? '' : '<p class="sd-pur-goal sd-none">No apps yet. <b>+ Add</b> or drag one here.</p>') + linksHtml(gg) + '</section>');
     });
     var rest = list.filter(function (r) { return !placed[r.id]; });
     if (rest.length) out.push('<section class="sd-cat sd-pur sd-nopur" style="--cc:var(--faint)" aria-label="No goal yet"><h3 class="sd-cat-h"><i></i>No goal yet <span>' + rest.length + '</span></h3>' +
@@ -207,8 +210,10 @@
   function goalSum(it) {
     var on = (it.goals || []).map(goalOf).filter(Boolean);
     return '<div class="sd-igoals"><span class="sd-igoals-k">Goals</span>' +
-      (on.length ? on.map(function (gg) { return '<span class="sd-gchip sd-on sd-gro" style="--cc:' + goalCol(gg.hue) + '">' + esc(gg.name) + '</span>'; }).join("") : '<span class="sd-none-txt">None yet</span>') +
-      '<button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-label="' + (on.length ? "Change the goals of " : "Add a goal to ") + esc(it.name) + '">' + (on.length ? "\u270e Change" : "+ Add goal") + '</button></div>';
+      (on.length ? on.map(function (gg) { var L = gg.lead === it.id;
+          return '<button type="button" class="sd-gchip sd-on' + (L ? ' sd-glead' : '') + '" style="--cc:' + goalCol(gg.hue) + '" data-sd="glead" data-goal="' + esc(gg.id) + '" aria-pressed="' + (L ? "true" : "false") + '" title="' + (L ? "Lead app for this goal. Tap to clear" : "Tap to make " + esc(it.name) + " the lead app for this goal") + '">' + (L ? "\u2605 " : "") + esc(gg.name) + (L ? ' \u00b7 lead' : '') + '</button>'; }).join("") : '<span class="sd-none-txt">None yet</span>') +
+      '<button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-label="' + (on.length ? "Change the goals of " : "Add a goal to ") + esc(it.name) + '">' + (on.length ? "\u270e Change" : "+ Add goal") + '</button>' +
+      (on.length && H.goalLeadSet ? '<span class="sd-glead-hint">Tap a goal to make this app its lead (the one to build first).</span>' : '') + '</div>';
   }
   function gsRender() {
     var it = BY[INFO]; if (!it) { closeInfo(); return; }
@@ -449,7 +454,7 @@
     L.push("", "CURRENT FIVE" + (ST.five.length < H.max ? " (" + (H.max - ST.five.length) + " empty)" : ""), five.length ? five.join("\n") : "(none set yet)",
       "", "NOMINEES", noms.length ? noms.join("\n") : "(none)",
       "", "ALSO IN ORBIT, not nominated: " + (rest.length ? rest.join(", ") : "none"),
-      "", "GOALS (what my apps are for)", (function () { var gr = H.goalReport ? H.goalReport() : []; return gr.length ? gr.map(function (g) { return "- " + g.name + " \u2014 in the sphere: " + (g.sphere.length ? g.sphere.join(", ") : "none") + (g.table.length ? "; also serving it, not in the sphere: " + g.table.join(", ") : "") + (g.links && g.links.length ? "; links: " + g.links.map(function (l) { return l.t + " (" + (LK[l.kind] || LK.web).l.toLowerCase() + ")"; }).join(", ") : ""); }).join("\n") : "(no goals set yet)"; })(),
+      "", "GOALS (what my apps are for)", (function () { var gr = H.goalReport ? H.goalReport() : []; return gr.length ? gr.map(function (g) { return "- " + g.name + (g.lead ? " (lead: " + g.lead + ")" : "") + " \u2014 in the sphere: " + (g.sphere.length ? g.sphere.join(", ") : "none") + (g.table.length ? "; also serving it, not in the sphere: " + g.table.join(", ") : "") + (g.links && g.links.length ? "; links: " + g.links.map(function (l) { return l.t + " (" + (LK[l.kind] || LK.web).l.toLowerCase() + ")"; }).join(", ") : ""); }).join("\n") : "(no goals set yet)"; })(),
       "", "Not connected yet: my career direction (Belay) and Apperse. If career goals matter for this choice, ask me directly.");
     return L.join("\n");
   }
@@ -670,6 +675,9 @@
         toast(fk ? BY[fk].name + " now serves " + nn.trim() : "Goal added: " + nn.trim(), false);
       }
       else if (a === "gset") { if (INFO && BY[INFO]) gsRender(); }
+      else if (a === "glead") { var lk = INFO, lgid = el.getAttribute("data-goal"), lg0 = goalOf(lgid); if (!lk || !BY[lk] || !lg0 || !H.goalLeadSet) return;
+        var was = lg0.lead === lk, prev = lg0.lead && BY[lg0.lead] ? BY[lg0.lead].name : ""; H.goalLeadSet(lgid, was ? "" : lk); pull(); render(); openInfo(lk);
+        toast(was ? BY[lk].name + " is no longer the lead for " + lg0.name : BY[lk].name + " now leads " + lg0.name + (prev ? " (was " + prev + ")" : ""), false); }
       else if (a === "gsback") { if (INFO && BY[INFO]) openInfo(INFO); }
       else if (a === "gpick") gpOpen(el.getAttribute("data-goal"));
       else if (a === "gldel") { if (!GP || !H.goalLinkDel) return; H.goalLinkDel(GP.gid, el.getAttribute("data-lid")); pull(); render(); gpRender(false); toast("Link removed", false); }
