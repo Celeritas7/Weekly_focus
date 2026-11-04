@@ -1,3 +1,15 @@
+# v147 — full card over the Sphere Draft · goals view on the app card · built on v146
+
+Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v147`). **No SQL ships with this build.**
+
+- **Open the full card to edit** (Sphere Draft details window, and **+ Task** in Debate the Five) used to close the Sphere Draft and drop you on the board, because the card sat under the draft. The card now opens **on top of the draft**. Closing it (×, tap outside, Esc) returns to the draft, refreshed with what you changed. Esc closes only the card.
+- The Sphere Draft toast ("… now serves …", "Link added") sat over the window's **Done** button for a few seconds and swallowed taps. Taps now pass through it (its **Undo** still works).
+- The details window listed **every goal** as a chip. It now shows only **the app's own goals** and a **✎ Change** button (**+ Add goal** when it has none). That opens a **Goals** view in the same window: every goal as a tick row (with its app and link count), **+ New goal** (made and ticked for this app), **Done** / **← Back** to the app. The review cards keep the full chip row.
+
+Check: footer reads **build v147 · opens offline · card over draft**.
+
+---
+
 # v146 — links on a goal (Claude chats, Claude Code, web) · built on v145
 
 Upload `js/wf-sphere-draft.js`, `css/wf-sphere-draft.css`, `js/weekly-focus-app.js` and `sw.js` (cache → `weekly-focus-v146`). **No SQL ships with this build.**

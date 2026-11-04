@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v146", BUILD_N = 146;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v147", BUILD_N = 147;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1790,7 +1790,7 @@
     max: MAX_TARGETS,
     core: function () { var k = coreId(); if (!k) return null; var o = coreOpen(); return { id: k, name: labelFor(k).name, open: o.length, next: o.length ? (o[0].t || "") : "", logo: window.WFLogos ? window.WFLogos.logoFor(itemById(k)) : null }; },
     openCore: function () { var k = coreId(); if (!k) return; closePicker(); openBuildSheet(k); },
-    openCard: function (k) { if (!itemById(k)) return; closePicker(); openBuildSheet(k); },
+    openCard: function (k) { if (!itemById(k)) return; openBuildSheet(k, true); },   // v147: the full card opens over the Sphere Draft; closing it returns there
     rows: sdRows,
     /* v117: Set logo (apps only). Writes go to Akatsuki's shared logo store through wf-logos.js. */
     logo: {
@@ -2138,7 +2138,7 @@
     var a = e.target.getAttribute && e.target.getAttribute("data-act");
     if (a === "subnew" && e.key === "Enter") { e.preventDefault(); addSub(e.target, keyOf(e.target)); }
     if (e.target.id === "addName" && e.key === "Enter") { e.preventDefault(); commitAdd(); }
-    if (e.key === "Escape") { closePicker(); closeAdd(); }
+    if (e.key === "Escape") { if (BS_ID && $("buildSheet").classList.contains("over-sd")) return; closePicker(); closeAdd(); }   // v147: Esc on a card opened from the draft closes only the card
   });
 
   function addSub(fromEl, key) {
@@ -3229,7 +3229,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 goal links"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 card over draft"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -4079,10 +4079,11 @@
 
   /* ---- Build sheet: the Week-tab detail panel, opened over Today ---- */
   var BS_ID = null;
-  function openBuildSheet(id) {
+  function openBuildSheet(id, overDraft) {
     if (!itemById(id)) return;
     BS_ID = id; detailOpen[id] = true;
     paintBuildSheet();
+    $("buildSheet").classList.toggle("over-sd", !!overDraft && !!(window.WFSphereDraft && window.WFSphereDraft.isOpen()));
     $("buildSheet").classList.add("open");
   }
   function paintBuildSheet() {
@@ -4095,7 +4096,7 @@
       '<button class="bs-x" data-hact="bclose" title="Close">\u00d7</button>';
     $("bsBody").innerHTML = '<div class="item open bs-item" data-key="' + esc(id) + '" data-kind="' + kindOf(id) + '">' + detailHtml(id) + '</div>';
   }
-  function closeBuildSheet() { if (BS_ID) detailOpen[BS_ID] = false; BS_ID = null; var b = $("buildSheet"); if (b) b.classList.remove("open"); }
+  function closeBuildSheet() { if (BS_ID) detailOpen[BS_ID] = false; BS_ID = null; var b = $("buildSheet"); if (!b) return; var od = b.classList.contains("over-sd"); b.classList.remove("open", "over-sd"); if (od && window.WFSphereDraft && window.WFSphereDraft.isOpen()) window.WFSphereDraft.refresh(); }
   function refreshBuildSheet() {
     if (!BS_ID) return;
     var box = $("bsBody"); if (!box) return;
