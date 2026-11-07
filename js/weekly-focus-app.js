@@ -1830,6 +1830,12 @@
     },
     /* v139: goals for the draft (grouping, tagging) and the debate message */
     goalList: function () { return goalList().map(function (g) { return { id: g.id, name: g.name, hue: goalHue(g), links: goalLinks(g.id), lead: (meta.fgLead && meta.fgLead[g.id]) || "", apps: goalMembers(g.id).filter(function (k) { var it = itemById(k); return it && isActive(it); }).length }; }); },
+    /* v151: make a brand-new app straight from the draft. It is a normal active app; if a goal is given it serves that goal at once */
+    appAdd: function (name, gid) {
+      var id = addItem("app", name, ""); if (!id) return null;
+      if (gid && goalById(gid)) goalSet(id, gid, true);
+      renderAll(); return id;
+    },
     goalAdd: function (name) { var id = goalAdd(name); renderAll(); return id; },
     goalRename: function (id, name) { goalRename(id, name); renderAll(); },
     goalDelete: function (id) { goalDelete(id); renderAll(); },
