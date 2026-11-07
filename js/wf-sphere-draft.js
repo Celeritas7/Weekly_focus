@@ -197,12 +197,12 @@
         '<button type="button" class="sd-pgoal sd-has" data-sd="gedit" data-goal="' + esc(gg.id) + '" aria-label="Rename or delete the goal ' + esc(gg.name) + '">\u270e</button>' +
         '<button type="button" class="sd-pgoal sd-gpick" data-sd="gpick" data-goal="' + esc(gg.id) + '" aria-label="Add apps or links to ' + esc(gg.name) + '">+ Add</button>' +
         (its.length ? '<button type="button" class="sd-catorb" data-sd="catorb" data-goal="' + esc(gg.id) + '" aria-label="Send all ' + its.length + ' serving ' + esc(gg.name) + ' to orbit" title="Send the table apps of this goal to orbit">Orbit all</button>' : '') + '</h3>' +
-        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(function (r) { return { r: r, h: mk(sphCard(r), r) }; }).concat(its.map(function (r) { return { r: r, h: mk(cardHtml(r), r) }; })).sort(function (a, b) { return lf(a.r, b.r); }).map(function (x) { return x.h; }).join("") + '</div>' : (gg.links || []).length ? '' : '<p class="sd-pur-goal sd-none">No apps yet. <b>+ Add</b> or drag one here.</p>') + linksHtml(gg) + '</section>');
+        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(function (r) { return { r: r, h: mk(sphCard(r), r) }; }).concat(its.map(function (r) { return { r: r, h: mk(cardHtml(r), r) }; })).sort(function (a, b) { return lf(a.r, b.r); }).map(function (x) { return x.h; }).join("") + '</div>' : (gg.links || []).length ? '' : '<p class="sd-pur-goal sd-none">No apps yet. <b>+ Add</b> to pick or create one, or drag one here.</p>') + linksHtml(gg) + '</section>');
     });
     var rest = list.filter(function (r) { return !placed[r.id]; });
     if (rest.length) out.push('<section class="sd-cat sd-pur sd-nopur" style="--cc:var(--faint)" aria-label="No goal yet"><h3 class="sd-cat-h"><i></i>No goal yet <span>' + rest.length + '</span></h3>' +
       '<p class="sd-pur-goal sd-none">' + (gs.length ? "Drag a bubble onto a goal above, or use + Add apps on the goal." : "Make your first goal below, then open an app and tap it under Goals.") + '</p><div class="sd-bubs">' + rest.map(cardHtml).join("") + '</div></section>');
-    out.push('<button type="button" class="sd-gnew" data-sd="gnew">+ New goal</button>');
+    out.push('<button type="button" class="sd-gnew" data-sd="gnew">+ New goal</button>' + (H.appAdd ? '<button type="button" class="sd-gnew" data-sd="appnew">+ New app</button>' : ''));
     return out.join("");
   }
   /* v147: the details window shows only this app's goals and a button to the goals view (all goals, tick, + New goal) */
@@ -634,6 +634,21 @@
     return '<li class="sd-gp-sec">Saved chats</li>' + cs.slice(0, q2 ? 40 : 12).map(function (c) { var on = !!(have[c.url] || have["c:" + c.id]);
       return '<li><button type="button" class="sd-gp-row' + (on ? " sd-on" : "") + '" data-sd="gpchat" data-cid="' + esc(c.id) + '" aria-pressed="' + (on ? "true" : "false") + '"><span class="sd-gp-box" aria-hidden="true">' + (on ? "✓" : "") + '</span><span class="sd-gp-nm">\ud83d\udcac ' + esc(c.t) + '<small>Chat' + (c.fold ? ' · ' + esc(c.fold) : '') + '</small></span></button></li>'; }).join("");
   }
+  /* v151: type a name in the goal's search box and create the app right there; it serves this goal at once */
+  function gpExact(name) { var n = name.trim().toLowerCase(); return ROWS.filter(function (r) { return r.name.toLowerCase() === n; })[0] || null; }
+  function gpNewRow() {
+    var name = GP.q.trim(), g = goalOf(GP.gid);
+    if (!H.appAdd || !g || !name || gpExact(name)) return H.appAdd && g && !name ? '<p class="sd-gp-hint">Not in the list? Type its name above to create it here.</p>' : "";
+    return '<button type="button" class="sd-btn sd-primary sd-gp-new" data-sd="gpnew">+ Create \u201c' + esc(name) + '\u201d and add to ' + esc(g.name) + '</button>';
+  }
+  function gpCreate() {
+    if (!GP || !H.appAdd) return;
+    var name = GP.q.trim(), g = goalOf(GP.gid); if (!name || !g) return;
+    var dup = gpExact(name);
+    if (dup) { if ((dup.goals || []).indexOf(GP.gid) < 0) H.goalToggle(dup.id, GP.gid); pull(); render(); GP.q = ""; gpRender(true); toast(dup.name + " already existed, so it now serves " + g.name, false); return; }
+    var id = H.appAdd(name, GP.gid); GP.q = ""; pull(); render(); gpRender(true);
+    toast(id ? name + " created and added to " + g.name : "Couldn\u2019t create it", false);
+  }
   function gpLinkAdd() {
     var u = $("sdGlU"), t = $("sdGlT"); if (!u || !GP || !H.goalLinkAdd) return;
     var v = u.value.trim(); if (!v) { u.focus(); return; }
@@ -649,11 +664,16 @@
           '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
         (H.goalLinkAdd ? '<form class="sd-gl-form" data-sdform="glink" novalidate><input id="sdGlU" type="text" inputmode="url" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Paste a Claude chat, Claude Code or web link" aria-label="Link"><input id="sdGlT" type="text" autocomplete="off" placeholder="Name (optional)" aria-label="Name for the link"><button type="submit" class="sd-btn">Add link</button></form>' +
           '<ul class="sd-gl-cur" id="sdGlCur">' + gpLinks() + '</ul>' : '') +
-        '<input id="sdGpQ" type="search" class="sd-gp-q" placeholder="Search apps' + (H.chats ? ' and saved chats' : '') + '…" autocomplete="off" aria-label="Search apps" value="' + esc(GP.q) + '">' +
+        '<input id="sdGpQ" type="search" class="sd-gp-q" placeholder="Search apps, or type a new app name…" autocomplete="off" enterkeyhint="go" aria-label="Search apps or name a new app" value="' + esc(GP.q) + '">' +
+        '<div id="sdGpNew">' + gpNewRow() + '</div>' +
         '<ul class="sd-gp-list" id="sdGpList">' + gpList() + gpChats() + '</ul>' +
         '<div class="sd-iact"><button type="button" class="sd-btn sd-primary sd-big" data-sd="infoclose">Done</button></div>';
-      var qi = $("sdGpQ"); if (qi) { qi.addEventListener("input", function () { GP.q = this.value; $("sdGpList").innerHTML = gpList() + gpChats(); }); if (first && !matchMedia("(hover: none)").matches) qi.focus({ preventScroll: true }); }
-    } else { $("sdGpList").innerHTML = gpList() + gpChats(); if ($("sdGlCur")) $("sdGlCur").innerHTML = gpLinks(); $("sdGpN").textContent = n + (n === 1 ? ' app serves' : ' apps serve') + ' this goal. Tick the apps that serve it.'; }
+      var qi = $("sdGpQ"); if (qi) {
+        qi.addEventListener("input", function () { GP.q = this.value; $("sdGpList").innerHTML = gpList() + gpChats(); $("sdGpNew").innerHTML = gpNewRow(); });
+        qi.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); gpCreate(); } });
+        if (first && !matchMedia("(hover: none)").matches) qi.focus({ preventScroll: true });
+      }
+    } else { $("sdGpNew").innerHTML = gpNewRow(); $("sdGpList").innerHTML = gpList() + gpChats(); if ($("sdGlCur")) $("sdGlCur").innerHTML = gpLinks(); $("sdGpN").textContent = n + (n === 1 ? ' app serves' : ' apps serve') + ' this goal. Tick the apps that serve it.'; }
   }
 
   /* ---------------- input ---------------- */
@@ -684,6 +704,12 @@
         toast(was ? BY[lk].name + " is no longer the lead for " + lg0.name : BY[lk].name + " now leads " + lg0.name + (prev ? " (was " + prev + ")" : ""), false); }
       else if (a === "gsback") { if (INFO && BY[INFO]) openInfo(INFO); }
       else if (a === "gpick") gpOpen(el.getAttribute("data-goal"));
+      else if (a === "gpnew") gpCreate();
+      else if (a === "appnew") {
+        if (!H.appAdd) return; var an = prompt("New app: what is it called?", ""); if (!an || !an.trim()) return;
+        var ad = gpExact(an); if (ad) { toast(ad.name + " already exists", false); return; }
+        var aid = H.appAdd(an, null); pull(); render(); toast(aid ? an.trim() + " created. Tap it to give it a goal" : "Couldn\u2019t create it", false);
+      }
       else if (a === "gldel") { if (!GP || !H.goalLinkDel) return; H.goalLinkDel(GP.gid, el.getAttribute("data-lid")); pull(); render(); gpRender(false); toast("Link removed", false); }
       else if (a === "gpchat") { if (!GP || !H.chats) return; var ch = H.chats().filter(function (c) { return c.id === el.getAttribute("data-cid"); })[0]; if (!ch) return;
         var cg = goalOf(GP.gid), hv = (cg && cg.links || []).filter(function (l) { return l.url === ch.url || l.cid === ch.id; })[0];

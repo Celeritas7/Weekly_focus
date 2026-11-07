@@ -385,6 +385,8 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 .sd-gchip.sd-gadd { border-style: dashed; color: var(--mid); --cc: var(--faint); }
 .sd-gnew { align-self: flex-start; border: 1.5px dashed var(--brand-line, var(--hair)); background: transparent; color: var(--brand); border-radius: 12px; padding: 10px 16px; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
 .sd-gnew:hover { background: var(--brand-soft); }
+.sd-gp-new { width: 100%; min-height: 44px; margin: 8px 0 4px; text-align: left; overflow-wrap: anywhere; }
+.sd-gp-hint { margin: 6px 2px 2px; font-size: 13px; color: var(--mid); }
 
 /* v140 · apps already in the sphere, shown in their goal sections */
 .sd-bub.sd-insph { position: relative; }
