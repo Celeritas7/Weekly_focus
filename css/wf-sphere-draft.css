@@ -22,6 +22,18 @@
 .sd-tally b { color: var(--brand); }
 .sd-done { border: 1px solid var(--brand); background: var(--brand); color: #fff; border-radius: 10px; padding: 8px 16px; font-size: 13px; font-weight: 800; cursor: pointer; }
 
+/* ---- v152: inline mode, the draft as the main view of the Week tab ---- */
+.sd.sd-inline { position: static; inset: auto; z-index: auto; overflow: visible; background: transparent; --sd-top: 0px; }
+.sd-inline .sd-wrap { max-width: none; padding-top: 14px; padding-bottom: 28px; padding-left: 0; padding-right: 0; }
+.sd-inline .sd-done { display: none; }
+.sd-inline .sd-hud { top: var(--sd-top); padding-top: 8px; padding-left: 0; padding-right: 0; }
+.sd-inline .sd-orrery { top: calc(var(--sd-top) + 14px); }
+.sd-inline .sd-toast { bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); }
+@media screen {
+  #scrWeek.wk-sphere-main .tagfilter, #scrWeek.wk-sphere-main #ctxBarWeek, #scrWeek.wk-sphere-main .five.sphere, #scrWeek.wk-sphere-main .viewbar, #scrWeek.wk-sphere-main .cols { display: none !important; }
+}
+@media print { .sd-inline-host { display: none !important; } }
+
 .sd-stage { display: grid; grid-template-columns: minmax(300px, 430px) minmax(0, 1fr); gap: 28px; align-items: start; }
 .sd-orrery { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 14px; }
 @media (max-width: 860px) {

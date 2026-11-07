@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v151", BUILD_N = 151;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v152", BUILD_N = 152;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -640,7 +640,7 @@
   function renderAll() {
     var hadCore = targetOrder.some(isCore); pruneTargets(); if (hadCore && (boardPulled || !cloudConfigured())) { save(); cloudPushBoard(); }
     renderPulse(); renderFive(); renderCols(); renderMeta(); renderHome(); if (FGS.open) { paintFgsTabs(); paintFgsList(); }
-    if (window.WFSphereDraft && window.WFSphereDraft.isOpen()) window.WFSphereDraft.refresh();   // v107: a sync pull while the draft is open
+    syncWeekDraft();   // v152: mounts the draft on the Week tab (or refreshes it after a sync pull)
     if (ENTER) { ENTER = false; setTimeout(function () { var ns = document.querySelectorAll(".wf-enter"); for (var i = 0; i < ns.length; i++) ns[i].classList.remove("wf-enter"); }, 720); }
     lastCloudSig = boardSig();
   }
@@ -1754,6 +1754,9 @@
      TARGET PICKER
      ============================================================ */
   function openPicker() {
+    if (window.WFSphereDraft && $("sdInline")) {   // v152: the Sphere Draft is the Week tab's main view, so "add to sphere" just goes there
+      showScreen("scrWeek"); syncWeekDraft(); $("sdInline").scrollIntoView({ block: "start" }); return;
+    }
     if (window.WFSphereDraft) { window.WFSphereDraft.open(SD_HOST); return; }   // v107: the Sphere Draft replaces this list when its script is loaded
     var body = $("pickBody"); body.innerHTML = "";
     var rows = [];
@@ -3253,7 +3256,7 @@
   }
   function startCloud() {
     ensureClient(); renderAuthUI(); updateCloudStatus();
-    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 active / inactive"; bt.title = bt.textContent; }   // v105
+    var bt = document.querySelector("#cloudModal .buildtag"); if (bt) { bt.textContent = "build " + APP_BUILD + " \u00b7 opens offline \u00b7 sphere is the Week tab"; bt.title = bt.textContent; }   // v105
     checkBuild(true);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkBuild(false); });
     window.addEventListener("online", function () { checkBuild(false); });
@@ -5554,6 +5557,15 @@
     Array.prototype.forEach.call(document.querySelectorAll(".htab"), function (t) { t.classList.toggle("on", t.getAttribute("data-screen") === id); });
     try { localStorage.setItem(TAB_KEY, id); } catch (e) {}
     window.scrollTo({ top: 0 });
+    syncWeekDraft();
+  }
+  /* v152: the Sphere Draft lives inline in the Week tab: mounted while Week is showing, paused when you leave it */
+  function syncWeekDraft() {
+    var D = window.WFSphereDraft, host = $("sdInline"), scr = $("scrWeek");
+    if (!D || !host || !scr || typeof D.mount !== "function") return;
+    try {
+      if (scr.classList.contains("on")) D.mount(SD_HOST, host); else D.pause();
+    } catch (e) { console.warn("[wf] sphere draft not ready yet", e); }   // showScreen runs before the board has loaded; renderAll mounts it again
   }
 
   function wireHome() {

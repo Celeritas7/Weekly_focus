@@ -7,7 +7,7 @@
    ============================================================ */
 (function () {
   "use strict";
-  var H = null, root = null, isOpen = false, hist = [], kindF = "all", sortBy = "pri", q = "", GROUP = true, GRP = "goal", TAPO = false, TAPN = false, lastFull = false, io = null;
+  var H = null, root = null, isOpen = false, hist = [], kindF = "all", sortBy = "pri", q = "", GROUP = true, GRP = "goal", TAPO = false, TAPN = false, lastFull = false, io = null, inline = false;
   var BY = {}, ROWS = [];
   var PREF = "wf_sd_prefs";
   try { var pf = JSON.parse(localStorage.getItem(PREF) || "{}"); if (pf.group === false) GROUP = false; if (pf.grp === "goal" || pf.grp === "cat" || pf.grp === "none") GRP = pf.grp; else if (pf.grp === "purpose") GRP = "goal"; else if (pf.group === false) GRP = "none"; GROUP = GRP !== "none"; if (pf.sort) sortBy = pf.sort; if (pf.tapo === true) TAPO = true; if (pf.tapn === true && !TAPO) TAPN = true; } catch (e) {}
@@ -799,7 +799,7 @@
       if (on) { var qi = $("sdQ"); if (qi) qi.focus({ preventScroll: true }); }
     });
     $("sdHudGo").addEventListener("click", function () { $("sdSphere").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" }); });
-    if ("IntersectionObserver" in window) io = new IntersectionObserver(function (es) { $("sdHud").hidden = es[0].isIntersecting; }, { root: root, threshold: 0.15 });
+    window.addEventListener("resize", function () { if (inline && isOpen) syncTop(); });
 
     root.addEventListener("pointerdown", function (e) {
       if (e.button > 0) return;
@@ -844,21 +844,51 @@
 
   /* ---------------- open / close ---------------- */
   var pendingRefresh = false, lastFocus = null;
+  /* v152: the draft is the Week tab's main view. mount() puts it inline in the page (bottom tabs stay visible, no Done button),
+     pause() stops it when the tab is left. open()/close() remain the full-screen overlay. */
+  function syncTop() {   // keep the sticky bar and the orrery below the app's own sticky header
+    var tb = document.querySelector(".topbar"); root.style.setProperty("--sd-top", (tb ? Math.round(tb.getBoundingClientRect().height) : 0) + "px");
+  }
+  function watchSphere() {
+    if (io) io.disconnect(); io = null;
+    if (!("IntersectionObserver" in window)) return;
+    io = new IntersectionObserver(function (es) { $("sdHud").hidden = es[0].isIntersecting; }, { root: inline ? null : root, threshold: 0.15 });
+    io.observe($("sdSphere"));
+  }
+  function mount(host, el) {
+    H = host; if (!root) build();
+    if (inline && isOpen && root.parentNode === el) { syncTop(); refresh(); return; }
+    inline = true; hist = [];
+    if (root.parentNode !== el) el.appendChild(root);
+    root.classList.add("sd-inline"); root.setAttribute("role", "region"); root.removeAttribute("aria-modal");
+    root.hidden = false; isOpen = true; document.documentElement.classList.remove("sd-lock");
+    syncTop(); render(); lastFull = ST.five.length === H.max; $("sdSphere").classList.toggle("sd-lit", lastFull);
+    watchSphere();
+  }
+  function pause() {
+    if (!inline || !isOpen) return;
+    closeInfo(); if (RV) { RV = null; $("sdRv").hidden = true; } isOpen = false; root.hidden = true; $("sdToast").hidden = true;
+    if (io) io.disconnect();
+  }
   function open(host) {
     H = host; if (!root) build();
+    if (inline) { inline = false; if (isOpen) pause2(); }
+    root.classList.remove("sd-inline"); root.setAttribute("role", "dialog"); root.setAttribute("aria-modal", "true");
+    if (root.parentNode !== document.body) document.body.appendChild(root);
     hist = []; lastFocus = document.activeElement;
     root.hidden = false; isOpen = true; document.documentElement.classList.add("sd-lock");
     root.scrollTop = 0; render(); lastFull = ST.five.length === H.max; $("sdSphere").classList.toggle("sd-lit", lastFull);
-    if (io) io.observe($("sdSphere"));
+    watchSphere();
     var first = root.querySelector(".sd-done"); if (first) first.focus({ preventScroll: true });
   }
+  function pause2() { closeInfo(); if (RV) { RV = null; $("sdRv").hidden = true; } isOpen = false; }
   function close() {
-    if (!isOpen) return;
+    if (!isOpen || inline) return;   // inline, the draft has no Done: only pause() (leaving the tab) stops it
     closeInfo(); if (RV) { RV = null; $("sdRv").hidden = true; } isOpen = false; root.hidden = true; $("sdToast").hidden = true; document.documentElement.classList.remove("sd-lock");
     if (io) io.disconnect();
     if (lastFocus && lastFocus.focus) try { lastFocus.focus({ preventScroll: true }); } catch (e) {}
   }
   function refresh() { if (!isOpen) return; if (drag && drag.on) { pendingRefresh = true; return; } render(); checkIgnite(); if (RV && !rvDrag) rvRender(); }
 
-  window.WFSphereDraft = { open: open, close: close, isOpen: function () { return isOpen; }, refresh: refresh };
+  window.WFSphereDraft = { open: open, close: close, mount: mount, pause: pause, isOpen: function () { return isOpen; }, isInline: function () { return inline; }, refresh: refresh };
 })();
