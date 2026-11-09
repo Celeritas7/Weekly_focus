@@ -1,7 +1,7 @@
 /* ============================================================
    Weekly Focus v107 — Sphere Draft
-   The game-style "Add to sphere". Opened by openPicker() in
-   weekly-focus-app.js, which passes SD_HOST: the only moves this
+   The Sphere screen. Mounted by weekly-focus-app.js, which
+   passes SD_HOST: the only moves this
    file can make (add / place / orbit / back / restore). This file
    draws and animates; it never touches data directly.
    ============================================================ */
@@ -56,16 +56,14 @@
   function where(k) { var i = ST.five.indexOf(k); if (i >= 0) return { five: i }; return ST.orbit.indexOf(k) >= 0 ? { orbit: true } : null; }
 
   /* ---------------- DOM ---------------- */
-  function build() {
+  function build(container) {
     root = document.createElement("div"); root.className = "sd"; root.id = "sphereDraft"; root.hidden = true;
-    root.setAttribute("role", "dialog"); root.setAttribute("aria-modal", "true"); root.setAttribute("aria-label", "Sphere Draft");
     root.innerHTML =
-      '<div class="sd-hud" id="sdHud" hidden><button type="button" class="sd-hud-go" id="sdHudGo" aria-label="Back to your sphere"><span class="sd-dots" id="sdHudDots"></span><span class="sd-o" id="sdHudO"></span></button><button type="button" class="sd-done" data-sd="close">Done</button></div>' +
+      '<div class="sd-hud" id="sdHud" hidden><button type="button" class="sd-hud-go" id="sdHudGo" aria-label="Back to your sphere"><span class="sd-dots" id="sdHudDots"></span><span class="sd-o" id="sdHudO"></span></button></div>' +
       '<div class="sd-wrap">' +
-        '<header class="sd-top"><div><div class="sd-eyebrow">This week</div><h2>Sphere Draft</h2>' +
+        '<header class="sd-top"><div><div class="sd-eyebrow">This week</div><h2>Sphere</h2>' +
           '<p class="sd-sub">Every active app, study topic and office task is on the table. Pull in only what earns a place this week.</p></div>' +
-          '<div class="sd-right"><span class="sd-tally">The Five <b id="sdT5">0/5</b></span><span class="sd-tally">Orbit <b id="sdTO">0</b></span><span class="sd-tally">On the table <b id="sdTP">0</b></span>' +
-          '<button type="button" class="sd-done" data-sd="close">Done</button></div></header>' +
+          '<div class="sd-right"><span class="sd-tally">The Five <b id="sdT5">0/5</b></span><span class="sd-tally">Orbit <b id="sdTO">0</b></span><span class="sd-tally">On the table <b id="sdTP">0</b></span></div></header>' +
         '<div class="sd-stage">' +
           '<section class="sd-orrery" aria-label="Your sphere">' +
             '<div class="sd-sphere" id="sdSphere"><div class="sd-orbit" data-sddrop="orbit"></div><div class="sd-disc" data-sddrop="center"></div>' +
@@ -85,12 +83,12 @@
             '<div class="sd-grid" id="sdGrid"></div>' +
           '</section>' +
         '</div>' +
-        '<details class="sd-howto"><summary>How to play</summary><p>Tap a bubble to read its details and add it in one tap. Drag a bubble onto a goal to file it there, or use <b>+ Add apps</b> on a goal to search and tick. <b>Review one by one</b> shows every app outside The Five as a card: swipe right for orbit, left for not. Switch on <b>Tap → Orbit</b> to send each bubble you tap straight to orbit, or press <b>All to orbit</b> on a category. The ring colour is its priority. Drag a bubble onto a number to rank it, or onto the dashed ring for orbit; on a phone, press and hold to drag. Tap a planet to see it or send it back. Keys on a focused bubble: <kbd>Enter</kbd> details, <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit. <kbd>Esc</kbd> closes.</p></details>' +
+        '<details class="sd-howto"><summary>How to play</summary><p>Tap a bubble for details. On a goal, use <b>+ New app</b> to create and link an app or <b>Link existing</b> to pick one you already have. You can also drag a bubble onto a goal. <b>Review one by one</b> shows every app outside The Five as a card: swipe right for orbit, left for not. Switch on <b>Tap → Orbit</b> to send each bubble you tap straight to orbit, or press <b>All to orbit</b> on a category. The ring colour is its priority. Drag a bubble onto a number to rank it, or onto the dashed ring for orbit; on a phone, press and hold to drag. Tap a planet to see it or send it back. Keys on a focused bubble: <kbd>Enter</kbd> details, <kbd>1</kbd>–<kbd>5</kbd> rank, <kbd>O</kbd> orbit.</p></details>' +
       '</div>' +
       '<div class="sd-info" id="sdInfo" data-sd="infoclose" hidden><div class="sd-info-card" id="sdInfoCard" data-sd="stay" role="dialog" aria-modal="true" aria-labelledby="sdInfoT"></div></div>' +
       '<div class="sd-rv" id="sdRv" role="dialog" aria-modal="true" aria-label="Review: orbit or not" hidden><div class="sd-rv-in" id="sdRvIn"></div></div>' +
       '<div class="sd-toast" id="sdToast" role="status" hidden></div>';
-    document.body.appendChild(root);
+    container.appendChild(root);
     wire();
   }
 
@@ -195,13 +193,15 @@
       if (!its.length && !inS.length && (q || kindF !== "all")) return;   // filtered out: hide the empty section
       out.push('<section class="sd-cat sd-pur" data-sddrop="goal" data-goal="' + esc(gg.id) + '" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span title="' + (its.length + inS.length) + ' apps' + (inS.length ? ', ' + inS.length + ' in the sphere' : '') + '">' + (its.length + inS.length) + '</span>' +
         '<button type="button" class="sd-pgoal sd-has" data-sd="gedit" data-goal="' + esc(gg.id) + '" aria-label="Rename or delete the goal ' + esc(gg.name) + '">\u270e</button>' +
-        '<button type="button" class="sd-pgoal sd-gpick" data-sd="gpick" data-goal="' + esc(gg.id) + '" aria-label="Add apps or links to ' + esc(gg.name) + '">+ Add</button>' +
         (its.length ? '<button type="button" class="sd-catorb" data-sd="catorb" data-goal="' + esc(gg.id) + '" aria-label="Send all ' + its.length + ' serving ' + esc(gg.name) + ' to orbit" title="Send the table apps of this goal to orbit">Orbit all</button>' : '') + '</h3>' +
-        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(function (r) { return { r: r, h: mk(sphCard(r), r) }; }).concat(its.map(function (r) { return { r: r, h: mk(cardHtml(r), r) }; })).sort(function (a, b) { return lf(a.r, b.r); }).map(function (x) { return x.h; }).join("") + '</div>' : (gg.links || []).length ? '' : '<p class="sd-pur-goal sd-none">No apps yet. <b>+ Add</b> to pick or create one, or drag one here.</p>') + linksHtml(gg) + '</section>');
+        '<div class="sd-goal-actions">' +
+        (H.appAdd ? '<button type="button" class="sd-btn sd-primary" data-sd="appnew" data-goal="' + esc(gg.id) + '" aria-label="New app for ' + esc(gg.name) + '">+ New app</button>' : '') +
+        '<button type="button" class="sd-btn" data-sd="gpick" data-goal="' + esc(gg.id) + '" aria-label="Link existing apps or links to ' + esc(gg.name) + '">Link existing</button></div>' +
+        (its.length || inS.length ? '<div class="sd-bubs">' + inS.map(function (r) { return { r: r, h: mk(sphCard(r), r) }; }).concat(its.map(function (r) { return { r: r, h: mk(cardHtml(r), r) }; })).sort(function (a, b) { return lf(a.r, b.r); }).map(function (x) { return x.h; }).join("") + '</div>' : (gg.links || []).length ? '' : '<p class="sd-pur-goal sd-none">No apps linked yet.</p>') + linksHtml(gg) + '</section>');
     });
     var rest = list.filter(function (r) { return !placed[r.id]; });
     if (rest.length) out.push('<section class="sd-cat sd-pur sd-nopur" style="--cc:var(--faint)" aria-label="No goal yet"><h3 class="sd-cat-h"><i></i>No goal yet <span>' + rest.length + '</span></h3>' +
-      '<p class="sd-pur-goal sd-none">' + (gs.length ? "Drag a bubble onto a goal above, or use + Add apps on the goal." : "Make your first goal below, then open an app and tap it under Goals.") + '</p><div class="sd-bubs">' + rest.map(cardHtml).join("") + '</div></section>');
+      '<p class="sd-pur-goal sd-none">' + (gs.length ? "Drag a bubble onto a goal above, or use Link existing on the goal." : "Make your first goal below, then open an app and tap it under Goals.") + '</p><div class="sd-bubs">' + rest.map(cardHtml).join("") + '</div></section>');
     out.push('<button type="button" class="sd-gnew" data-sd="gnew">+ New goal</button>' + (H.appAdd ? '<button type="button" class="sd-gnew" data-sd="appnew">+ New app</button>' : ''));
     return out.join("");
   }
@@ -248,9 +248,10 @@
     var left = ROWS.filter(function (r) { return !where(r.id); });
     var list = visible();
     $("sdGrid").classList.toggle("sd-goalgrid", GRP === "goal");   // v142: goals as compact cards
-    $("sdGrid").innerHTML = !list.length
+    $("sdGrid").innerHTML = GRP === "goal" && (list.length || (!q && kindF === "all")) ? goalHtml(list)
+      : !list.length
       ? '<div class="sd-empty-pool">' + (q || kindF !== "all" ? "Nothing matches. Clear the search or pick another filter." : ROWS.length ? "Everything is in the sphere. Tap a planet to send it back." : "No active items yet. Switch on an app or topic on the board first.") + '</div>'
-      : GRP === "goal" ? goalHtml(list) : GRP === "cat" ? groupedHtml(list) : '<div class="sd-bubs">' + list.map(cardHtml).join("") + '</div>';
+      : GRP === "cat" ? groupedHtml(list) : '<div class="sd-bubs">' + list.map(cardHtml).join("") + '</div>';
     root.querySelectorAll("#sdSeg button").forEach(function (b) {
       var kd = b.getAttribute("data-kind"), n = kd === "all" ? left.length : left.filter(function (x) { return x.kind === kd; }).length;
       b.textContent = (kd === "all" ? "All" : kd === "app" ? "Apps" : KIND[kd].l) + " " + n; b.setAttribute("aria-pressed", kindF === kd ? "true" : "false");
@@ -634,20 +635,38 @@
     return '<li class="sd-gp-sec">Saved chats</li>' + cs.slice(0, q2 ? 40 : 12).map(function (c) { var on = !!(have[c.url] || have["c:" + c.id]);
       return '<li><button type="button" class="sd-gp-row' + (on ? " sd-on" : "") + '" data-sd="gpchat" data-cid="' + esc(c.id) + '" aria-pressed="' + (on ? "true" : "false") + '"><span class="sd-gp-box" aria-hidden="true">' + (on ? "✓" : "") + '</span><span class="sd-gp-nm">\ud83d\udcac ' + esc(c.t) + '<small>Chat' + (c.fold ? ' · ' + esc(c.fold) : '') + '</small></span></button></li>'; }).join("");
   }
-  /* v151: type a name in the goal's search box and create the app right there; it serves this goal at once */
-  function gpExact(name) { var n = name.trim().toLowerCase(); return ROWS.filter(function (r) { return r.name.toLowerCase() === n; })[0] || null; }
-  function gpNewRow() {
-    var name = GP.q.trim(), g = goalOf(GP.gid);
-    if (!H.appAdd || !g || !name || gpExact(name)) return H.appAdd && g && !name ? '<p class="sd-gp-hint">Not in the list? Type its name above to create it here.</p>' : "";
-    return '<button type="button" class="sd-btn sd-primary sd-gp-new" data-sd="gpnew">+ Create \u201c' + esc(name) + '\u201d and add to ' + esc(g.name) + '</button>';
+  function openNewApp(gid) {
+    var g = gid ? goalOf(gid) : null;
+    if (!H.appAdd || (gid && !g)) return;
+    INFO = "@newapp";
+    infoFrom = document.activeElement;
+    $("sdInfoCard").innerHTML =
+      '<div class="sd-ih"><div class="sd-ih-t"><h3 id="sdInfoT">New app</h3>' +
+      (g ? '<p class="sd-ih-m">Goal: ' + esc(g.name) + '</p>' : '') + '</div>' +
+      '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
+      '<form class="sd-new-app" data-sdform="appnew" data-goal="' + esc(gid || "") + '">' +
+      '<label for="sdAppName">App name</label><input id="sdAppName" class="sd-gp-q" type="text" required autocomplete="off" enterkeyhint="done">' +
+      '<p id="sdAppError" class="sd-app-error" role="alert" hidden></p>' +
+      '<div class="sd-iact"><button type="submit" class="sd-btn sd-primary sd-big">' + (g ? 'Add to goal' : 'Create app') + '</button></div></form>';
+    $("sdInfo").hidden = false;
+    $("sdAppName").focus({ preventScroll: true });
   }
-  function gpCreate() {
-    if (!GP || !H.appAdd) return;
-    var name = GP.q.trim(), g = goalOf(GP.gid); if (!name || !g) return;
-    var dup = gpExact(name);
-    if (dup) { if ((dup.goals || []).indexOf(GP.gid) < 0) H.goalToggle(dup.id, GP.gid); pull(); render(); GP.q = ""; gpRender(true); toast(dup.name + " already existed, so it now serves " + g.name, false); return; }
-    var id = H.appAdd(name, GP.gid); GP.q = ""; pull(); render(); gpRender(true);
-    toast(id ? name + " created and added to " + g.name : "Couldn\u2019t create it", false);
+  function saveNewApp(form) {
+    var gid = form.getAttribute("data-goal"), g = gid ? goalOf(gid) : null;
+    var input = $("sdAppName"), name = input.value.trim();
+    var result = name ? H.appAdd(name, gid) : { error: "Enter an app name." };
+    if (result.error) {
+      var error = $("sdAppError");
+      error.textContent = result.error;
+      error.hidden = false;
+      input.setAttribute("aria-invalid", "true");
+      input.setAttribute("aria-describedby", error.id);
+      input.focus();
+      return;
+    }
+    infoFrom = root.querySelector(gid ? '[data-sd="appnew"][data-goal="' + sel(gid) + '"]' : '.sd-gnew[data-sd="appnew"]');
+    closeInfo();
+    toast(result.name + (g ? (result.created ? " created and added to " : " linked to ") + g.name : " created"), false);
   }
   function gpLinkAdd() {
     var u = $("sdGlU"), t = $("sdGlT"); if (!u || !GP || !H.goalLinkAdd) return;
@@ -664,16 +683,14 @@
           '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
         (H.goalLinkAdd ? '<form class="sd-gl-form" data-sdform="glink" novalidate><input id="sdGlU" type="text" inputmode="url" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Paste a Claude chat, Claude Code or web link" aria-label="Link"><input id="sdGlT" type="text" autocomplete="off" placeholder="Name (optional)" aria-label="Name for the link"><button type="submit" class="sd-btn">Add link</button></form>' +
           '<ul class="sd-gl-cur" id="sdGlCur">' + gpLinks() + '</ul>' : '') +
-        '<input id="sdGpQ" type="search" class="sd-gp-q" placeholder="Search apps, or type a new app name…" autocomplete="off" enterkeyhint="go" aria-label="Search apps or name a new app" value="' + esc(GP.q) + '">' +
-        '<div id="sdGpNew">' + gpNewRow() + '</div>' +
+        '<input id="sdGpQ" type="search" class="sd-gp-q" placeholder="Search existing apps or chats…" autocomplete="off" aria-label="Search existing apps or chats" value="' + esc(GP.q) + '">' +
         '<ul class="sd-gp-list" id="sdGpList">' + gpList() + gpChats() + '</ul>' +
         '<div class="sd-iact"><button type="button" class="sd-btn sd-primary sd-big" data-sd="infoclose">Done</button></div>';
       var qi = $("sdGpQ"); if (qi) {
-        qi.addEventListener("input", function () { GP.q = this.value; $("sdGpList").innerHTML = gpList() + gpChats(); $("sdGpNew").innerHTML = gpNewRow(); });
-        qi.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); gpCreate(); } });
+        qi.addEventListener("input", function () { GP.q = this.value; $("sdGpList").innerHTML = gpList() + gpChats(); });
         if (first && !matchMedia("(hover: none)").matches) qi.focus({ preventScroll: true });
       }
-    } else { $("sdGpNew").innerHTML = gpNewRow(); $("sdGpList").innerHTML = gpList() + gpChats(); if ($("sdGlCur")) $("sdGlCur").innerHTML = gpLinks(); $("sdGpN").textContent = n + (n === 1 ? ' app serves' : ' apps serve') + ' this goal. Tick the apps that serve it.'; }
+    } else { $("sdGpList").innerHTML = gpList() + gpChats(); if ($("sdGlCur")) $("sdGlCur").innerHTML = gpLinks(); $("sdGpN").textContent = n + (n === 1 ? ' app serves' : ' apps serve') + ' this goal. Tick the apps that serve it.'; }
   }
 
   /* ---------------- input ---------------- */
@@ -704,12 +721,7 @@
         toast(was ? BY[lk].name + " is no longer the lead for " + lg0.name : BY[lk].name + " now leads " + lg0.name + (prev ? " (was " + prev + ")" : ""), false); }
       else if (a === "gsback") { if (INFO && BY[INFO]) openInfo(INFO); }
       else if (a === "gpick") gpOpen(el.getAttribute("data-goal"));
-      else if (a === "gpnew") gpCreate();
-      else if (a === "appnew") {
-        if (!H.appAdd) return; var an = prompt("New app: what is it called?", ""); if (!an || !an.trim()) return;
-        var ad = gpExact(an); if (ad) { toast(ad.name + " already exists", false); return; }
-        var aid = H.appAdd(an, null); pull(); render(); toast(aid ? an.trim() + " created. Tap it to give it a goal" : "Couldn\u2019t create it", false);
-      }
+      else if (a === "appnew") openNewApp(el.getAttribute("data-goal"));
       else if (a === "gldel") { if (!GP || !H.goalLinkDel) return; H.goalLinkDel(GP.gid, el.getAttribute("data-lid")); pull(); render(); gpRender(false); toast("Link removed", false); }
       else if (a === "gpchat") { if (!GP || !H.chats) return; var ch = H.chats().filter(function (c) { return c.id === el.getAttribute("data-cid"); })[0]; if (!ch) return;
         var cg = goalOf(GP.gid), hv = (cg && cg.links || []).filter(function (l) { return l.url === ch.url || l.cid === ch.id; })[0];
@@ -748,7 +760,6 @@
       else if (a === "rvagain") { RV.ids = rvQueue(); RV.i = 0; RV.log = []; rvRender(); }
       else if (a === "rvclose") rvClose();
       else if (a === "undo") undo();
-      else if (a === "close") close();
       else if (a === "core" && H.openCore) H.openCore();
     });
     root.addEventListener("keydown", function (e) {
@@ -780,7 +791,14 @@
       var host = t.parentNode; t.remove(); if (host && host.classList) host.classList.add("sd-noimg");
     }, true);
     $("sdUndo").addEventListener("click", undo);
-    root.addEventListener("submit", function (e) { var fm = e.target.getAttribute("data-sdform"); if (fm === "glink") { e.preventDefault(); gpLinkAdd(); return; } if (fm !== "idea") return; e.preventDefault(); ideaAdd(); });
+    root.addEventListener("submit", function (e) {
+      var fm = e.target.getAttribute("data-sdform");
+      if (!fm) return;
+      e.preventDefault();
+      if (fm === "glink") gpLinkAdd();
+      else if (fm === "idea") ideaAdd();
+      else if (fm === "appnew") saveNewApp(e.target);
+    });
     root.addEventListener("toggle", function (e) { if (e.target.classList && e.target.classList.contains("sd-db-idea")) { DB_IDEA_OPEN = e.target.open; if (e.target.open) { var n = $("sdIdeaN"); if (n) n.focus(); } } }, true);
     rvWire();
     $("sdAuto").addEventListener("click", function () {
@@ -799,7 +817,7 @@
       if (on) { var qi = $("sdQ"); if (qi) qi.focus({ preventScroll: true }); }
     });
     $("sdHudGo").addEventListener("click", function () { $("sdSphere").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" }); });
-    if ("IntersectionObserver" in window) io = new IntersectionObserver(function (es) { $("sdHud").hidden = es[0].isIntersecting; }, { root: root, threshold: 0.15 });
+    if ("IntersectionObserver" in window) io = new IntersectionObserver(function (es) { $("sdHud").hidden = !isOpen || es[0].isIntersecting; }, { threshold: 0.15 });
 
     root.addEventListener("pointerdown", function (e) {
       if (e.button > 0) return;
@@ -843,20 +861,18 @@
   }
 
   /* ---------------- open / close ---------------- */
-  var pendingRefresh = false, lastFocus = null;
-  function open(host) {
-    H = host; if (!root) build();
-    hist = []; lastFocus = document.activeElement;
-    root.hidden = false; isOpen = true; document.documentElement.classList.add("sd-lock");
-    root.scrollTop = 0; render(); lastFull = ST.five.length === H.max; $("sdSphere").classList.toggle("sd-lit", lastFull);
+  var pendingRefresh = false;
+  function open(host, container) {
+    H = host; if (!root) build(container);
+    hist = [];
+    root.hidden = false; isOpen = true;
+    render(); lastFull = ST.five.length === H.max; $("sdSphere").classList.toggle("sd-lit", lastFull);
     if (io) io.observe($("sdSphere"));
-    var first = root.querySelector(".sd-done"); if (first) first.focus({ preventScroll: true });
   }
   function close() {
     if (!isOpen) return;
-    closeInfo(); if (RV) { RV = null; $("sdRv").hidden = true; } isOpen = false; root.hidden = true; $("sdToast").hidden = true; document.documentElement.classList.remove("sd-lock");
+    closeInfo(); if (RV) { RV = null; $("sdRv").hidden = true; } isOpen = false; root.hidden = true; $("sdToast").hidden = true; $("sdHud").hidden = true;
     if (io) io.disconnect();
-    if (lastFocus && lastFocus.focus) try { lastFocus.focus({ preventScroll: true }); } catch (e) {}
   }
   function refresh() { if (!isOpen) return; if (drag && drag.on) { pendingRefresh = true; return; } render(); checkIgnite(); if (RV && !rvDrag) rvRender(); }
 

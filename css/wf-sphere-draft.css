@@ -1,17 +1,17 @@
 /* ============================================================
-   Weekly Focus v107 — Sphere Draft (the game-style "Add to sphere")
-   Full-screen layer over the board. Left: the orrery (The Five on the
+   Weekly Focus — Sphere
+   Left: the orrery (The Five on the
    inner rim, extras on the outer orbit). Right: every active item still
    on the table, grouped by category. Uses the app's own tokens.
    ============================================================ */
-.sd { position: fixed; inset: 0; z-index: 250; background: var(--canvas); color: var(--ink); overflow-y: auto; overscroll-behavior: contain; font-family: var(--font); -webkit-font-smoothing: antialiased;
+.sd { background: var(--canvas); color: var(--ink); font-family: var(--font); -webkit-font-smoothing: antialiased;
   --sd-gold: oklch(0.80 0.14 80); --sd-gold-ink: oklch(0.50 0.11 70); --sd-over: var(--pri-h); --sd-warn: oklch(0.60 0.17 45);
   --sd-shadow: 0 1px 2px rgba(20,20,40,.05), 0 8px 24px rgba(20,20,40,.07); }
 .sd[hidden] { display: none; }
 .sd *, .sd *::before, .sd *::after { box-sizing: border-box; }
 .sd button, .sd select, .sd input { font-family: inherit; color: inherit; }
 .sd :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.sd-wrap { max-width: 1200px; margin: 0 auto; padding-top: calc(env(safe-area-inset-top, 0px) + 22px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sd-wrap { padding-top: 22px; padding-bottom: 36px; }
 
 .sd-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 24px; margin-bottom: 22px; }
 .sd-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--brand); }
@@ -20,10 +20,9 @@
 .sd-right { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .sd-tally { font-size: 12.5px; font-weight: 700; padding: 6px 11px; border-radius: 999px; background: var(--card); border: 1px solid var(--hair); font-variant-numeric: tabular-nums; }
 .sd-tally b { color: var(--brand); }
-.sd-done { border: 1px solid var(--brand); background: var(--brand); color: #fff; border-radius: 10px; padding: 8px 16px; font-size: 13px; font-weight: 800; cursor: pointer; }
 
 .sd-stage { display: grid; grid-template-columns: minmax(300px, 430px) minmax(0, 1fr); gap: 28px; align-items: start; }
-.sd-orrery { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 14px; }
+.sd-orrery { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 80px; }
 @media (max-width: 860px) {
   .sd-stage { grid-template-columns: minmax(0, 1fr); gap: 18px; }
   .sd-stage > .sd-orrery { display: contents; }
@@ -108,7 +107,7 @@
 .sd-howto kbd { font-family: inherit; font-size: 11px; font-weight: 700; border: 1px solid var(--hair); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: var(--card); }
 
 /* ---- phone bar, drag ghost, flyer, toast ---- */
-.sd-hud { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 10px; padding-top: calc(env(safe-area-inset-top, 0px) + 8px); padding-bottom: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: color-mix(in oklch, var(--canvas) 92%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--hair); font-size: 12.5px; font-weight: 700; margin-bottom: -1px; }
+.sd-hud { position: fixed; inset: auto 0 calc(52px + env(safe-area-inset-bottom, 0px)); z-index: 115; display: flex; align-items: center; padding: 8px 16px; background: color-mix(in oklch, var(--canvas) 92%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-top: 1px solid var(--hair); font-size: 12.5px; font-weight: 700; }
 .sd-hud[hidden] { display: none; }
 .sd-hud-go { display: flex; align-items: center; gap: 10px; border: none; background: none; padding: 0; cursor: pointer; flex: 1 1 auto; min-width: 0; text-align: left; }
 .sd-hud .sd-dots { display: flex; gap: 4px; }
@@ -118,10 +117,11 @@
 @media (min-width: 861px) { .sd-hud { display: none !important; } }
 .sd-ghost { position: fixed; left: 0; top: 0; z-index: 400; pointer-events: none; padding: 8px 12px; border-radius: 999px; background: var(--card); border: 2px solid var(--kc, var(--brand)); color: var(--ink); font-weight: 800; font-size: 13px; box-shadow: 0 10px 30px rgba(20,20,40,.25); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .sd-flyer { position: fixed; left: 0; top: 0; z-index: 390; pointer-events: none; border-radius: 50%; display: grid; place-items: center; background: var(--card); border: 2.5px solid var(--kc, var(--brand)); color: var(--kc, var(--brand)); font-weight: 800; box-shadow: 0 10px 30px rgba(20,20,40,.25); }
-.sd-toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 410; display: flex; align-items: center; gap: 12px; background: var(--ink); color: #fff; padding: 10px 10px 10px 16px; border-radius: 12px; font-size: 13.5px; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,.25); max-width: calc(100% - 32px); }
+.sd-toast { position: fixed; left: 50%; bottom: calc(58px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 410; display: flex; align-items: center; gap: 12px; background: var(--ink); color: #fff; padding: 10px 10px 10px 16px; border-radius: 12px; font-size: 13.5px; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,.25); max-width: calc(100% - 32px); }
 .sd-toast[hidden] { display: none; }
+@media (max-width: 860px) { .sd:has(.sd-hud:not([hidden])) .sd-toast { bottom: calc(106px + env(safe-area-inset-bottom, 0px)); } }
 .sd-toast button { border: none; background: rgba(255,255,255,.18); color: #fff; border-radius: 8px; padding: 6px 10px; font-weight: 800; cursor: pointer; }
-html.sd-lock, html.sd-lock body { overflow: hidden; }
+html:has(#sdInfo:not([hidden]), #sdRv:not([hidden])) { overflow: hidden; }
 
 /* ---- v108 · the core (Akatsuki): a red moon at the centre, only while it has open tasks ---- */
 .sd { --core: oklch(0.52 0.19 25); --core-glow: oklch(0.62 0.22 28); --core-deep: oklch(0.30 0.12 22); }
@@ -385,8 +385,6 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 .sd-gchip.sd-gadd { border-style: dashed; color: var(--mid); --cc: var(--faint); }
 .sd-gnew { align-self: flex-start; border: 1.5px dashed var(--brand-line, var(--hair)); background: transparent; color: var(--brand); border-radius: 12px; padding: 10px 16px; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
 .sd-gnew:hover { background: var(--brand-soft); }
-.sd-gp-new { width: 100%; min-height: 44px; margin: 8px 0 4px; text-align: left; overflow-wrap: anywhere; }
-.sd-gp-hint { margin: 6px 2px 2px; font-size: 13px; color: var(--mid); }
 
 /* v140 · apps already in the sphere, shown in their goal sections */
 .sd-bub.sd-insph { position: relative; }
@@ -396,7 +394,11 @@ html.sd-lock, html.sd-lock body { overflow: hidden; }
 
 /* v141 · goal: drop target + Add apps picker */
 .sd-pur.sd-over { outline: 3px dashed var(--cc); outline-offset: 2px; }
-.sd-gpick { border-style: solid; }
+.sd-goal-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.sd-goal-actions .sd-btn { min-height: 40px; }
+.sd-new-app { display: grid; gap: 8px; }
+.sd-new-app label { font-size: 13px; font-weight: 700; }
+.sd-app-error { margin: 0; color: var(--pri-h); font-size: 13px; }
 .sd-gp-q { font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid var(--hair); border-radius: 12px; background: var(--canvas); color: var(--ink); width: 100%; box-sizing: border-box; }
 .sd-gp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: min(46vh, 420px); overflow-y: auto; overscroll-behavior: contain; }
 .sd-gp-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--hair); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; min-height: 44px; }

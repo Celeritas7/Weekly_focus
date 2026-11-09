@@ -1223,7 +1223,7 @@ html, body { overflow-x: hidden; max-width: 100%; }
 }
 
 /* v48b: beat the later v45 rule (nav.htabbar .htabbar-in) and let card rows shrink instead of clipping */
-nav.htabbar .htabbar-in { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-flow: row; max-width: 720px; }
+nav.htabbar .htabbar-in { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); max-width: 720px; }
 @media (max-width: 620px) {
   .item, .item-row, .iwrap-name { min-width: 0; max-width: 100%; box-sizing: border-box; }
   .item-row { gap: 7px; padding: 11px 10px; flex-wrap: nowrap; }
