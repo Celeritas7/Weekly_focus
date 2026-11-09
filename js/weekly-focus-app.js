@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v151", BUILD_N = 151;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v152", BUILD_N = 152;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -129,12 +129,12 @@
   function loadInvLocal() { return false; }
 
   /* ---------------- CRUD ---------------- */
-  function addItem(kind, name, group) {
+  function addItem(kind, name, group, goalId) {
     name = (name || "").trim(); if (!name) return null;
     group = (group || "").trim() || (kind === "app" ? "Other" : "General");
     var id = kind + ":" + uid();
     arrFor(kind).push({ id: id, name: name, group: group }); rebuildIndex();
-    patch(id, { active: true });               // new items land in This Week
+    patch(id, goalId ? { active: true, goals: [goalId] } : { active: true });
     saveInv(); renderAll(); return id;
   }
   function renameItem(id, name) { var it = itemById(id); if (!it) return; it.name = (name || "").trim() || it.name; CORE_MEMO = null; saveInv(); }
@@ -1754,7 +1754,7 @@
      TARGET PICKER
      ============================================================ */
   function openPicker() {
-    if (window.WFSphereDraft) { window.WFSphereDraft.open(SD_HOST); return; }   // v107: the Sphere Draft replaces this list when its script is loaded
+    if (window.WFSphereDraft) { showScreen("scrSphere"); return; }
     var body = $("pickBody"); body.innerHTML = "";
     var rows = [];
     activeItems("app").forEach(function (a) { if (isSpecialItem(a) || isCore(a.id)) return; rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
@@ -1772,7 +1772,7 @@
     });
     $("pickModal").classList.add("open");
   }
-  function closePicker() { $("pickModal").classList.remove("open"); if (window.WFSphereDraft) window.WFSphereDraft.close(); }
+  function closePicker() { $("pickModal").classList.remove("open"); }
   function catColor(cat) { return ({ "General Purpose": "var(--cat-gp)", "Mechanical": "var(--cat-mech)", "Language Study": "var(--cat-lang)" })[cat] || "var(--cat-other)"; }
 
   /* ---- v107 · Sphere Draft host (js/wf-sphere-draft.js draws the game; these are the only moves it can make).
@@ -1830,11 +1830,28 @@
     },
     /* v139: goals for the draft (grouping, tagging) and the debate message */
     goalList: function () { return goalList().map(function (g) { return { id: g.id, name: g.name, hue: goalHue(g), links: goalLinks(g.id), lead: (meta.fgLead && meta.fgLead[g.id]) || "", apps: goalMembers(g.id).filter(function (k) { var it = itemById(k); return it && isActive(it); }).length }; }); },
-    /* v151: make a brand-new app straight from the draft. It is a normal active app; if a goal is given it serves that goal at once */
     appAdd: function (name, gid) {
-      var id = addItem("app", name, ""); if (!id) return null;
-      if (gid && goalById(gid)) goalSet(id, gid, true);
-      renderAll(); return id;
+      if (gid && !goalById(gid)) return { error: "This goal is no longer available." };
+      var normalizedName = name.toLowerCase();
+      if (gid && normalizedName === "akatsuki") return { error: "Akatsuki is the Sphere’s core app. You can add it from the Week board." };
+      var matches = state.apps.filter(function (app) { return app.name.trim().toLowerCase() === normalizedName; });
+      if (!matches.length) {
+        addItem("app", name, "", gid);
+        return { name: name, created: true };
+      }
+      if (!gid) return { error: "An app with this name already exists." };
+      if (matches.length > 1) return { error: "Several apps have this name. Use Link existing to choose one." };
+      var app = matches[0];
+      if (isSpecialItem(app) || isCore(app.id) || fgArchived(app.id)) {
+        return { error: "This app already exists outside the Sphere list." };
+      }
+      var goalIds = goalsOf(app.id).map(function (goal) { return goal.id; });
+      if (!isActive(app) || goalIds.indexOf(gid) < 0) {
+        if (goalIds.indexOf(gid) < 0) goalIds.push(gid);
+        patch(app.id, { active: true, goals: goalIds });
+        renderAll();
+      }
+      return { name: app.name, created: false };
     },
     goalAdd: function (name) { var id = goalAdd(name); renderAll(); return id; },
     goalRename: function (id, name) { goalRename(id, name); renderAll(); },
@@ -3665,12 +3682,11 @@
      space; these screens are mode-filtered views over the same data.
      Storage map (NO new tables):
        mode            localStorage "wf2_mode"  (per device)
-       last tab        localStorage "wf2_tab"   (per device)
        scheduled task  entries["sched:<YYYY-MM-DD>:<itemId>"] = { done }
        routine defs    meta.routines = [{ id, name, days[], mode, links[] }]
        routine state   entries["routine:<id>"] = { streak, doneDate, prev }
      ============================================================ */
-  var MODE_KEY = "wf2_mode", TAB_KEY = "wf2_tab";
+  var MODE_KEY = "wf2_mode";
   function getMode() { try { return localStorage.getItem(MODE_KEY) || "personal"; } catch (e) { return "personal"; } }
   function setMode(m) { try { localStorage.setItem(MODE_KEY, m); } catch (e) {} }
   function modeOf(itemId) { return kindOf(itemId) === "office" ? "office" : "personal"; }
@@ -5549,10 +5565,16 @@
     });
   }
   function showScreen(id) {
-    if (!$(id)) id = "scrToday";
+    var draft = window.WFSphereDraft;
+    if (!$(id) || (id === "scrSphere" && !draft)) id = "scrWeek";
+    if (draft && draft.isOpen() && id !== "scrSphere") draft.close();
     Array.prototype.forEach.call(document.querySelectorAll(".screen"), function (s) { s.classList.toggle("on", s.id === id); });
-    Array.prototype.forEach.call(document.querySelectorAll(".htab"), function (t) { t.classList.toggle("on", t.getAttribute("data-screen") === id); });
-    try { localStorage.setItem(TAB_KEY, id); } catch (e) {}
+    Array.prototype.forEach.call(document.querySelectorAll(".htab"), function (t) {
+      var on = t.getAttribute("data-screen") === id;
+      t.classList.toggle("on", on);
+      if (on) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
+    });
+    if (id === "scrSphere" && !draft.isOpen()) draft.open(SD_HOST, $("scrSphere"));
     window.scrollTo({ top: 0 });
   }
 
@@ -5560,11 +5582,11 @@
     if (!$("scrToday")) return;
 
     /* bottom tabs */
-    Array.prototype.forEach.call(document.querySelectorAll(".htab"), function (t) {
-      t.addEventListener("click", function () { showScreen(t.getAttribute("data-screen")); });
+    document.querySelector(".htabbar").addEventListener("click", function (e) {
+      var tab = e.target.closest(".htab[data-screen]");
+      if (tab) showScreen(tab.getAttribute("data-screen"));
     });
-    var t0 = "scrToday"; try { t0 = localStorage.getItem(TAB_KEY) || t0; } catch (e) {}
-    showScreen(t0);
+    showScreen("scrSphere");
 
     /* mode segmented pill (click + roving-tabindex arrows) */
     var seg = $("modeSeg");

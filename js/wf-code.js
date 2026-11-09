@@ -5,7 +5,7 @@
    Same name + same folder → Replace (old copy kept in History, last 5) / Keep both / Skip. Deletes are tombstones. */
 (function () {
   "use strict";
-  var BOARD = "wf-code", DB = "wf-code", STORE = "snips", TAB_KEY = "wf2_tab";
+  var BOARD = "wf-code", DB = "wf-code", STORE = "snips";
   var CLOUD_MAX = 8 * 1024 * 1024, HL_LINES = 3000, HL_BYTES = 400 * 1024, CHUNK = 1500, MAX_VERS = 5, MAX_FILE = 20 * 1024 * 1024;
   var LANGS = ["Text", "JavaScript", "TypeScript", "Python", "SQL", "HTML", "CSS", "JSON", "Shell", "Java", "C#"];
   var EXT = { JavaScript: "js", TypeScript: "ts", Python: "py", SQL: "sql", HTML: "html", CSS: "css", JSON: "json", Shell: "sh", Java: "java", "C#": "cs", Text: "txt" };
@@ -260,13 +260,8 @@
     anchor.insertAdjacentElement("afterend", sec);
     var tab = document.createElement("button"); tab.className = "htab"; tab.type = "button"; tab.setAttribute("data-screen", "scrCode"); tab.innerHTML = ICON + "Code";
     var ct = bar.querySelector('[data-screen="scrChats"]'); if (ct) ct.insertAdjacentElement("afterend", tab); else bar.appendChild(tab);
-    tab.addEventListener("click", show);
+    tab.addEventListener("click", pull);
     wire(); return true;
-  }
-  function show() {
-    Array.prototype.forEach.call(document.querySelectorAll(".screen"), function (s) { s.classList.toggle("on", s.id === "scrCode"); });
-    Array.prototype.forEach.call(document.querySelectorAll(".htab"), function (t) { t.classList.toggle("on", t.getAttribute("data-screen") === "scrCode"); });
-    lsSet(TAB_KEY, "scrCode"); window.scrollTo({ top: 0 }); pull();
   }
   var toastT = null;
   function toast(t) { var el = $("wfcToast"); if (!el) return; el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(function () { el.classList.remove("on"); }, 2600); }
@@ -594,7 +589,6 @@
     try { sel = Object.assign(sel, JSON.parse(lsGet("wfc_sel") || "{}")); openF = JSON.parse(lsGet("wfc_openf") || "{}") || {}; } catch (e) {}
     if (!folderOk(sel.folder)) sel.folder = ""; if (!cur() || mobile()) sel.file = "";
     paintTree(); paintViewer();
-    if (lsGet(TAB_KEY) === "scrCode") show();
     var n = 0, iv = setInterval(function () { if (sb() || ++n > 100) { clearInterval(iv); if (sb()) { pull(); sb().auth.onAuthStateChange(function (ev) { if (ev === "SIGNED_IN" || ev === "TOKEN_REFRESHED") pull(); }); } } }, 150);
     window.__wfCode = { zipBlob: zipBlob, files: function () { return all("file").length; }, folders: function () { return all("folder").length; }, pull: pull,
       add: function (name, text, dirs) { return importList([{ name: name, size: text.length, read: function () { return Promise.resolve(text); }, dirs: dirs || [] }], sel.folder); } };
