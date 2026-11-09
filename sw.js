@@ -3,7 +3,7 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v152";
+const CACHE = "weekly-focus-v153";
 /* v144: app logos (Akatsuki's logo store, sibling apps' icons) live in their own cache, kept across builds, so the
    sphere shows them offline. Served from the cache at once and refreshed in the background (a changed logo shows on
    the next open). Capped at LOGO_MAX entries. */
@@ -13,8 +13,8 @@ const LOGOS = "wf-logos-v1", LOGO_MAX = 300;
 const SUPA = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
 const ASSETS = [
   "./", "./index.html",
-  "./js/config.js", "./js/akatsuki-client.js", "./js/akatsuki-banner.js", "./js/wf-purchase-adapter.js", "./js/weekly-focus-app.js", "./js/info-feeds.js", "./js/wf-cc-bridge-v2.js",
-  "./css/weekly-focus.css", "./css/home-screens.css", "./css/wf-login.css", "./js/wf-login.js", "./js/wf-code-hl.js", "./js/wf-code.js", "./js/wf-logos.js", "./js/wf-sphere-draft.js", "./js/wf-zip.js", "./css/wf-sphere-draft.css",
+  "./js/config.js", "./js/akatsuki-client.js", "./js/akatsuki-banner.js", "./js/wf-purchase-adapter.js", "./js/weekly-focus-app.js?v=153", "./js/info-feeds.js", "./js/wf-cc-bridge-v2.js",
+  "./css/weekly-focus.css", "./css/home-screens.css?v=153", "./css/wf-login.css", "./js/wf-login.js", "./js/wf-code-hl.js", "./js/wf-code.js", "./js/wf-logos.js", "./js/wf-sphere-draft.js", "./js/wf-zip.js", "./css/wf-sphere-draft.css",
   "./manifest.webmanifest",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png"
 ];
