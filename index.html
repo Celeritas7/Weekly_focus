@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/weekly-focus.css">
-<link rel="stylesheet" href="css/home-screens.css">
+<link rel="stylesheet" href="css/home-screens.css?v=153">
 <link rel="stylesheet" href="css/wf-login.css">
 <link rel="stylesheet" href="css/wf-sphere-draft.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -56,9 +56,6 @@
     <span>Your week lives in the cloud. <b>Sign in</b> to load it on this device.</span>
     <button class="tbtn primary" id="bannerSignIn">Sign in</button>
   </div>
-
-  <!-- ===================== SCREEN: SPHERE ===================== -->
-  <section class="screen" id="scrSphere" data-screen-label="Sphere"></section>
 
   <!-- ===================== SCREEN: TODAY ===================== -->
   <section class="screen" id="scrToday" data-screen-label="Today">
@@ -193,8 +190,16 @@
     </div>
   </section>
 
-  <!-- ===================== SCREEN: WEEK (curation board) ===================== -->
-  <section class="screen" id="scrWeek" data-screen-label="Week">
+  <!-- ===================== SCREEN: SPHERE ===================== -->
+  <section class="screen" id="scrSphere" data-screen-label="Sphere">
+    <div class="sphere-view-switch" id="sphereViewSwitch" role="group" aria-label="Weekly focus view">
+      <button type="button" data-sphere-view="sphereVisual" aria-controls="sphereVisual" aria-pressed="true">Sphere view</button>
+      <button type="button" data-sphere-view="scrWeek" aria-controls="scrWeek" aria-pressed="false">Week board</button>
+    </div>
+    <div id="sphereVisual"></div>
+
+  <!-- ===================== WEEK BOARD ===================== -->
+  <section id="scrWeek" aria-label="Week board" hidden>
 
     <div class="weekbar">
       <label class="weekfield">Week of
@@ -306,6 +311,7 @@
     </section>
 
   </section><!-- /scrWeek -->
+  </section><!-- /scrSphere -->
 
 
 
@@ -338,11 +344,6 @@
     <button class="htab" data-screen="scrRoutines">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"></path><path d="M3 11V9a2 2 0 0 1 2-2h16"></path><path d="M7 21l-4-4 4-4"></path><path d="M21 13v2a2 2 0 0 1-2 2H3"></path></svg>
       Routines
-    </button>
-    
-    <button class="htab" data-screen="scrWeek">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.5" y="4" width="7" height="16" rx="1.8"></rect><rect x="13.5" y="4" width="7" height="10" rx="1.8"></rect></svg>
-      Week
     </button>
     <button class="htab" data-screen="scrChats">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-2.9-.4-4.1-1L3 20l1.1-5A8.5 8.5 0 1 1 21 11.5z"></path></svg>
@@ -665,7 +666,7 @@
 <script src="js/akatsuki-banner.js"></script>
 <script src="js/wf-purchase-adapter.js"></script>
 <script src="https://celeritas7.github.io/Akatsuki/js/akatsuki-broadcast.js"></script>
-<script src="js/weekly-focus-app.js"></script>
+<script src="js/weekly-focus-app.js?v=153"></script>
 <script src="js/wf-logos.js"></script>
 <script src="js/wf-sphere-draft.js"></script>
 <script src="js/wf-cc-bridge-v2.js"></script>

@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v152", BUILD_N = 152;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v153", BUILD_N = 153;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -442,7 +442,7 @@
       host.appendChild(fgHead(g, items.length, sN));
       if (fgIsColl(g.id, sN)) return;
       if (g.note) { var nt = document.createElement("div"); nt.className = "fg-note"; nt.textContent = g.note; host.appendChild(nt); }
-      if (!items.length) { var em = document.createElement("div"); em.className = "fg-empty"; em.textContent = "No apps on the Week tab in this group."; host.appendChild(em); }
+      if (!items.length) { var em = document.createElement("div"); em.className = "fg-empty"; em.textContent = "No apps on the Week board in this group."; host.appendChild(em); }
       items.forEach(function (it) { host.appendChild(itemCard(it.id)); });
     });
     var rest = sphFirst(by[""] || []);
@@ -1754,7 +1754,11 @@
      TARGET PICKER
      ============================================================ */
   function openPicker() {
-    if (window.WFSphereDraft) { showScreen("scrSphere"); return; }
+    if (window.WFSphereDraft) {
+      showScreen("scrSphere", "sphereVisual");
+      $("sphereViewSwitch").querySelector('[data-sphere-view="sphereVisual"]').focus({ preventScroll: true });
+      return;
+    }
     var body = $("pickBody"); body.innerHTML = "";
     var rows = [];
     activeItems("app").forEach(function (a) { if (isSpecialItem(a) || isCore(a.id)) return; rows.push({ key: a.id, name: a.name, crumb: a.group, tag: "App", color: catColor(a.group) }); });
@@ -4085,13 +4089,13 @@
     var ranked = rankedApps();
     if (!ranked.length) {
       if ($("buildCount")) $("buildCount").textContent = "";
-      host.innerHTML = '<div class="bb-none">No apps in This Week yet \u2014 star up to five on the Week tab and they show up here, ranked.</div>';
+      host.innerHTML = '<div class="bb-none">No apps in This Week yet \u2014 star up to five on the Week board inside Sphere and they show up here, ranked.</div>';
       renderStudyBand(); return;
     }
     if ($("buildCount")) $("buildCount").textContent = "#1 of " + ranked.length;
     var fiveA = fiveApps(), m0 = fiveA[0], cans = fiveA.slice(1, 5), will = ranked[fiveA.length] || null;   // v111: empty slots stay empty
     if (will && getEntry(will).sph !== true) will = null;   // v113: "next in line" is an orbit app, never one outside the sphere
-    if (!m0) { host.innerHTML = '<div class="bb-none">No targets this week \u2014 open the Week tab and add apps to the sphere.</div>'; renderStudyBand(); return; }
+    if (!m0) { host.innerHTML = '<div class="bb-none">No targets this week \u2014 open Sphere and add your targets there.</div>'; renderStudyBand(); return; }
     var pr = subProgress(m0), nx = nextSub(m0), done0 = targetDone(m0);
     var h = '<div class="btile bhero' + (done0 ? " done" : "") + '" role="button" tabindex="0" style="--h:' + bHue(m0) + ';--fill:' + bFill(m0) + '%" data-hact="bopen" data-hkey="' + esc(m0) + '">' +
       '<span class="bt-rk big">1</span>' +
@@ -4281,7 +4285,7 @@
         (added ? '<span class="ptag" style="background:var(--on)">Added</span>' : "") +
         "</button>";
     });
-    body.innerHTML = rows || '<div class="modal-empty">Nothing in this pool yet.<br>Add items on the Week tab first.</div>';
+    body.innerHTML = rows || '<div class="modal-empty">Nothing in this pool yet.<br>Add items on the Week board inside Sphere first.</div>';
   }
 
   /* ---------------- SCREEN: ROUTINES ---------------- */
@@ -5564,17 +5568,29 @@
       }
     });
   }
-  function showScreen(id) {
+  var sphereViewId = "sphereVisual";
+  function showScreen(id, view) {
     var draft = window.WFSphereDraft;
-    if (!$(id) || (id === "scrSphere" && !draft)) id = "scrWeek";
-    if (draft && draft.isOpen() && id !== "scrSphere") draft.close();
+    if (!$(id)) id = "scrSphere";
+    if (view) sphereViewId = view;
+    var visual = !!draft && sphereViewId === "sphereVisual";
+    if (draft && draft.isOpen() && (id !== "scrSphere" || !visual)) draft.close();
     Array.prototype.forEach.call(document.querySelectorAll(".screen"), function (s) { s.classList.toggle("on", s.id === id); });
     Array.prototype.forEach.call(document.querySelectorAll(".htab"), function (t) {
       var on = t.getAttribute("data-screen") === id;
       t.classList.toggle("on", on);
       if (on) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
     });
-    if (id === "scrSphere" && !draft.isOpen()) draft.open(SD_HOST, $("scrSphere"));
+    if (id === "scrSphere") {
+      $("sphereVisual").hidden = !visual;
+      $("scrWeek").hidden = visual;
+      $("sphereViewSwitch").querySelectorAll("button").forEach(function (b) {
+        var isVisual = b.getAttribute("data-sphere-view") === "sphereVisual";
+        b.disabled = isVisual && !draft;
+        b.setAttribute("aria-pressed", String(isVisual === visual));
+      });
+      if (visual && !draft.isOpen()) draft.open(SD_HOST, $("sphereVisual"));
+    }
     window.scrollTo({ top: 0 });
   }
 
@@ -5585,6 +5601,10 @@
     document.querySelector(".htabbar").addEventListener("click", function (e) {
       var tab = e.target.closest(".htab[data-screen]");
       if (tab) showScreen(tab.getAttribute("data-screen"));
+    });
+    $("sphereViewSwitch").addEventListener("click", function (e) {
+      var button = e.target.closest("[data-sphere-view]");
+      if (button) showScreen("scrSphere", button.getAttribute("data-sphere-view"));
     });
     showScreen("scrSphere");
 
