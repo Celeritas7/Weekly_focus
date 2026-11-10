@@ -132,17 +132,19 @@ html:has(#sdInfo:not([hidden]), #sdRv:not([hidden])) { overflow: hidden; }
 /* ---- v108 · the core (Akatsuki): a red moon at the centre, only while it has open tasks ---- */
 .sd { --core: oklch(0.52 0.19 25); --core-glow: oklch(0.62 0.22 28); --core-deep: oklch(0.30 0.12 22); }
 .sd-sphere.sd-has-core .sd-core { display: none; }
-.sd .sd-coremoon { position: absolute; left: 50%; top: 50%; width: 36%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; border: none; cursor: pointer; z-index: 4;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 7%; text-align: center; color: #fff;
+/* Keep the button's intrinsic content size from stretching its circular hit area. */
+.sd .sd-coremoon { position: absolute; left: 50%; top: 50%; width: 36%; height: 36%; min-width: 0; min-height: 0; max-width: 36%; max-height: 36%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; border: none; cursor: pointer; z-index: 4;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 3%; overflow: hidden; text-align: center; color: #fff;
   background: radial-gradient(circle at 38% 32%, var(--core-glow), var(--core) 55%, var(--core-deep));
   box-shadow: 0 0 0 4px color-mix(in oklch, var(--core) 22%, transparent), 0 0 34px color-mix(in oklch, var(--core-glow) 55%, transparent);
   animation: sd-moon 3.2s ease-in-out infinite; }
 .sd-coremoon[hidden] { display: none; }
+.sd-coremoon > span { flex: none; min-width: 0; max-width: 100%; }
 .sd-coremoon:hover { box-shadow: 0 0 0 6px color-mix(in oklch, var(--core) 30%, transparent), 0 0 44px color-mix(in oklch, var(--core-glow) 65%, transparent); }
 .sd-coremoon .sd-cm-k { font-size: 9.5px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; opacity: .8; }
-.sd-coremoon .sd-cm-n { font-size: clamp(14px, 3.4vw, 18px); font-weight: 800; letter-spacing: -.01em; line-height: 1.1; }
+.sd-coremoon .sd-cm-n { font-size: clamp(14px, 3.4vw, 18px); font-weight: 800; letter-spacing: -.01em; line-height: 1.1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sd-coremoon .sd-cm-o { font-size: 11.5px; font-weight: 800; background: rgba(255,255,255,.18); border-radius: 999px; padding: 2px 8px; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.sd-coremoon .sd-cm-x { font-size: 10.5px; line-height: 1.25; opacity: .85; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; }
+.sd-coremoon .sd-cm-x { width: 100%; font-size: 10.5px; line-height: 1.25; opacity: .85; display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-top: 2px; }
 @keyframes sd-moon { 0%, 100% { box-shadow: 0 0 0 4px color-mix(in oklch, var(--core) 22%, transparent), 0 0 30px color-mix(in oklch, var(--core-glow) 45%, transparent); } 50% { box-shadow: 0 0 0 7px color-mix(in oklch, var(--core) 16%, transparent), 0 0 48px color-mix(in oklch, var(--core-glow) 65%, transparent); } }
 
 /* board: the core bar above the Five */
@@ -175,8 +177,8 @@ html:has(#sdInfo:not([hidden]), #sdRv:not([hidden])) { overflow: hidden; }
 .sd-moon .sd-face-emo { font-size: clamp(14px, 3vw, 18px); }
 .sd-moon .sd-face-name { font-size: clamp(8px, 1.9vw, 10px); line-height: 1; max-width: 92%; white-space: nowrap; overflow: hidden; display: block; }
 .sd-noimg.sd-moon > .sd-alt { display: block !important; }
-.sd .sd-coremoon .sd-cm-logo { width: 34%; aspect-ratio: 1; border-radius: 24%; background: #fff; display: grid; place-items: center; padding: 6%; box-shadow: 0 2px 8px rgba(0,0,0,.25); margin-bottom: 2px; }
-.sd .sd-coremoon .sd-cm-logo img { width: 100%; height: 100%; object-fit: contain; }
+.sd .sd-coremoon .sd-cm-logo { width: clamp(20px, 7vw, 30px); height: clamp(20px, 7vw, 30px); min-height: 0; aspect-ratio: 1; border-radius: 24%; background: #fff; display: grid; place-items: center; padding: 3px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.25); margin-bottom: 2px; }
+.sd .sd-coremoon .sd-cm-logo img { display: block; min-width: 0; min-height: 0; width: 100%; height: 100%; object-fit: contain; }
 .sd .sd-coremoon .sd-cm-emo { font-size: 20px; line-height: 1; }
 .sd-hud .sd-dots i img { width: 80%; height: 80%; object-fit: contain; border-radius: 30%; }
 .sd-flyer img { width: 72%; height: 72%; object-fit: contain; border-radius: 22%; }
@@ -333,9 +335,6 @@ html:has(#sdInfo:not([hidden]), #sdRv:not([hidden])) { overflow: hidden; }
   .sd-moon { --sd-ring-radius: 46%; width: 11%; }
   .sd-slot .sd-rk { inset: -1px auto auto -1px; width: 17px; height: 17px; font-size: 10px; }
   .sd-moon .sd-nomb { inset: -1px -1px auto auto; width: 15px; height: 15px; line-height: 15px; font-size: 9px; }
-  .sd .sd-coremoon { height: 36%; padding: 3%; }
-  .sd .sd-coremoon .sd-cm-logo { flex: none; width: clamp(20px, 7vw, 30px); }
-  .sd-coremoon .sd-cm-x { display: block; max-width: 100%; white-space: nowrap; text-overflow: ellipsis; }
 }
 .sd-nombtn { border-style: dashed; border-color: var(--sd-nom); color: var(--sd-nom-ink); }
 .sd-nombtn.sd-on { border-style: solid; background: color-mix(in oklch, var(--sd-nom) 22%, var(--card)); }
