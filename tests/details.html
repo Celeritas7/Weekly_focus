@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Goal picker and writing checks</title>
+<style>body{margin:0;background:#f4f3ef;font:14px/1.5 system-ui;color:#222}header{padding:16px;background:white}h1{font-size:22px;margin:0}main{display:flex;flex-wrap:wrap;gap:20px;padding:16px}article{max-width:100%;overflow:auto}iframe{display:block;border:0;height:850px}output{white-space:pre-wrap;display:block;max-width:760px}button{padding:8px 12px}</style>
+<header><h1>Goal picker and writing checks</h1><p>Real app UI with isolated sample data. No database client, login, broadcaster or service worker is loaded.</p><output id="results">Loading test frames…</output></header>
+<main></main>
+<script>
+(async function () {
+  const raw = await (await fetch('../index.html')).text();
+  const doc = new DOMParser().parseFromString(raw, 'text/html');
+  const allowed = ['js/wf-detail-ui.js', 'js/weekly-focus-app.js', 'js/wf-sphere-draft.js'];
+  doc.querySelectorAll('script').forEach(s => { if (!allowed.some(path => (s.getAttribute('src') || '').startsWith(path))) s.remove(); });
+  const base = doc.createElement('base'); base.href = new URL('../', location.href).href; doc.head.prepend(base);
+  const policy = doc.createElement('meta'); policy.httpEquiv = 'Content-Security-Policy'; policy.content = "connect-src 'none'"; doc.head.prepend(policy);
+  const goals = ['Shopping assistance','Room finder tool','Blog writing','Language study apps','Basic needs','Common study','Third eye level fight','Offline shield','Micro-Progress','Mechanical','Explore','Production manager','Travel plans','Long goal name that should wrap comfortably on a small phone'];
+  const seed = { apps: [{ id:'app:detail-test', name:'Neurology team', group:'General Purpose' }, { id:'app:other-test',name:'Second app',group:'General Purpose' }], study:[],office:[],targets:['app:detail-test'],
+    entries:{'app:detail-test':{active:true,pri:'H',goals:['g4'],subtasks:[{id:'sub-a',t:'Want a special habit maker for the exercise team to come into action.',done:false},{id:'sub-b',t:'Take the shop data suggester chat linked to the app. These inputs are useful. All the models should be controlled by the neurology team.',done:false}],notes:'Existing note — keep this text.'},'app:other-test':{active:true,goals:['g0']}},
+    meta:{goals:goals.map((name,i)=>({id:'g'+i,name,ord:i})),fgLead:{g4:'app:detail-test'}}};
+  const data = doc.createElement('script');data.textContent='window.__WF_SEED = '+JSON.stringify(seed)+';';doc.head.appendChild(data);
+  const checks = doc.createElement('script');checks.src = new URL('details-checks.js?v=156',location.href).href;doc.body.appendChild(checks);
+  const reports = new Map();
+  window.addEventListener('message',event=>{if(!event.data||event.data.type!=='wf-details-test')return;const frame=[...document.querySelectorAll('iframe')].find(f=>f.contentWindow===event.source);if(!frame)return;reports.set(frame.width,event.data);document.getElementById('results').textContent=[...reports].map(([w,r])=>w+'px: '+r.message).join('\n');});
+  for(const width of [360,390,768]){const article=document.createElement('article');article.innerHTML='<h2>'+width+'px</h2>';const frame=document.createElement('iframe');frame.width=width;frame.title='App details at '+width+' pixels';frame.setAttribute('sandbox','allow-scripts allow-same-origin');frame.srcdoc='<!doctype html>'+doc.documentElement.outerHTML;article.appendChild(frame);document.querySelector('main').appendChild(article);}
+})().catch(e=>document.getElementById('results').textContent='ERROR: '+e.message);
+</script></html>

@@ -209,16 +209,11 @@
     out.push('<button type="button" class="sd-gnew" data-sd="gnew">+ New goal</button>' + (H.appAdd ? '<button type="button" class="sd-gnew" data-sd="appnew">+ New app</button>' : ''));
     return out.join("");
   }
-  /* v147: the details window shows only this app's goals and a button to the goals view (all goals, tick, + New goal) */
+  /* v156: keep goal choices in the shared picker, including the lead-app setting. */
   var GSET = false;
   function goalSum(it) {
-    var on = (it.goals || []).map(goalOf).filter(Boolean);
-    return '<div class="sd-igoals"><span class="sd-igoals-k">Goals</span>' +
-      (on.length ? on.map(function (gg) { var L = gg.lead === it.id;
-          return '<button type="button" class="sd-gchip sd-on' + (L ? ' sd-glead' : '') + '" style="--cc:' + goalCol(gg.hue) + '" data-sd="glead" data-goal="' + esc(gg.id) + '" aria-pressed="' + (L ? "true" : "false") + '" title="' + (L ? "Lead app for this goal. Tap to clear" : "Tap to make " + esc(it.name) + " the lead app for this goal") + '">' + (L ? "\u2605 " : "") + esc(gg.name) + (L ? ' \u00b7 lead' : '') + '</button>'; }).join("") : '<span class="sd-none-txt">None yet</span>') +
-      '<button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-label="' + (on.length ? "Change the goals of " : "Add a goal to ") + esc(it.name) + '">' + (on.length ? "\u270e Change" : "+ Add goal") + '</button>' +
-      (H.appDim ? '<button type="button" class="sd-gchip sd-gact' + (it.gdim ? ' sd-isdim' : '') + '" data-sd="gdim" aria-pressed="' + (it.gdim ? "false" : "true") + '" title="' + (it.gdim ? 'Inactive: shown dimmed in its goals. Tap to make it active' : 'Active. Tap to mark it inactive (dimmed in its goals, still visible)') + '">' + (it.gdim ? '\u25cc Inactive' : '\u25cf Active') + '</button>' : '') +
-      (on.length && H.goalLeadSet ? '<span class="sd-glead-hint">Tap a goal to make this app its lead (the one to build first).</span>' : '') + '</div>';
+    return '<div class="sd-igoals"><button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-haspopup="dialog">+ New goal</button>' +
+      (H.appDim ? '<button type="button" class="sd-gchip sd-gact' + (it.gdim ? ' sd-isdim' : '') + '" data-sd="gdim" aria-pressed="' + (it.gdim ? "false" : "true") + '">' + (it.gdim ? '\u25cc Inactive' : '\u25cf Active') + '</button>' : '') + '</div>';
   }
   function gsRender() {
     var it = BY[INFO]; if (!it) { closeInfo(); return; }
@@ -231,12 +226,9 @@
       '<div class="sd-iact"><button type="button" class="sd-btn" data-sd="gnewfor">+ New goal</button><button type="button" class="sd-btn sd-primary sd-big" data-sd="gsback">Done</button></div>';
     $("sdInfo").hidden = false;
   }
-  /* the goal chips of one item: every goal, tap to switch it on/off for this app (review card) */
+  /* Review cards use the same compact goal entry point. */
   function goalChips(it) {
-    var gs = goals(), on = it.goals || [];
-    return '<div class="sd-igoals"><span class="sd-igoals-k">Goals</span>' + gs.map(function (gg) { var o = on.indexOf(gg.id) >= 0;
-        return '<button type="button" class="sd-gchip' + (o ? " sd-on" : "") + '" style="--cc:' + goalCol(gg.hue) + '" data-sd="gtog" data-goal="' + esc(gg.id) + '" aria-pressed="' + (o ? "true" : "false") + '">' + (o ? "✓ " : "") + esc(gg.name) + '</button>'; }).join("") +
-      '<button type="button" class="sd-gchip sd-gadd" data-sd="gnewfor">+ New goal</button></div>';
+    return '<div class="sd-igoals"><button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-haspopup="dialog">+ New goal</button></div>';
   }
   function groupedHtml(list) {
     var order = [], by = {};
@@ -716,7 +708,11 @@
         pull(); render(); if (fk) { if (RV && !$("sdRv").hidden) rvRender(); else if (GSET) gsRender(); else openInfo(fk); }
         toast(fk ? BY[fk].name + " now serves " + nn.trim() : "Goal added: " + nn.trim(), false);
       }
-      else if (a === "gset") { if (INFO && BY[INFO]) gsRender(); }
+      else if (a === "gset") {
+        var gk = RV && !$("sdRv").hidden && RV.i < RV.ids.length ? RV.ids[RV.i] : INFO;
+        if (gk && BY[gk] && H.pickGoals) H.pickGoals(gk, el, function () { pull(); if (RV && !$("sdRv").hidden) rvRender(); else if (INFO === gk && !$("sdInfo").hidden) openInfo(gk); });
+        else if (INFO && BY[INFO]) gsRender();
+      }
       else if (a === "gdim") { var dk = INFO; if (!dk || !BY[dk] || !H.appDim) return; var dOn = !BY[dk].gdim; H.appDim(dk, dOn); pull(); render(); openInfo(dk); toast(BY[dk].name + (dOn ? " marked inactive: dimmed in its goals" : " is active again"), false); }
       else if (a === "gloff") { if (!GP || !H.goalLinkOff) return; var og = goalOf(GP.gid), ol = og && (og.links || []).filter(function (l) { return l.id === el.getAttribute("data-lid"); })[0]; if (!ol) return;
         H.goalLinkOff(GP.gid, ol.id, !ol.off); pull(); render(); gpRender(false); toast(ol.t + (ol.off ? " is active again" : " marked inactive"), false); }
