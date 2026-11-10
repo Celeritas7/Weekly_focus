@@ -8,7 +8,7 @@ window.addEventListener('load', async function () {
   function type(selector,value) { var el=find(selector);el.value=value;el.dispatchEvent(new Event('input',{bubbles:true})); }
   function tick(selector) { var el=find(selector);el.checked=!el.checked;el.dispatchEvent(new Event('change',{bubbles:true})); }
   function turn() { return new Promise(resolve=>setTimeout(resolve,30)); }
-  function close() { find('dialog[open]').close(); return turn(); }
+  function close(action) { return new Promise(resolve => { var dialog=find('dialog[open]');dialog.addEventListener('close',resolve,{once:true});if(action)click(action);else dialog.close(); }); }
   function submitGoal(name) { type('.wf-goal-create input',name);find('.wf-goal-create').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})); }
   try {
     await turn();
@@ -38,7 +38,7 @@ window.addEventListener('load', async function () {
     assert(document.querySelectorAll('.wf-goal-option input:checked').length===3,'New goal is linked');
     submitGoal('Basic needs');
     assert(document.querySelectorAll('.wf-goal-option').length===15,'Duplicate name does not create a duplicate');
-    assert(find('[data-goal="g4"]').checked,'Duplicate creation keeps existing goal linked');
+    assert(find('.wf-goal-option input[data-goal="g4"]').checked,'Duplicate creation keeps existing goal linked');
     await close();
     assert(find('#buildSheet').classList.contains('open'),'Closing picker keeps the app card open');
     click('#bsBody [data-act="goalpick"]');
@@ -56,12 +56,12 @@ window.addEventListener('load', async function () {
     assert(find('.wf-writer-input').selectionStart===find('.wf-writer-input').value.length,'Editing places the caret at the end');
     var comment='改善案を追加します。\nKeep the context and line breaks.\nမြန်မာစာ';
     type('.wf-writer-input',comment);
-    click('.wf-writer-actions .wf-detail-primary'); await turn();
+    await close('.wf-writer-actions .wf-detail-primary');
     assert(find('#bsBody [data-sid="sub-b"] .sub-text-editable').textContent===comment,'Multiline Unicode comment saves intact');
     click('#bsBody [data-sid="sub-b"] [data-act="subedit-start"]');
-    type('.wf-writer-input','Discard this edit');click('.wf-writer-actions .wf-detail-secondary');await turn();
+    type('.wf-writer-input','Discard this edit');await close('.wf-writer-actions .wf-detail-secondary');
     assert(find('#bsBody [data-sid="sub-b"] .sub-text-editable').textContent===comment,'Cancel preserves the saved comment');
-    click('#bsBody [data-act="notesexpand"]');type('.wf-writer-input','Longer app notes\nWith a second line.');click('.wf-writer-actions .wf-detail-primary');await turn();
+    click('#bsBody [data-act="notesexpand"]');type('.wf-writer-input','Longer app notes\nWith a second line.');await close('.wf-writer-actions .wf-detail-primary');
     assert(find('#bsBody .notes').value==='Longer app notes\nWith a second line.','Expanded notes save back into the card');
     type('#bsBody .notes','Inline notes also save.');
     find('#bsBody .notes').blur();click('#bsBody [data-act="goalpick"]');await close();

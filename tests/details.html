@@ -17,7 +17,7 @@
     entries:{'app:detail-test':{active:true,pri:'H',goals:['g4'],subtasks:[{id:'sub-a',t:'Want a special habit maker for the exercise team to come into action.',done:false},{id:'sub-b',t:'Take the shop data suggester chat linked to the app. These inputs are useful. All the models should be controlled by the neurology team.',done:false}],notes:'Existing note — keep this text.'},'app:other-test':{active:true,goals:['g0']}},
     meta:{goals:goals.map((name,i)=>({id:'g'+i,name,ord:i})),fgLead:{g4:'app:detail-test'}}};
   const data = doc.createElement('script');data.textContent='window.__WF_SEED = '+JSON.stringify(seed)+';';doc.head.appendChild(data);
-  const checks = doc.createElement('script');checks.src = new URL('details-checks.js?v=156',location.href).href;doc.body.appendChild(checks);
+  const checks = doc.createElement('script');checks.src = new URL('details-checks.js?v=156.1',location.href).href;doc.body.appendChild(checks);
   const reports = new Map();
   window.addEventListener('message',event=>{if(!event.data||event.data.type!=='wf-details-test')return;const frame=[...document.querySelectorAll('iframe')].find(f=>f.contentWindow===event.source);if(!frame)return;reports.set(frame.width,event.data);document.getElementById('results').textContent=[...reports].map(([w,r])=>w+'px: '+r.message).join('\n');});
   for(const width of [360,390,768]){const article=document.createElement('article');article.innerHTML='<h2>'+width+'px</h2>';const frame=document.createElement('iframe');frame.width=width;frame.title='App details at '+width+' pixels';frame.setAttribute('sandbox','allow-scripts allow-same-origin');frame.srcdoc='<!doctype html>'+doc.documentElement.outerHTML;article.appendChild(frame);document.querySelector('main').appendChild(article);}
