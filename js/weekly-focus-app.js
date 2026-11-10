@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v155", BUILD_N = 155;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v156", BUILD_N = 156;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -565,13 +565,38 @@
     var L = meta.fgLead && meta.fgLead[g.id]; if (L && mem.indexOf(L) >= 0) return L;
     var o = sphOrder(); return mem.slice().sort(function (a, b) { var ia = o.indexOf(a), ib = o.indexOf(b); return (ia < 0 ? 1e6 : ia) - (ib < 0 ? 1e6 : ib); })[0];
   }
-  /* v143: the goals row on an app's card (full card and the Week columns): every goal as a chip, tap to switch it for this app */
+  /* v156: goals stay behind one button; the picker is shared with Sphere details. */
   function goalRowHtml(k) {
     if (isCore(k)) return "";
-    var on = goalsOf(k).map(function (g) { return g.id; });
-    return '<div class="goal-row"><span class="goal-lbl">◎ Goals</span>' + goalList().map(function (g) { var o = on.indexOf(g.id) >= 0;
-        return '<button type="button" class="goal-chip' + (o ? " on" : "") + '" style="--gh:' + goalHue(g) + '" data-act="goaltog" data-goal="' + esc(g.id) + '" aria-pressed="' + (o ? "true" : "false") + '">' + (o ? "✓ " : "") + esc(g.name) + '</button>'; }).join("") +
-      '<button type="button" class="goal-chip add" data-act="goalnew" title="Make a new goal and give it to this app">+ New goal</button></div>';
+    return '<div class="goal-row"><button type="button" class="goal-chip add" data-act="goalpick" aria-haspopup="dialog" aria-label="Choose goals for ' + esc(labelFor(k).name) + '">+ New goal</button></div>';
+  }
+  function detailFocus(k, selector) {
+    var sheet = $("bsBody");
+    if (BS_ID === k && sheet) return sheet.querySelector(selector);
+    var item = document.querySelector('[data-key="' + cssEsc(k) + '"]');
+    return item && item.querySelector(selector);
+  }
+  function openAppGoals(k, source, after) {
+    if (!itemById(k) || !window.WFDetailUI) return;
+    WFDetailUI.openGoals({
+      name: labelFor(k).name, source: source,
+      goals: function () { var on = goalsOf(k).map(function (g) { return g.id; }); return goalList().map(function (g) {
+        return { id: g.id, name: g.name, selected: on.indexOf(g.id) >= 0, lead: !!(meta.fgLead && meta.fgLead[g.id] === k) };
+      }); },
+      toggle: function (gid, on) { if (goalById(gid)) goalSet(k, gid, on); },
+      create: function (name) { var gid = goalAdd(name); if (gid) goalSet(k, gid, true); return gid; },
+      toggleLead: function (gid, on) {
+        if (!goalById(gid) || !goalsOf(k).some(function (g) { return g.id === gid; })) return;
+        meta.fgLead = Object.assign({}, meta.fgLead || {});
+        if (on) meta.fgLead[gid] = k; else if (meta.fgLead[gid] === k) delete meta.fgLead[gid];
+        save(); cloudPushBoard();
+      },
+      onClose: function () { renderAll(); if (after) after(); },
+      returnFocus: function () {
+        if (source && source.isConnected) return source;
+        return document.querySelector('.sd-info:not([hidden]) [data-sd="gset"], .sd-rv:not([hidden]) [data-sd="gset"]') || detailFocus(k, '[data-act="goalpick"]');
+      }
+    });
   }
   function spherePackages() {
     var o = sphOrder(), pos = function (k) { var i = o.indexOf(k); return i < 0 ? 1e6 : i; }, tiles = [], covered = {};
@@ -1689,10 +1714,10 @@
     var e = getEntry(id), it = itemById(id), pri = priOf(id);
     var rows = activeSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
       var t = x.t || "";
-      return '<li data-sid="' + esc(x.id) + '"><span class="sub-grip" title="Drag to reorder">\u22ee\u22ee</span><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-        '<span class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (t ? esc(t) : "subtask") + '</span>' + subTagBtn(x) + subCtxBtn(x) +
+      return '<li class="sub-row" data-sid="' + esc(x.id) + '"><span class="sub-grip" title="Drag to reorder">\u22ee\u22ee</span><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
+        '<button type="button" class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Edit checklist item" aria-haspopup="dialog">' + (t ? esc(t) : "subtask") + '</button><div class="sub-tools">' + subTagBtn(x) + subCtxBtn(x) +
         (isSpecialItem(it) ? whenChipHtml(x) : '') + latBtn(x) +
-        '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button></li>';
+        '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete" aria-label="Delete checklist item">\u00d7</button></div></li>';
     }).join("");
     var priCtl = '<div class="pri-row"><span class="pri-lbl">Priority</span>' +
       '<div class="pri-seg">' + ["H", "M", "L"].map(function (p) {
@@ -1724,10 +1749,10 @@
       '<input class="obj" data-act="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
       goalRowHtml(id) +
       '<ul class="subs">' + rows + '</ul>' +
-      '<div class="sub-add"><input class="sub-new" data-act="subnew" placeholder="Add a checklist subtask\u2026"><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
+      '<div class="sub-add"><textarea class="sub-new" rows="2" data-act="subnew" aria-label="New checklist item" placeholder="Add a task or improvement\u2026"></textarea><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
       latStripHtml(id) +
-      '<div class="notes-block"><span class="notes-lbl">\u270e Notes</span>' +
-      '<textarea class="notes" data-act="notes" placeholder="Longer notes \u2014 thinking, blockers, links\u2026">' + esc(e.notes || "") + '</textarea></div>' +
+      '<div class="notes-block"><div class="notes-heading"><span class="notes-lbl">\u270e Notes</span><button type="button" class="notes-expand" data-act="notesexpand" aria-haspopup="dialog">Expand editor</button></div>' +
+      '<textarea class="notes" data-act="notes" rows="5" aria-label="App notes" placeholder="Longer notes \u2014 thinking, blockers, links\u2026">' + esc(e.notes || "") + '</textarea><p class="notes-hint">Notes save as you type.</p></div>' +
       linksRow +
       manage +
     '</div>';
@@ -1809,6 +1834,7 @@
     openCore: function () { var k = coreId(); if (!k) return; closePicker(); openBuildSheet(k); },
     openCard: function (k) { if (!itemById(k)) return; openBuildSheet(k, true); },   // v147: the full card opens over the Sphere Draft; closing it returns there
     rows: sdRows,
+    pickGoals: openAppGoals,
     /* v117: Set logo (apps only). Writes go to Akatsuki's shared logo store through wf-logos.js. */
     logo: {
       info: function (k) { var it = itemById(k); return it && window.WFLogos && window.WFLogos.info ? window.WFLogos.info(it) : null; },
@@ -1947,6 +1973,14 @@
       toastMaybeDone(); return;
     }
     if (a === "tdrop") { var tdk = act.closest("[data-tkey]").getAttribute("data-tkey"); sphereRemove(tdk); renderAll(); toast(labelFor(tdk).name + " taken out of the sphere"); return; }
+    if (a === "goalpick") { openAppGoals(keyOf(act), act); return; }
+    if (a === "notesexpand") {
+      var nk = keyOf(act); if (!nk || !window.WFDetailUI) return;
+      WFDetailUI.openWriter({ title: "Edit notes", subtitle: labelFor(nk).name, value: getEntry(nk).notes || "", source: act,
+        returnFocus: function () { return detailFocus(nk, '[data-act="notesexpand"]'); },
+        save: function (value) { patch(nk, { notes: value }); renderCols(); }
+      }); return;
+    }
     if (a === "goaltog" || a === "goalnew") {   // v143: goals on the app card
       var gk = keyOf(act); if (!gk || !itemById(gk)) return;
       var gid = act.getAttribute("data-goal");
@@ -2181,7 +2215,7 @@
       return;
     }
     var a = e.target.getAttribute && e.target.getAttribute("data-act");
-    if (a === "subnew" && e.key === "Enter") { e.preventDefault(); addSub(e.target, keyOf(e.target)); }
+    if (a === "subnew" && e.key === "Enter" && !e.isComposing && (e.target.tagName !== "TEXTAREA" || e.ctrlKey || e.metaKey)) { e.preventDefault(); addSub(e.target, keyOf(e.target)); }
     if (e.target.id === "addName" && e.key === "Enter") { e.preventDefault(); commitAdd(); }
     if (e.key === "Escape") { if (BS_ID && $("buildSheet").classList.contains("over-sd")) return; closePicker(); closeAdd(); }   // v147: Esc on a card opened from the draft closes only the card
   });
@@ -2190,42 +2224,43 @@
     var box = fromEl.closest(".sub-add").querySelector(".sub-new");
     var v = (box.value || "").trim(); if (!v) return;
     patch(key, { subtasks: subs(key).concat([{ id: uid(), t: v, done: false, u: Date.now() }]) });
+    box.value = ""; box.blur();
     renderCols(); renderPulse(); renderFive();
-    var node = document.querySelector('[data-key="' + cssEsc(key) + '"] .sub-new'); if (node) node.focus();
+    var node = detailFocus(key, ".sub-new"); if (node) node.focus();
   }
   function cssEsc(s) { return s.replace(/(["\\])/g, "\\$1"); }
 
-  /* click-to-edit a subtask: swap the text span for an input.
-     Enter / blur commits (stamps u); Escape cancels without saving. */
+  /* v156: a long checklist comment gets a full-width editor with explicit Save/Cancel. */
   function startSubEdit(span, key) {
-    var li = span.closest("[data-sid]"); if (!li) return;
+    var li = span.closest("[data-sid]"); if (!li || !window.WFDetailUI) return;
     var sid = li.getAttribute("data-sid"), cur = "";
-    normSubs(subs(key)).forEach(function (x) { if (x.id === sid) cur = x.t || ""; });   // backfill ids
-    var input = document.createElement("textarea");
-    input.className = "sub-text-edit"; input.value = cur; input.placeholder = "subtask"; input.rows = 1;
-    function grow() { input.style.height = "auto"; input.style.height = (input.scrollHeight + 2) + "px"; }
-    input.addEventListener("input", grow); setTimeout(grow, 0);
-    var settled = false;
-    function finish(saveIt) {
-      if (settled) return; settled = true;
-      /* v98.3: clearing the text deletes the subtask (no more blank leftovers). */
-      if (saveIt && input.value !== cur) { var subs_norm = normSubs(subs(key)), blank = !input.value.trim(); patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid ? Object.assign({}, x, blank ? { del: true, u: Date.now() } : { t: input.value, u: Date.now() }) : x; }) }); }
-      renderCols();
-    }
-    input.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); finish(true); }   // Shift+Enter = new line
-      else if (ev.key === "Escape") { ev.preventDefault(); finish(false); }
+    normSubs(subs(key)).forEach(function (x) { if (x.id === sid) cur = x.t || ""; });
+    WFDetailUI.openWriter({ title: "Edit checklist item", subtitle: labelFor(key).name, value: cur, source: span,
+      placeholder: "Describe the task or improvement…",
+      returnFocus: function () { return detailFocus(key, '[data-sid="' + cssEsc(sid) + '"] [data-act="subedit-start"]'); },
+      save: function (value) {
+        if (value !== cur) {
+          var blank = !value.trim();
+          patch(key, { subtasks: normSubs(subs(key)).map(function (x) {
+            return x.id === sid ? Object.assign({}, x, blank ? { del: true, u: Date.now() } : { t: value, u: Date.now() }) : x;
+          }) });
+        }
+        renderCols(); renderPulse(); renderFive();
+      }
     });
-    input.addEventListener("blur", function () { finish(true); });
-    span.replaceWith(input); input.focus(); input.select();
   }
+  function sizeNotes(input) {
+    if (!input || !input.offsetParent) return;
+    input.style.height = "auto"; input.style.height = Math.min(360, Math.max(150, input.scrollHeight + 2)) + "px";
+  }
+  document.addEventListener("focusin", function (e) { if (e.target.matches && e.target.matches("textarea.notes")) sizeNotes(e.target); });
 
   /* live text inputs */
   document.addEventListener("input", function (e) {
     var a = e.target.getAttribute && e.target.getAttribute("data-act"); if (!a) return;
     var key = keyOf(e.target);
     if (a === "obj") patch(key, { objective: e.target.value });
-    else if (a === "notes") patch(key, { notes: e.target.value });
+    else if (a === "notes") { patch(key, { notes: e.target.value }); sizeNotes(e.target); }
     else if (a === "rename") renameItem(key, e.target.value);
     else if (a === "links") { var itk = itemById(key); if (itk) { itk.links = parseLinksText(e.target.value); saveInv(); renderHome(); } }
     else if (a === "week") { meta.weekOf = e.target.value; save(); cloudPushBoard(); }
@@ -4139,6 +4174,7 @@
       (pr ? '<span class="bs-n">' + pr.done + '/' + pr.total + '</span>' : '<span></span>') +
       '<button class="bs-x" data-hact="bclose" title="Close">\u00d7</button>';
     $("bsBody").innerHTML = '<div class="item open bs-item" data-key="' + esc(id) + '" data-kind="' + kindOf(id) + '">' + detailHtml(id) + '</div>';
+    requestAnimationFrame(function () { sizeNotes($("bsBody").querySelector(".notes")); });
   }
   function closeBuildSheet() { if (BS_ID) detailOpen[BS_ID] = false; BS_ID = null; var b = $("buildSheet"); if (!b) return; var od = b.classList.contains("over-sd"); b.classList.remove("open", "over-sd"); if (od && window.WFSphereDraft && window.WFSphereDraft.isOpen()) window.WFSphereDraft.refresh(); }
   function refreshBuildSheet() {
