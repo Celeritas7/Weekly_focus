@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sphere layout regression checks</title>
+<link rel="stylesheet" href="../css/weekly-focus.css">
+<link rel="stylesheet" href="../css/home-screens.css?v=153">
+<link rel="stylesheet" href="../css/wf-sphere-draft.css?v=155">
+<style>
+  .test-header { padding: 16px; font: 14px/1.5 system-ui; background: white; }
+  .test-header h1 { margin: 0; font-size: 20px; }
+  .test-cases { display: flex; flex-wrap: wrap; gap: 20px; padding: 16px; }
+  .test-cases article { max-width: 100%; overflow: auto; }
+  .test-cases iframe { border: 1px solid #aaa; height: 760px; display: block; }
+  #testResult { white-space: pre-wrap; padding: 12px; font: 12px/1.4 monospace; }
+  #testResult[data-pass="true"] { background: #e0f5e7; color: #164c29; }
+  #testResult[data-pass="false"] { background: #ffe0e0; color: #751d1d; }
+</style>
+<div id="testRoot"></div>
+<script src="../js/wf-sphere-draft.js?v=154"></script>
+<script>
+(async function () {
+  // Isolated synthetic host: no login, database client, service worker, or board writes.
+  const params = new URLSearchParams(location.search);
+  const mount = document.getElementById('testRoot');
+  const legacy = params.has('legacy');
+  if (!params.has('case')) {
+    mount.innerHTML = '<header class="test-header"><h1>Sphere layout regression checks</h1><p>Real Sphere renderer with synthetic apps. Each frame checks long task text, unbroken text, long names, image / emoji / no logo, all-clear and missing-core states.</p><a href="?legacy">Run v154 sizing as a negative control</a> · <a href="?">Run current sizing</a><p id="testTotal">Running…</p></header><div class="test-cases"></div>';
+    const widths = [320, 360, 390, 430, 600, 900];
+    const results = new Map();
+    window.addEventListener('message', function (event) {
+      if (event.origin !== location.origin || !event.data || event.data.type !== 'sphere-test') return;
+      const frame = [...document.querySelectorAll('iframe')].find(f => f.contentWindow === event.source);
+      if (!frame) return;
+      results.set(frame.width, event.data);
+      document.getElementById('testTotal').textContent = [...results.values()].filter(r => r.pass).length + '/' + widths.length + ' widths passed' + (legacy ? ' (v154 negative control)' : '');
+    });
+    for (const width of widths) {
+      const article = document.createElement('article');
+      article.innerHTML = '<h2>' + width + 'px</h2><iframe title="Sphere at ' + width + ' pixels" width="' + width + '" src="?case=1' + (legacy ? '&legacy=1' : '') + '"></iframe>';
+      document.querySelector('.test-cases').appendChild(article);
+    }
+    return;
+  }
+  if (legacy) {
+    // Exact former declarations for the changed selectors; proves the checks catch v154.
+    const style = document.createElement('style');
+    style.textContent = '.sd .sd-coremoon{height:auto;min-width:auto;min-height:auto;max-width:none;max-height:none;padding:7%;overflow:visible}.sd-coremoon>span{flex:0 1 auto;min-width:auto;max-width:none}.sd-coremoon .sd-cm-n{overflow:visible;white-space:normal;text-overflow:clip}.sd-coremoon .sd-cm-x{width:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;text-overflow:clip}.sd .sd-coremoon .sd-cm-logo{width:34%;height:auto;min-height:auto;padding:6%;overflow:visible}.sd .sd-coremoon .sd-cm-logo img{display:inline;min-width:auto;min-height:auto}@media(max-width:600px){.sd .sd-coremoon{height:36%;padding:3%}.sd .sd-coremoon .sd-cm-logo{flex:none;width:clamp(20px,7vw,30px)}.sd-coremoon .sd-cm-x{display:block;max-width:100%;white-space:nowrap;text-overflow:ellipsis}}';
+    document.head.appendChild(style);
+  }
+  mount.innerHTML = '<output id="testResult">Running…</output><main class="app" id="testSphere"></main>';
+  const logo = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><circle cx="256" cy="256" r="240" fill="crimson"/></svg>');
+  const rows = Array.from({ length: 15 }, (_, i) => ({ id: 'app-' + i, name: 'App ' + (i + 1), kind: 'app', group: 'General Purpose', pri: 'medium', total: 2, done: 0, age: 0, goals: [], logo: { emoji: '🌐' } }));
+  let core;
+  const host = { max: 5, rows: () => rows, state: () => ({ five: rows.slice(0, 5).map(r => r.id), orbit: rows.slice(5).map(r => r.id) }), core: () => core, goalList: () => [], openCore: () => { document.getElementById('testResult').textContent += '\nCore button opened successfully.'; } };
+  const cases = [
+    { label: 'long task + large source image', value: { name: 'Akatsuki', open: 2, logo: { url: logo }, next: 'Want the apps which can go into action and bring all of the reminders together on this device. '.repeat(5) } },
+    { label: 'unbroken task text', value: { name: 'Akatsuki', open: 2, logo: { url: logo }, next: 'X'.repeat(400) } },
+    { label: 'long name + emoji', value: { name: 'A very long app name that must not resize the sphere', open: 25, logo: { emoji: '🌑' }, next: 'Write an improvement note' } },
+    { label: 'no logo', value: { name: 'Akatsuki', open: 2, next: 'Write an improvement note' } },
+    { label: 'all clear', value: { name: 'Akatsuki', open: 0, logo: { url: logo } } },
+    { label: 'no core', value: null }
+  ];
+  const failures = [];
+  const checks = [];
+  const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  function assert(ok, message) { if (!ok) failures.push(message); }
+  function within(inner, outer) { return inner.left >= outer.left - 1 && inner.top >= outer.top - 1 && inner.right <= outer.right + 1 && inner.bottom <= outer.bottom + 1; }
+  for (const [i, test] of cases.entries()) {
+    core = test.value;
+    if (i === 0) WFSphereDraft.open(host, document.getElementById('testSphere')); else WFSphereDraft.refresh();
+    await document.fonts.ready;
+    await Promise.all([...mount.querySelectorAll('img')].map(img => img.decode().catch(() => {})));
+    await frame();
+    const button = document.getElementById('sdCoreMoon');
+    const b = button.getBoundingClientRect();
+    const s = document.getElementById('sdSphere').getBoundingClientRect();
+    if (!core) {
+      assert(b.width === 0 && b.height === 0, test.label + ': hidden button takes space');
+      continue;
+    }
+    assert(Math.abs(b.width - b.height) < 1, test.label + ': center is not circular');
+    assert(b.width < s.width / 2 && within(b, s), test.label + ': center exceeds its space');
+    assert(Math.abs((b.left + b.right) - (s.left + s.right)) < 2 && Math.abs((b.top + b.bottom) - (s.top + s.bottom)) < 2, test.label + ': center is misplaced');
+    for (const child of button.children) assert(within(child.getBoundingClientRect(), b), test.label + ': content escapes the center');
+    const img = button.querySelector('img');
+    if (img) assert(img.getBoundingClientRect().width >= 12 && img.getBoundingClientRect().height >= 12, test.label + ': logo collapsed');
+    for (const planet of mount.querySelectorAll('.sd-slot,.sd-moon')) {
+      const p = planet.getBoundingClientRect();
+      const gap = Math.hypot((p.left + p.right - b.left - b.right) / 2, (p.top + p.bottom - b.top - b.bottom) / 2) - (p.width + b.width) / 2;
+      assert(gap > 0, test.label + ': planet overlaps the center');
+    }
+    checks.push(test.label + ': ' + b.width.toFixed(1) + ' × ' + b.height.toFixed(1));
+  }
+  // Leave a representative populated sphere on screen for visual review and tapping.
+  core = cases[0].value; WFSphereDraft.refresh(); await frame();
+  const result = document.getElementById('testResult');
+  result.dataset.pass = String(!failures.length);
+  result.textContent = (!failures.length ? 'PASS' : 'FAIL') + ' · ' + innerWidth + 'px · ' + cases.length + ' states\n' + checks.join('\n') + (failures.length ? '\n' + failures.join('\n') : '');
+  parent.postMessage({ type: 'sphere-test', pass: !failures.length, failures }, location.origin);
+})().catch(error => { document.getElementById('testRoot').textContent = 'TEST ERROR: ' + error.stack; });
+</script>
+</html>
