@@ -93,14 +93,18 @@
   }
 
   /* ---------------- render ---------------- */
-  function pos(el, deg, r) { var a = deg * Math.PI / 180; el.style.left = (50 + r * Math.sin(a)) + "%"; el.style.top = (50 - r * Math.cos(a)) + "%"; }
+  function pos(el, deg) {
+    var angle = deg * Math.PI / 180;
+    el.style.setProperty("--sd-x", Math.sin(angle).toFixed(6));
+    el.style.setProperty("--sd-y", (-Math.cos(angle)).toFixed(6));
+  }
   function renderSphere(landing) {
     var sp = $("sdSphere"), MAX = H.max;
     sp.querySelectorAll(".sd-slot,.sd-moon").forEach(function (n) { n.remove(); });
     for (var i = 0; i < MAX; i++) {
       var k = ST.five[i], it = k && BY[k], el = document.createElement(it ? "button" : "div");
       el.className = "sd-slot " + (it ? "sd-full" : "sd-empty") + (it && landing === k ? " sd-landed" : "");
-      el.setAttribute("data-sddrop", "slot"); el.setAttribute("data-i", i); pos(el, i * 360 / MAX, 34);
+      el.setAttribute("data-sddrop", "slot"); el.setAttribute("data-i", i); pos(el, i * 360 / MAX);
       if (it) {
         el.type = "button"; el.setAttribute("data-sdk", k); el.setAttribute("data-sd", "info"); el.style.setProperty("--kc", KIND[it.kind].c);
         el.setAttribute("aria-label", "Target " + (i + 1) + ": " + it.name + ". Show details");
@@ -114,7 +118,7 @@
       m.type = "button"; m.className = "sd-moon" + (landing === k ? " sd-landed" : "");
       m.setAttribute("data-sdk", k); m.setAttribute("data-sd", "info"); m.setAttribute("data-sddrop", "orbit");
       m.style.setProperty("--kc", KIND[it.kind].c); m.setAttribute("aria-label", "In orbit: " + it.name + ". Show details"); m.title = it.name;
-      m.innerHTML = face(it, "moon") + (it.nom ? '<span class="sd-nomb" title="Nominated for the Five" aria-hidden="true">\u2605</span>' : ''); pos(m, n <= 5 ? gaps[j] : 18 + j * 360 / n, 47);
+      m.innerHTML = face(it, "moon") + (it.nom ? '<span class="sd-nomb" title="Nominated for the Five" aria-hidden="true">\u2605</span>' : ''); pos(m, n <= 5 ? gaps[j] : 18 + j * 360 / n);
       sp.appendChild(m);
     });
     $("sdCoreN").innerHTML = ST.five.length + "<small>/" + MAX + "</small>";

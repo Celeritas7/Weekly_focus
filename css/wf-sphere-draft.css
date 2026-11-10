@@ -57,6 +57,12 @@
 
 .sd-moon { position: absolute; width: 11.5%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; background: var(--card); border: 2px solid var(--kc, var(--brand)); color: var(--kc, var(--brand)); font-size: clamp(10px, 2.4vw, 12px); font-weight: 800; display: grid; place-items: center; z-index: 3; cursor: grab; box-shadow: var(--sd-shadow); padding: 0; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .sd-moon:hover { transform: translate(-50%, -50%) scale(1.1); }
+.sd-slot { --sd-ring-radius: 34%; }
+.sd-moon { --sd-ring-radius: 47%; }
+.sd-slot, .sd-moon {
+  left: calc(50% + var(--sd-ring-radius) * var(--sd-x));
+  top: calc(50% + var(--sd-ring-radius) * var(--sd-y));
+}
 
 .sd-load { background: var(--card); border: 1px solid var(--hair); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
 .sd-load-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12px; }
@@ -320,6 +326,17 @@ html:has(#sdInfo:not([hidden]), #sdRv:not([hidden])) { overflow: hidden; }
 .sd-bub { position: relative; }
 .sd-nomb { position: absolute; top: -2px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: var(--sd-nom); color: #2a2205; font-size: 13px; line-height: 22px; text-align: center; font-weight: 900; box-shadow: 0 0 0 2px var(--canvas); pointer-events: none; z-index: 2; }
 .sd-moon .sd-nomb { top: -6px; right: -6px; width: 18px; height: 18px; line-height: 18px; font-size: 11px; }
+@media (max-width: 600px) {
+  .sd-disc { inset: 19%; }
+  .sd-orbit { inset: 4%; }
+  .sd-slot { --sd-ring-radius: 31%; width: 18%; }
+  .sd-moon { --sd-ring-radius: 46%; width: 11%; }
+  .sd-slot .sd-rk { inset: -1px auto auto -1px; width: 17px; height: 17px; font-size: 10px; }
+  .sd-moon .sd-nomb { inset: -1px -1px auto auto; width: 15px; height: 15px; line-height: 15px; font-size: 9px; }
+  .sd .sd-coremoon { height: 36%; padding: 3%; }
+  .sd .sd-coremoon .sd-cm-logo { flex: none; width: clamp(20px, 7vw, 30px); }
+  .sd-coremoon .sd-cm-x { display: block; max-width: 100%; white-space: nowrap; text-overflow: ellipsis; }
+}
 .sd-nombtn { border-style: dashed; border-color: var(--sd-nom); color: var(--sd-nom-ink); }
 .sd-nombtn.sd-on { border-style: solid; background: color-mix(in oklch, var(--sd-nom) 22%, var(--card)); }
 .sd-rv-nom { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--sd-nom); color: #2a2205; }
