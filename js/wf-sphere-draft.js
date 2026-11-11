@@ -209,10 +209,15 @@
     out.push('<button type="button" class="sd-gnew" data-sd="gnew">+ New goal</button>' + (H.appAdd ? '<button type="button" class="sd-gnew" data-sd="appnew">+ New app</button>' : ''));
     return out.join("");
   }
-  /* v156: keep goal choices in the shared picker, including the lead-app setting. */
+  /* v157: selected goals remain visible; other choices stay in the picker. */
   var GSET = false;
+  function selectedGoalChips(it) {
+    return (it.goals || []).map(goalOf).filter(Boolean).map(function (g) {
+      return '<span class="sd-gchip sd-on sd-gro goal-selected" data-selected-goal="' + esc(g.id) + '" style="--cc:' + goalCol(g.hue) + '">' + esc(g.name) + '</span>';
+    }).join("");
+  }
   function goalSum(it) {
-    return '<div class="sd-igoals"><button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-haspopup="dialog">+ New goal</button>' +
+    return '<div class="sd-igoals" role="group" aria-label="Goals">' + selectedGoalChips(it) + '<button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-haspopup="dialog">+ New goal</button>' +
       (H.appDim ? '<button type="button" class="sd-gchip sd-gact' + (it.gdim ? ' sd-isdim' : '') + '" data-sd="gdim" aria-pressed="' + (it.gdim ? "false" : "true") + '">' + (it.gdim ? '\u25cc Inactive' : '\u25cf Active') + '</button>' : '') + '</div>';
   }
   function gsRender() {
@@ -228,7 +233,7 @@
   }
   /* Review cards use the same compact goal entry point. */
   function goalChips(it) {
-    return '<div class="sd-igoals"><button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-haspopup="dialog">+ New goal</button></div>';
+    return '<div class="sd-igoals" role="group" aria-label="Goals">' + selectedGoalChips(it) + '<button type="button" class="sd-gchip sd-gadd" data-sd="gset" aria-haspopup="dialog">+ New goal</button></div>';
   }
   function groupedHtml(list) {
     var order = [], by = {};

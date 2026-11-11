@@ -24,7 +24,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v156", BUILD_N = 156;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v157", BUILD_N = 157;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -565,10 +565,13 @@
     var L = meta.fgLead && meta.fgLead[g.id]; if (L && mem.indexOf(L) >= 0) return L;
     var o = sphOrder(); return mem.slice().sort(function (a, b) { var ia = o.indexOf(a), ib = o.indexOf(b); return (ia < 0 ? 1e6 : ia) - (ib < 0 ? 1e6 : ib); })[0];
   }
-  /* v156: goals stay behind one button; the picker is shared with Sphere details. */
+  /* v157: show selected goals; keep the complete list in the shared picker. */
   function goalRowHtml(k) {
     if (isCore(k)) return "";
-    return '<div class="goal-row"><button type="button" class="goal-chip add" data-act="goalpick" aria-haspopup="dialog" aria-label="Choose goals for ' + esc(labelFor(k).name) + '">+ New goal</button></div>';
+    var selected = goalsOf(k).map(function (g) {
+      return '<span class="goal-chip on goal-selected" data-selected-goal="' + esc(g.id) + '" style="--gh:' + goalHue(g) + '">' + esc(g.name) + '</span>';
+    }).join("");
+    return '<div class="goal-row" role="group" aria-label="Goals">' + selected + '<button type="button" class="goal-chip add" data-act="goalpick" aria-haspopup="dialog" aria-label="Choose goals for ' + esc(labelFor(k).name) + '">+ New goal</button></div>';
   }
   function detailFocus(k, selector) {
     var sheet = $("bsBody");

@@ -1,4 +1,5 @@
 /* v156 · Goals on demand and room to write. */
+.goal-row .goal-selected, .sd-igoals .goal-selected { display: inline-block; max-width: 100%; min-width: 0; box-sizing: border-box; white-space: normal; overflow-wrap: anywhere; cursor: default; }
 html:has(.wf-detail-dialog[open]) { overflow: hidden; }
 .wf-detail-dialog, .wf-detail-dialog * { box-sizing: border-box; }
 .wf-detail-dialog {
