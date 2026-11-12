@@ -1473,7 +1473,7 @@
       var liCls = x.done ? "" : od ? " od" : x.urg ? " urg" : (v && v.asap ? " asap" : "");
       var metaBits = subModeTag(x) + (x.when ? whenChipHtml(x) : "");
       return '<li data-sid="' + esc(x.id) + '" class="spli' + liCls + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-        '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' + subTagBtn(x) + subCtxBtn(x) +
+        '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' + subTagBtn(x) + subCtxBtn(x) + reminderButton() +
         (x.when ? "" : whenChipHtml(x)) + subFlagBtn(x) + latBtn(x) +
         '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button>' +
         (metaBits ? '<span class="sub-meta">' + metaBits + "</span>" : "") + "</li>";
@@ -1713,12 +1713,24 @@
   }
   function nextSub(id) { var a = activeSubs(subs(id)).filter(function (x) { return !x.done; }); return a.length ? (a[0].t || "") : ""; }
   function priName(p) { return p === "H" ? "High" : p === "M" ? "Medium" : "Low"; }
+  var taskReminderPanel = null;
+  function reminderButton() { return '<button type="button" data-act="subreminder" title="Akatsuki reminder schedule and status" aria-label="Akatsuki reminder schedule and status" style="min-height:36px;padding:4px 8px;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;cursor:pointer">Reminder</button>'; }
+  async function openSubReminder(key, sid) {
+    try {
+      if(!sb || !session || !cloud.board) throw new Error('Sign in to your board before setting a reminder.');
+      if(!window.AkatsukiBroadcastPanel) throw new Error('Reminder editor did not load. Reopen online.');
+      var task=activeSubs(subs(key)).find(function(x){return x.id===sid;});
+      if(!task) throw new Error('This checklist item is no longer available.');
+      if(!taskReminderPanel)taskReminderPanel=window.AkatsukiBroadcastPanel(sb,{app:'wf',hideLauncher:true}).mount();
+      await taskReminderPanel.openTask({sourceTaskId:JSON.stringify([cloud.board,key,sid]),title:String(task.t||'Checklist task').slice(0,120),type:'do',category:'general',url:'https://celeritas7.github.io/Weekly_focus/',body:'Reminder for a Weekly Focus checklist item. Reminder completion is separate from the checklist checkbox.'});
+    }catch(error){toast(error.message||String(error));}
+  }
   function detailHtml(id) {
     var e = getEntry(id), it = itemById(id), pri = priOf(id);
     var rows = activeSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
       var t = x.t || "";
       return '<li class="sub-row" data-sid="' + esc(x.id) + '"><span class="sub-grip" title="Drag to reorder">\u22ee\u22ee</span><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
-        '<button type="button" class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Edit checklist item" aria-haspopup="dialog">' + (t ? esc(t) : "subtask") + '</button><div class="sub-tools">' + subTagBtn(x) + subCtxBtn(x) +
+        '<button type="button" class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Edit checklist item" aria-haspopup="dialog">' + (t ? esc(t) : "subtask") + '</button><div class="sub-tools">' + subTagBtn(x) + subCtxBtn(x) + reminderButton() +
         (isSpecialItem(it) ? whenChipHtml(x) : '') + latBtn(x) +
         '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete" aria-label="Delete checklist item">\u00d7</button></div></li>';
     }).join("");
@@ -2003,6 +2015,7 @@
     if (a === "sphrm") { var srk = keyOf(act); if (srk) { sphereRemove(srk); renderAll(); toast(labelFor(srk).name + " taken out of the sphere"); } return; }
 
     var key = keyOf(act);
+    if (a === "subreminder") { var reminderRow=act.closest('[data-sid]'); if(key && reminderRow) openSubReminder(key,reminderRow.getAttribute('data-sid')); return; }
     if (a === "rank") { RANK_OPEN = RANK_OPEN === key ? null : key; renderCols(); renderFive(); return; }
     if (a === "fgpick") { FG_OPEN = FG_OPEN === key ? null : key; renderCols(); return; }
     if (a === "fgset") { FG_OPEN = null; fgAssign(key, act.getAttribute("data-fg")); return; }
@@ -2534,7 +2547,7 @@
     var sub = sb.auth.onAuthStateChange(function (event, sess) {
       session = sess || null;
       var uidNow = session && session.user ? session.user.id : null;
-      if (event === "SIGNED_OUT" || (uidNow && lastUid && uidNow !== lastUid)) { resetBoardState(); ENTER = true; renderAll(); }   // v100
+      if (event === "SIGNED_OUT" || (uidNow && lastUid && uidNow !== lastUid)) { if(taskReminderPanel){taskReminderPanel.unmount();taskReminderPanel=null;} resetBoardState(); ENTER = true; renderAll(); }   // v100
       if (uidNow) { lastUid = uidNow; try { localStorage.setItem("wf2_last_uid", uidNow); } catch (e) {} }
       renderAuthUI(); updateCloudStatus();
       var cm = $("cloudModal"); if (cm && cm.classList.contains("open")) cloudSetStatus(cloudSummary());
@@ -2545,7 +2558,7 @@
     authSub = sub && sub.data ? sub.data.subscription : null;
     return sb;
   }
-  function dropClient() { if (authSub) { try { authSub.unsubscribe(); } catch (e) {} authSub = null; } sb = null; session = null; }
+  function dropClient() { if(taskReminderPanel){taskReminderPanel.unmount();taskReminderPanel=null;} if (authSub) { try { authSub.unsubscribe(); } catch (e) {} authSub = null; } sb = null; session = null; }
 
   function queue(qkey, op) { outbox[qkey] = op; saveOutbox(); flushOutbox(); updateCloudStatus(); }
   /* ---- v102 guards: never let one save empty a list the cloud still has. SNAP = last copy seen in the cloud. ---- */
@@ -3655,6 +3668,7 @@
   }
   var lastUid = null;   // v100: user id of the last pull — a different account must start from a clean board
   function switchBoard(name) {
+    if(taskReminderPanel){taskReminderPanel.unmount();taskReminderPanel=null;}
     name = (name || "").trim(); if (!name || name === cloud.board) { closeBoardMenu(); return; }
     cloud.board = name;
     try { localStorage.setItem("wf2_active_board", name); } catch (e) {}
@@ -5960,3 +5974,4 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
+
