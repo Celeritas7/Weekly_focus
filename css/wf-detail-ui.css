@@ -80,3 +80,7 @@ html:has(.wf-detail-dialog[open]) { overflow: hidden; }
   .detail .subs > .sub-row { padding: 2px 0; border: 0; }
   .detail .sub-row > .sub-text-editable { font-size: 11px; }
 }
+
+/* Foundation: unavailable task actions stay visible, with a reason in details. */
+.sub-check:disabled, .hcheck:disabled, .lat-act:disabled { opacity: .42; cursor: not-allowed; }
+.task-readonly { padding: 10px 12px; border: 1px solid var(--hair); border-radius: 10px; color: var(--mid); font-size: 13px; line-height: 1.5; }
