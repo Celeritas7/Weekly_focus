@@ -60,7 +60,7 @@ test('app patch rejects an unsafe record before changing in-memory state or queu
   const source=fs.readFileSync('js/weekly-focus-app.js','utf8');
   const start=source.indexOf('  function taskWriteIssue('),end=source.indexOf('  /* ---------------- inventory',start);
   const messages=[],writes=[];
-  const c={TaskData:D,TASK_LOCKS:{},entries:{a:{subtasks:[fixture]}},STALE:false,toast:x=>messages.push(x),save:()=>{},cloudPushEntry:(...x)=>writes.push(x)};
+  const c={TaskData:D,TaskEngine:require('../js/wf-task-engine.js'),TASK_LOCKS:{},entries:{a:{subtasks:[fixture]}},STALE:false,toast:x=>messages.push(x),save:()=>{},cloudPushEntry:(...x)=>writes.push(x)};
   vm.createContext(c);vm.runInContext(source.slice(start,end),c);
   assert.equal(c.patch('a',{notes:'saved'}),true);assert.equal(writes.length,1);
   c.TASK_LOCKS.a='Newer format';assert.equal(c.patch('a',{notes:'unsafe'}),false);

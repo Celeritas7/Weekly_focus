@@ -7,8 +7,8 @@
    ============================================================ */
 (function () {
   "use strict";
-  var TaskData = window.WFTaskData;
-  if (!TaskData) throw new Error("Task storage module did not load. Reopen Weekly Focus online.");
+  var TaskData = window.WFTaskData, TaskEngine = window.WFTaskEngine;
+  if (!TaskData || !TaskEngine) throw new Error("Task storage module did not load. Reopen Weekly Focus online.");
 
   /* ---------------- icons ---------------- */
   var IC = {
@@ -26,7 +26,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v159", BUILD_N = 159;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v160", BUILD_N = 160;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -76,6 +76,11 @@
   function patch(k, p) {
     var next = Object.assign({}, entries[k], p), issue = taskWriteIssue(k, next);
     if (STALE || issue) { toast(issue || "Update Weekly Focus before editing this newer board."); return false; }
+    if (Object.prototype.hasOwnProperty.call(p, "subtasks")) {
+      var result = TaskEngine.transition((entries[k] || {}).subtasks || [], p.subtasks, { now: Date.now() });
+      if (!result.ok) { toast(result.reason); return false; }
+      next.subtasks = result.items;
+    }
     entries[k] = next; save(); cloudPushEntry(k, entries[k]); return true;
   }
 
@@ -213,7 +218,16 @@
 
   /* ---------------- subtask progress ---------------- */
   function subs(k) { var a = getEntry(k).subtasks; return Array.isArray(a) ? a : []; }
-  function subProgress(k) { var a = visibleSubs(subs(k)); if (!a.length) return null; var d = a.filter(function (x) { return x.done; }).length; return { done: d, total: a.length, pct: d / a.length }; }
+  function subCompletionAttrs(k, x) {
+    var issue = STALE ? "Update Weekly Focus before editing this newer board." : taskWriteIssue(k);
+    if (!issue && !x.done) issue = TaskEngine.completion(subs(k), x.id).reason;
+    return issue ? ' disabled aria-disabled="true" data-completion-blocked="1" title="' + esc(issue) + '"' : '';
+  }
+  function taskReadOnlyHtml(k) {
+    var issue = STALE ? "Update Weekly Focus before editing this newer board." : taskWriteIssue(k);
+    return issue ? '<p class="task-readonly" role="status">' + esc(issue) + '</p>' : '';
+  }
+  function subProgress(k) { var p = TaskEngine.progress(subs(k)); return p.kind === "checklist" ? p : null; }
 
   /* ---- subtask identity + cross-device merge ----
      Each subtask carries: { id, t, done, u (last-edit ms), del (tombstone) }.
@@ -728,7 +742,7 @@
       var m = lab.crumb ? esc(lab.crumb) : (kindOf(k) === "app" ? "App" : "Study");
       var sv = visibleSubs(subs(k)), svShow = sv.slice(0, 5);
       var subList = sv.length ? '<ul class="tsubs" data-key="' + esc(k) + '">' + svShow.map(function (x) {
-        return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button><span class="tsub-text" title="' + esc(x.t || "") + '">' + esc(x.t || "subtask") + '</span></li>';
+        return '<li data-sid="' + esc(x.id) + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"' + subCompletionAttrs(k, x) + '></button><span class="tsub-text" title="' + esc(x.t || "") + '">' + esc(x.t || "subtask") + '</span></li>';
       }).join("") + (sv.length > svShow.length ? '<li class="tmore">+' + (sv.length - svShow.length) + ' more</li>' : '') + '</ul>' : '';
       card.innerHTML =
         '<span class="tghost">' + (i + 1) + '</span>' +
@@ -831,7 +845,7 @@
           (x.ctx && x.ctx.length ? subCtxChips(x) : "") +
           '<label class="lat-rvw' + (x.rv ? " on" : "") + '" title="Revisit on \u2014 set a date to come back to this">' + (x.rv ? "\u21bb " + esc(hFmt(x.rv)) : "\u21bb revisit") + '<input type="date" data-latrv="1" value="' + esc(x.rv || "") + '"></label>' +
           '<button class="lat-act" data-act="latback" title="Put it back in the list">Bring back</button>' +
-          '<button class="lat-act done" data-act="latdone" title="Mark it done without bringing it back">Done</button></li>';
+          '<button class="lat-act done" data-act="latdone"' + subCompletionAttrs(id, x) + '>Done</button></li>';
       }).join("") + '</ul>' : "") + '</div>';
   }
   function subFlagBtn(x) {
@@ -941,7 +955,7 @@
   }
   function saveTaskSheet() {
     var when = TSK.date ? TSK.date + (TSK.time ? "T" + TSK.time : "") : "";
-    patch(TSK.key, { subtasks: normSubs(subs(TSK.key)).map(function (x) { return x.id === TSK.sid ? Object.assign({}, x, { when: when, md: TSK.md, urg: TSK.urg, dl: !!(TSK.dl && TSK.date), loc: TSK.loc || "", ctx: ctxNorm(TSK.ctx), u: Date.now() }) : x; }) });
+    if (!patch(TSK.key, { subtasks: normSubs(subs(TSK.key)).map(function (x) { return x.id === TSK.sid ? Object.assign({}, x, { when: when, md: TSK.md, urg: TSK.urg, dl: !!(TSK.dl && TSK.date), loc: TSK.loc || "", ctx: ctxNorm(TSK.ctx), u: Date.now() }) : x; }) })) return;
     $("taskModal").classList.remove("open");
     renderCols(); renderHome();
     toast("Task updated.");
@@ -1146,7 +1160,7 @@
         } else {
           var v = whenView(r.x), tmv = r.x.when.length > 10 ? r.x.when.slice(11, 16) : "";
           html += '<div class="tl-row task' + (r.x.done ? " done" : "") + '" data-key="' + esc(r.it.id) + '" data-sid="' + esc(r.x.id) + '" style="--sp-h:' + hueFor(r.it.name) + '">' +
-            '<button class="sub-check' + (r.x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
+            '<button class="sub-check' + (r.x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"' + subCompletionAttrs(r.it.id, r.x) + '></button>' +
             '<span class="tl-txt">' + esc(r.x.t || "task") + '</span>' +
             locChipHtml(r.loc) +
             '<span class="tl-src">' + esc(r.it.name) + '</span>' +
@@ -1353,7 +1367,7 @@
         var v = !isDone ? whenView(x) : null, od = !!(v && v.w.pastDue);
         html += '<div class="fl-step' + (isDone ? " done" : isNow ? " now" : "") + (i === g.rows.length - 1 ? " last" : "") + '" draggable="true" data-key="' + esc(r.it.id) + '" data-sid="' + esc(x.id) + '">' +
           '<div class="fl-rail"><span class="fl-num">' + (isDone ? "\u2713" : FLOW_IDS.indexOf(x.id) + 1) + '</span><span class="fl-line"></span></div>' +
-          '<div class="fl-row"><span class="fl-grip" title="Drag to reorder">\u283f</span><button class="sub-check' + (isDone ? " on" : "") + '" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
+          '<div class="fl-row"><span class="fl-grip" title="Drag to reorder">\u283f</span><button class="sub-check' + (isDone ? " on" : "") + '" data-act="subtoggle" aria-label="done"' + subCompletionAttrs(r.it.id, x) + '></button>' +
           '<span class="fl-txt">' + esc(x.t || "task") + '</span>' +
           '<span class="fl-src" style="--sp-h:' + hueFor(r.it.name) + '">' + esc(r.it.name) + '</span>' +
           (FLOW_GROUP !== "loc" ? locChipHtml((x.loc || "").trim()) : '') +
@@ -1466,7 +1480,7 @@
       var od = !!(v && v.w.pastDue);
       var liCls = x.done ? "" : od ? " od" : x.urg ? " urg" : (v && v.asap ? " asap" : "");
       var metaBits = subModeTag(x) + (x.when ? whenChipHtml(x) : "");
-      return '<li data-sid="' + esc(x.id) + '" class="spli' + liCls + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
+      return '<li data-sid="' + esc(x.id) + '" class="spli' + liCls + '"><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"' + subCompletionAttrs(id, x) + '></button>' +
         '<span class="sub-text-editable' + (x.t ? "" : " empty") + '" data-act="subedit-start" title="Click to edit">' + (x.t ? esc(x.t) : "subtask") + '</span>' + subTagBtn(x) + subCtxBtn(x) + reminderButton() +
         (x.when ? "" : whenChipHtml(x)) + subFlagBtn(x) + latBtn(x) +
         '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete">\u00d7</button>' +
@@ -1557,7 +1571,7 @@
           '<div class="ag-txt"><span class="ag-name">' + esc(r.sub.t || "task") + '</span>' +
           (w && w.time ? '<span class="ag-src">' + w.time + '</span>' : '') + '</div>' +
           '<span class="ag-chip">' + esc(od ? v.rel.toUpperCase() : urg ? "ASAP" : v.rel) + '</span>' +
-          '<button class="sub-check" data-act="subtoggle" aria-label="done" title="Mark done"></button>' +
+          '<button class="sub-check" data-act="subtoggle" aria-label="done"' + subCompletionAttrs(r.key, r.sub) + '></button>' +
           '</div>';
       }).join("");
       return '<div class="ag-topic" style="--sp-h:' + g.hue + '">' +
@@ -1723,7 +1737,7 @@
     var e = getEntry(id), it = itemById(id), pri = priOf(id);
     var rows = activeSubs(subs(id)).map(function (x) {   // backfill ids so data-sid matches the handlers
       var t = x.t || "";
-      return '<li class="sub-row" data-sid="' + esc(x.id) + '"><span class="sub-grip" title="Drag to reorder">\u22ee\u22ee</span><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"></button>' +
+      return '<li class="sub-row" data-sid="' + esc(x.id) + '"><span class="sub-grip" title="Drag to reorder">\u22ee\u22ee</span><button class="sub-check' + (x.done ? " on" : "") + '" data-act="subtoggle" aria-label="done"' + subCompletionAttrs(id, x) + '></button>' +
         '<button type="button" class="sub-text-editable' + (t ? "" : " empty") + '" data-act="subedit-start" title="Edit checklist item" aria-haspopup="dialog">' + (t ? esc(t) : "subtask") + '</button><div class="sub-tools">' + subTagBtn(x) + subCtxBtn(x) + reminderButton() +
         (isSpecialItem(it) ? whenChipHtml(x) : '') + latBtn(x) +
         '<button class="sub-del sub-delete-btn" data-act="subdel" title="Delete" aria-label="Delete checklist item">\u00d7</button></div></li>';
@@ -1756,7 +1770,7 @@
       '</div>';
     return '<div class="detail' + (id === OPENING ? ' opening' : '') + '">' + priCtl +
       '<input class="obj" data-act="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
-      goalRowHtml(id) +
+      goalRowHtml(id) + taskReadOnlyHtml(id) +
       '<ul class="subs">' + rows + '</ul>' +
       '<div class="sub-add"><textarea class="sub-new" rows="2" data-act="subnew" aria-label="New checklist item" placeholder="Add a task or improvement\u2026"></textarea><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
       latStripHtml(id) +
@@ -1987,7 +2001,7 @@
       var nk = keyOf(act); if (!nk || !window.WFDetailUI) return;
       WFDetailUI.openWriter({ title: "Edit notes", subtitle: labelFor(nk).name, value: getEntry(nk).notes || "", source: act,
         returnFocus: function () { return detailFocus(nk, '[data-act="notesexpand"]'); },
-        save: function (value) { patch(nk, { notes: value }); renderCols(); }
+        save: function (value) { if (!patch(nk, { notes: value })) throw new Error("Notes were not saved. Keep this editor open and copy your draft before updating."); renderCols(); }
       }); return;
     }
     if (a === "goaltog" || a === "goalnew") {   // v143: goals on the app card
@@ -2073,7 +2087,7 @@
       if (a === "latpark") { pat = { lat: true, latAt: Date.now() }; LAT_OPEN[key] = true; }
       else if (a === "latback") { pat = { lat: false, latAt: 0, rv: "" }; }
       else { pat = { done: true }; }
-      patch(key, { subtasks: normSubs(subs(key)).map(function (x) { return x.id === lsid ? Object.assign({}, x, pat, { u: Date.now() }) : x; }) });
+      if (!patch(key, { subtasks: normSubs(subs(key)).map(function (x) { return x.id === lsid ? Object.assign({}, x, pat, { u: Date.now() }) : x; }) })) return;
       renderAll();
       if (a === "latpark") toast("Parked \u2014 in \u201cFor later\u201d, out of Today and the calendar.");
       if (a === "latback") toast("Back in the list.");
@@ -2233,7 +2247,7 @@
   function addSub(fromEl, key) {
     var box = fromEl.closest(".sub-add").querySelector(".sub-new");
     var v = (box.value || "").trim(); if (!v) return;
-    patch(key, { subtasks: subs(key).concat([{ id: uid(), t: v, done: false, u: Date.now() }]) });
+    if (!patch(key, { subtasks: subs(key).concat([{ id: uid(), t: v, done: false, u: Date.now() }]) })) return;
     box.value = ""; box.blur();
     renderCols(); renderPulse(); renderFive();
     var node = detailFocus(key, ".sub-new"); if (node) node.focus();
@@ -2251,9 +2265,9 @@
       save: function (value) {
         if (value !== cur) {
           var blank = !value.trim();
-          patch(key, { subtasks: normSubs(subs(key)).map(function (x) {
+          if (!patch(key, { subtasks: normSubs(subs(key)).map(function (x) {
             return x.id === sid ? Object.assign({}, x, blank ? { del: true, u: Date.now() } : { t: value, u: Date.now() }) : x;
-          }) });
+          }) })) throw new Error("This edit was not saved. Keep your draft before updating or repairing the checklist.");
         }
         renderCols(); renderPulse(); renderFive();
       }
@@ -4121,7 +4135,7 @@
     var odDays = r.od ? Math.max(0, -(r.w.diff)) : 0;
     var chip = r.od ? "" : v ? '<span class="hwhen' + (r.x.done ? "" : v.cls) + '">' + esc(v.label) + "</span>" : "";
     return '<div class="trow' + (r.x.done ? " done" : "") + (r.od ? " od" : r.asap ? " asap" : "") + (r.soon ? " soon" : "") + (dim ? " dim" : "") + '">' +
-      '<button class="hcheck' + (r.x.done ? " on" : "") + '" data-hact="sub2" data-hkey="' + esc(r.it.id) + '" data-hsid="' + esc(r.x.id) + '" aria-label="Toggle done">' + HIC.check + "</button>" +
+      '<button class="hcheck' + (r.x.done ? " on" : "") + '" data-hact="sub2" data-hkey="' + esc(r.it.id) + '" data-hsid="' + esc(r.x.id) + '" aria-label="Toggle done"' + subCompletionAttrs(r.it.id, r.x) + '>' + HIC.check + "</button>" +
       '<div class="tmain"><div class="hname">' + esc(r.x.t || "task") + "</div>" +
       '<div class="hsub">' +
       (r.od ? '<span class="hchip odflag">OVERDUE' + (odDays > 0 ? " \u00b7 " + odDays + (odDays === 1 ? " day" : " days") : " \u00b7 today") + "</span>" : r.asap ? '<span class="hchip asapflag">' + IC.flag + "ASAP</span>" : "") +

@@ -13,6 +13,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --test tests/task-data.cjs
+      - run: node --test tests/task-data.cjs tests/task-engine.cjs
       - run: node tests/task-reminders.cjs
-      - run: node --check js/weekly-focus-app.js && node --check js/wf-task-data.js
+      - run: node --check js/weekly-focus-app.js && node --check js/wf-task-data.js && node --check js/wf-task-engine.js
