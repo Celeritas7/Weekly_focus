@@ -7,6 +7,8 @@
    ============================================================ */
 (function () {
   "use strict";
+  var TaskData = window.WFTaskData;
+  if (!TaskData) throw new Error("Task storage module did not load. Reopen Weekly Focus online.");
 
   /* ---------------- icons ---------------- */
   var IC = {
@@ -24,7 +26,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v157", BUILD_N = 157;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v159", BUILD_N = 159;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -43,6 +45,7 @@
   var itemIndex = {};               // id -> item (across apps + study)
   var invTs = "";                   // last-applied inventory timestamp (last-write-wins across devices)
   var invPulled = false;            // inventory query has succeeded at least once for this board (R010 readiness)
+  var TASK_LOCKS = {};             // latest remote task format/identity safety checks
   var entries = {};                 // id -> { active, pri, objective, subtasks[], notes, targetDone } — loaded from Supabase
   var meta = {};                    // { weekOf, eowDone, eowCarry, eowNotes } — loaded from Supabase
   var targetOrder = [];             // The Five — loaded from Supabase
@@ -69,7 +72,12 @@
      every mutation is pushed to the database through the cloudPush* helpers below. */
   function save() {}
   function getEntry(k) { return entries[k] || {}; }
-  function patch(k, p) { entries[k] = Object.assign({}, entries[k], p); save(); cloudPushEntry(k, entries[k]); }
+  function taskWriteIssue(k, next) { return TASK_LOCKS[k] || TaskData.writeIssue(entries[k]) || TaskData.writeIssue(next); }
+  function patch(k, p) {
+    var next = Object.assign({}, entries[k], p), issue = taskWriteIssue(k, next);
+    if (STALE || issue) { toast(issue || "Update Weekly Focus before editing this newer board."); return false; }
+    entries[k] = next; save(); cloudPushEntry(k, entries[k]); return true;
+  }
 
   /* ---------------- inventory (in-app, Supabase-backed) ---------------- */
   function rebuildIndex() { CORE_MEMO = null; itemIndex = {}; state.apps.forEach(function (a) { itemIndex[a.id] = a; }); state.study.forEach(function (s) { itemIndex[s.id] = s; }); (state.office || []).forEach(function (o) { itemIndex[o.id] = o; }); }
@@ -140,6 +148,7 @@
   function renameItem(id, name) { var it = itemById(id); if (!it) return; it.name = (name || "").trim() || it.name; CORE_MEMO = null; saveInv(); }
   function regroupItem(id, group) { var it = itemById(id); if (!it) return; it.group = (group || "").trim() || it.group; saveInv(); renderAll(); }
   function deleteItem(id) {
+    var issue = taskWriteIssue(id); if (STALE || issue) { toast(issue || "Update Weekly Focus before deleting from this newer board."); return; }
     var arr = arrFor(kindOf(id)), i = arr.findIndex(function (x) { return x.id === id; });
     if (i >= 0) arr.splice(i, 1);
     rebuildIndex(); removeTarget(id); delete entries[id]; delete detailOpen[id];
@@ -236,23 +245,8 @@
   function ctxPick() { return CTX.filter(function (c) { return !c[3]; }); }
   /* keeps every id, known or not: before the vocab arrives CTX is empty, and dropping ids here would wipe them on the next merge push */
   function ctxNorm(a) { if (!Array.isArray(a)) return []; var out = []; a.forEach(function (c) { c = ctxCanon(String(c || "").trim()); if (c && out.indexOf(c) < 0) out.push(c); }); return out; }
-  function normSubs(arr) {
-    return (Array.isArray(arr) ? arr : []).map(function (s) {
-      if (!s) return null;
-      return { id: s.id || subLegacyId(s.t), t: s.t || "", done: !!s.done, u: s.u || 0, del: !!s.del, when: s.when || "", md: s.md || "b", urg: !!s.urg, dl: !!s.dl, loc: s.loc || "", tag: s.tag || "", ctx: ctxNorm(s.ctx), lat: !!s.lat, latAt: s.latAt || 0, rv: s.rv || "", src: s.src || null };
-    }).filter(Boolean);
-  }
-  function mergeSubs(a, b) {
-    var by = {}, order = [];
-    function take(s) {
-      var ex = by[s.id];
-      if (!ex) { by[s.id] = s; order.push(s.id); return; }
-      if ((s.u || 0) > (ex.u || 0)) by[s.id] = s;
-      else if ((s.u || 0) === (ex.u || 0)) by[s.id] = { id: ex.id, t: ex.t || s.t, done: ex.done || s.done, u: ex.u, del: ex.del || s.del, when: ex.when || s.when, md: ex.md !== "b" ? ex.md : s.md, urg: ex.urg || s.urg, dl: ex.dl || s.dl, loc: ex.loc || s.loc || "", tag: ex.tag || s.tag || "", ctx: (ex.ctx && ex.ctx.length) ? ex.ctx : (s.ctx || []), lat: ex.lat || s.lat, latAt: ex.latAt || s.latAt || 0, rv: ex.rv || s.rv || "" };
-    }
-    normSubs(a).forEach(take); normSubs(b).forEach(take);
-    return order.map(function (id) { return by[id]; });
-  }
+  function normSubs(arr) { return TaskData.normalize(arr, ctxNorm); }
+  function mergeSubs(a, b) { return TaskData.merge(a, b, ctxNorm); }
   function visibleSubs(arr) { return normSubs(arr).filter(function (s) { return !s.del; }); }
   /* v64 (phase 9): parked tasks — "for later". They stay in the list's count but never nag:
      no Today row, no overdue banner, no calendar dot, no agenda, no flow. */
@@ -266,7 +260,7 @@
     if (d < 30) return "parked " + d + " days ago";
     var m = Math.round(d / 30); return "parked " + m + (m === 1 ? " month" : " months") + " ago";
   }
-  function subsKey(arr) { return JSON.stringify(normSubs(arr).map(function (s) { return [s.id, s.t, s.done ? 1 : 0, s.del ? 1 : 0, s.u || 0, s.when || "", s.md || "b", s.urg ? 1 : 0, s.dl ? 1 : 0, s.loc || "", (s.ctx || []).join("|"), s.lat ? 1 : 0, s.rv || ""]; }).sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; })); }
+  function subsKey(arr) { return TaskData.signature(arr, ctxNorm); }
   function subsDiffer(a, b) { return subsKey(a) !== subsKey(b); }
 
   /* ---------------- v108 · the core: Akatsuki ----------------
@@ -2510,7 +2504,7 @@
   }
   function noteBoardBuild(b) {
     var n = buildNum(b); if (n <= BUILD_N || STALE) return;
-    STALE = true; console.warn("[wf] v105 guard: the board was last saved by v" + n + "; this device runs " + APP_BUILD + " — board and app-list uploads are paused until it updates");
+    STALE = true; console.warn("[wf] v105 guard: the board was last saved by v" + n + "; this device runs " + APP_BUILD + " — uploads are paused until it updates");
     buildBar("This device runs " + APP_BUILD + ", but your board was last saved by v" + n + ". Board and app-list edits stay on this device until it updates."); updateCloudStatus();
   }
   /* v106: an EMPTY answer for a board this device has already seen is never trusted. It is exactly what a read without a
@@ -2638,6 +2632,8 @@
   }
   function cloudPushEntry(key, payload) {
     if (!cloudConfigured()) return;
+    var taskIssue = taskWriteIssue(key, payload);
+    if (taskIssue) { OB_ERR = taskIssue; return; }
     if (key === TL_ITEM || key === IB_ITEM) {   // v102: Timeline / Inbox — held until pulled, and never emptied by one save
       var hs = key === TL_ITEM ? "tl" : "ib";
       if (!boardPulled) { heldSet(hs, payload, CONF[hs]); updateCloudStatus(); return; }   // v105: kept on this device, merged on top of the first pull
@@ -2651,6 +2647,7 @@
   }
   function cloudDeleteEntry(key) {
     if (!cloudConfigured()) return;
+    if (taskWriteIssue(key)) { OB_ERR = taskWriteIssue(key); return; }
     delete outbox["entry:" + key];                    // drop any pending upsert for it
     queue("del:" + key, { method: "delete", table: "weekly_focus_entries", match: { board_id: cloud.board, item_key: key } });
   }
@@ -2762,7 +2759,11 @@
     for (var i = 0; i < keys.length; i++) {
       var op = outbox[keys[i]];
       if (!op || (keys[i] === "entry:" + BOARD_ITEM && !boardPulled) || (keys[i] === "inv" && !invPulled)) continue;   // v104 (R1): a whole-document write never goes up before its first pull
-      if (STALE && (keys[i] === "entry:" + BOARD_ITEM || keys[i] === "inv")) continue;   // v105: an older build never overwrites a board a newer one saved
+      if (STALE) continue;   // hold every queued write until this client updates
+      // Inspect the remote task format before replaying offline task edits/deletes.
+      if (!boardPulled && op.table === "weekly_focus_entries" && /^(app|study|office):/.test(op.row ? op.row.item_key : op.match.item_key)) continue;
+      var taskIssue = op.table === "weekly_focus_entries" ? taskWriteIssue(op.row ? op.row.item_key : op.match.item_key, op.row && op.row.payload) : "";
+      if (taskIssue) { OB_ERR = taskIssue; continue; }
       try {
         var r;
         if (op.method === "delete") r = await sb.from(op.table).delete().match(Object.assign({ user_id: uidv }, op.match));
@@ -2849,12 +2850,12 @@
       if (rows.length >= PAGE) console.info("[wf] pulled " + rows.length + " entry rows (paged)");
       if (rows.length) SEEN.ent = true;   // v106
       if (!rows.length && boardKnown("ent")) { emptyWarn("board"); updateCloudStatus(); return; }   // v106: was "seed the cloud from this device" \u2014 that re-uploaded every row over the cloud
-      var map = {}, remoteSubsBy = {};
-      rows.forEach(function (row) { var p = row.payload || {}; map[row.item_key] = p; remoteSubsBy[row.item_key] = normSubs(p.subtasks); });
+      var map = {}, remoteSubsBy = {}; TASK_LOCKS = {};
+      rows.forEach(function (row) { var p = row.payload || {}; map[row.item_key] = p; TASK_LOCKS[row.item_key] = TaskData.writeIssue(p); remoteSubsBy[row.item_key] = normSubs(p.subtasks); });
       var REM = {}; REM[TL_ITEM] = map[TL_ITEM] ? deep(map[TL_ITEM]) : null; REM[IB_ITEM] = map[IB_ITEM] ? deep(map[IB_ITEM]) : null;   // v105: the cloud copy, before local overlays
       Object.keys(outbox).forEach(function (qk) {                 // pending local writes win (scalars); subtasks merged below
-        if (qk.indexOf("entry:") === 0 && outbox[qk].row.item_key !== BOARD_ITEM) map[outbox[qk].row.item_key] = outbox[qk].row.payload;   // v104: the board row is merged per key below
-        if (qk.indexOf("del:") === 0) { delete map[qk.slice(4)]; delete remoteSubsBy[qk.slice(4)]; }
+        if (qk.indexOf("entry:") === 0 && !TASK_LOCKS[outbox[qk].row.item_key] && outbox[qk].row.item_key !== BOARD_ITEM) map[outbox[qk].row.item_key] = outbox[qk].row.payload;   // v104: the board row is merged per key below
+        if (qk.indexOf("del:") === 0 && !TASK_LOCKS[qk.slice(4)]) { delete map[qk.slice(4)]; delete remoteSubsBy[qk.slice(4)]; }
       });
       var recRows = {}, recLocal = { cvault: meta.cvault, cchats: meta.cchats }, recLegacy = {};   // v103
       Object.keys(map).forEach(function (k) { if (recKey(k)) { recRows[k] = map[k]; delete map[k]; delete remoteSubsBy[k]; } });
@@ -2884,6 +2885,9 @@
       recSync();   // v103: push records made here before the pull + any being moved off an old board row
       Object.keys(map).forEach(function (k) {                     // union-merge subtasks: remote ∪ local-current
         if (k === BOARD_ITEM) return;
+        // Keep the raw payload and unsent outbox intact; never normalize-and-write an
+        // ambiguous or newer task format merely because this device pulled it.
+        if (taskWriteIssue(k, map[k])) return;
         var remoteSubs = remoteSubsBy[k] || [];
         var merged = mergeSubs(remoteSubs, normSubs((entries[k] || {}).subtasks));
         map[k] = Object.assign({}, map[k], { subtasks: merged });
@@ -3234,6 +3238,7 @@
   function rmSweepBlank() {
     var any = false;
     Object.keys(entries).forEach(function (k) {
+      if (STALE || taskWriteIssue(k)) return;
       var arr = (entries[k] || {}).subtasks; if (!Array.isArray(arr) || !arr.length) return;
       var hit = false, out = normSubs(arr).map(function (s) {
         if (s.del || String(s.t || "").trim() || s.when || String(s.loc || "").trim() || String(s.tag || "").trim() || (s.ctx || []).length || s.src) return s;
@@ -3247,7 +3252,7 @@
   function rmSeen() { try { return JSON.parse(localStorage.getItem(RM_SEEN) || "{}"); } catch (e) { return {}; } }
   function rmSoon() { clearTimeout(rmT); rmT = setTimeout(rmSync, 1500); }
   async function rmSync() {
-    if (!akHub || rmBusy || akNotReady()) return;
+    if (!akHub || rmBusy || STALE || akNotReady()) return;
     rmBusy = true;
     try {
       rmSweepBlank();
@@ -3257,12 +3262,14 @@
         normSubs((entries[k] || {}).subtasks).forEach(function (s) {
           var key = board + "|" + k + "|" + s.id, p = rmPayload(s), h = JSON.stringify(p), o = seen[key];
           live[key] = 1;
+          if (taskWriteIssue(k)) return;
           if (!p.title) { if (o && o.p && !o.p.del) { var dp = rmDelPayload(o.p); jobs.push({ key: key, k: k, p: dp, h: JSON.stringify(dp) }); } return; }
           if (!o || (o.h !== h && o.h !== rmLegacyHash(p))) jobs.push({ key: key, k: k, p: p, h: h });
         });
       });
       Object.keys(seen).forEach(function (key) {
         var o = seen[key];
+        if (o && taskWriteIssue(o.k)) return;
         if (live[key] || key.indexOf(board + "|") !== 0 || !o || !o.p || o.p.del) return;
         var p = rmDelPayload(o.p);
         jobs.push({ key: key, k: o.k, p: p, h: JSON.stringify(p) });
@@ -3291,12 +3298,13 @@
     var a = r.src_addr || {}; if (typeof a === "string") { try { a = JSON.parse(a); } catch (e) { a = {}; } }
     if (a.board_id && a.board_id !== (cloud.board || "my-week")) return { defer: "board " + a.board_id + " not open" };
     var at = nowISO(), k = a.item_key, hit = null, list = rmItemKey(k) ? normSubs((entries[k] || {}).subtasks) : [];
+    var issue = taskWriteIssue(k); if (STALE || issue) return { defer: issue || "Weekly Focus needs an update" };
     list.forEach(function (s) { if (a.sub_id != null && String(s.id) === String(a.sub_id)) hit = s; });
     if (!hit) return { reply: { status: "unknown", at: at } };
     if (hit.del) return { reply: { status: "stale", at: at } };
     if (field === "done" ? hit.done : hit.lat) return { reply: { status: "already", at: at } };
     var t = Date.now(), up = field === "done" ? { done: true, u: t } : { lat: true, latAt: t, u: t };
-    patch(k, { subtasks: list.map(function (x) { return x.id === hit.id ? Object.assign({}, x, up) : x; }) });
+    if (!patch(k, { subtasks: list.map(function (x) { return x.id === hit.id ? Object.assign({}, x, up) : x; }) })) return { defer: "Weekly Focus could not apply the task change" };
     akLog("seq " + r.seq + " " + r.kind + " applied to " + k + " / " + hit.id); akRender();
     return { reply: { status: "applied", at: at } };
   }
@@ -3664,7 +3672,7 @@
      survives in memory and cloudPullEntries would seed it into the next account's empty board. */
   function resetBoardState() {
     state = { apps: [], study: [], office: [] }; itemIndex = {}; rebuildIndex();
-    entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true; boardU = 0; lastCloudSig = ""; boardPulled = false; boardDirty = false; REC_SIG = {}; recMigrating = false; TRASH = {}; HELD = {}; CONF = { inv: null, tl: null, ib: null, meta: null, t: null }; localLoaded = false; STALE = false; SEEN = { ent: false, inv: false };   // v105 / v106
+    TASK_LOCKS = {}; entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true; boardU = 0; lastCloudSig = ""; boardPulled = false; boardDirty = false; REC_SIG = {}; recMigrating = false; TRASH = {}; HELD = {}; CONF = { inv: null, tl: null, ib: null, meta: null, t: null }; localLoaded = false; STALE = false; SEEN = { ent: false, inv: false };   // v105 / v106
   }
   var lastUid = null;   // v100: user id of the last pull — a different account must start from a clean board
   function switchBoard(name) {

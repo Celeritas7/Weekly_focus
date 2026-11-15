@@ -8,7 +8,7 @@
 (async function () {
   const raw = await (await fetch('../index.html')).text();
   const doc = new DOMParser().parseFromString(raw, 'text/html');
-  const allowed = ['js/wf-detail-ui.js', 'js/weekly-focus-app.js', 'js/wf-sphere-draft.js'];
+  const allowed = ['js/wf-task-data.js', 'js/wf-detail-ui.js', 'js/weekly-focus-app.js', 'js/wf-sphere-draft.js'];
   doc.querySelectorAll('script').forEach(s => { if (!allowed.some(path => (s.getAttribute('src') || '').startsWith(path))) s.remove(); });
   const base = doc.createElement('base'); base.href = new URL('../', location.href).href; doc.head.prepend(base);
   const policy = doc.createElement('meta'); policy.httpEquiv = 'Content-Security-Policy'; policy.content = "connect-src 'none'"; doc.head.prepend(policy);
