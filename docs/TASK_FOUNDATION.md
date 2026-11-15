@@ -45,18 +45,88 @@ Absent extension fields are retained from the other copy; intentional clearing
 must use an explicit value such as `null`, not omission. Source provenance is
 retained when a legacy writer omits it.
 
+## Phase 2 — task rules
+
+`wf-task-engine.js` is a pure, immutable engine over the existing subtask IDs.
+The app's shared `patch` path invokes its transition validator for checklist
+changes. The existing compact `subProgress` counts use its progress result.
+No database columns, task copies, reminder registrations or production nesting
+controls are introduced. Parent/archived/occurrence records remain read-only
+under Phase 1's rollout gate until Phase 3 protects all shared writers.
+
+Rules:
+
+- An active task can be marked done only when all active descendants, including
+  intermediate parents, are done. Completing the last child enables its parent;
+  it does not automatically confirm the parent.
+- Reopening, restoring, adding or moving unfinished work reopens completed
+  ancestors in the same edit. Changed records receive one monotonic edit time.
+- Archived and deleted branches contribute no active work. Each descendant's
+  own archived flag survives a parent restore. Parked (`lat`) work still counts
+  and blocks completion, but is absent from the engine's actionable set.
+- Removal retains a tombstone, ID and metadata. Archive restore is distinct
+  from deleted-record recovery. Invalid IDs, duplicates, missing parents and
+  cycles block edits; input order does not define ancestry.
+- Unknown fields, provenance and existing history are retained. This phase does
+  not create a new completion ledger or recurring occurrence/reset mechanism.
+
+Progress counts unique active terminal tasks, never both a parent and its
+children. A wrapper whose children are all archived remains a wrapper and does
+not become an extra unit of work. An empty active checklist has no percentage.
+
+| Example | Result |
+| --- | --- |
+| Parent P has group G (A done, B open) and C done | P: 2/3 (67%); G and B block parent completion |
+| Add a separate completed task D to that collection | 3/4 (75%), with neither P nor G counted again |
+| A, B, C done but G unconfirmed | 3/3 checklist work; G still blocks P's explicit completion |
+| Archive G and its branch | P: 1/1; restoring unfinished G reopens P |
+| A task has never had children | No checklist, not a completed 0/0 checklist |
+| All children are archived/deleted | No active checklist; no artificial 100% |
+
+Collection counts are a foundation for goal aggregation. Selecting the same
+stable task from multiple weeks/goals must be deduplicated by the future scoped
+reference adapter; that adapter and historical weekly snapshots are not in this
+phase. The existing manual `targetDone` remains an independent weekly outcome.
+Reminder completion/snooze behavior and reminder source identities are unchanged.
+
+### Completion entry points
+
+| Entry point | Coverage |
+| --- | --- |
+| Five, details, special lists, timeline, flow, agenda (`subtoggle`) | Shared `patch` validator; disabled completion attributes |
+| Today and Calendar (`sub2`) | Same validator and disabled attributes |
+| For later (`latdone`) | Same validator; parked work can still be explicitly completed |
+| Roadmap request (`rmApply`) | Defers a rejected edit instead of replying applied |
+| Bulk updates | Engine validates the complete proposed state; no checklist bulk UI currently exists |
+| Tree view | Engine handles arbitrary depth; tree UI is a later phase |
+
+The eight completion renderers expose disabled/ARIA state, and details explain
+a read-only entry. Failed new-item, settings and expanded-editor saves retain
+the draft rather than clearing it or reporting success. Existing tree-less
+screens are not a complete UI for imported hierarchical records.
+
+These are local transition rules, not a server concurrency guarantee. Before
+enabling nesting, Phase 3 must validate remote merge/replay operations against
+the same rules and implement ownership/revision checks across all writers.
+Recurring-task resets, goal references, history snapshots, tree controls and
+urgent-deadline/reminder coordination remain later work.
+
 ## Validation
 
 Run from the repository root:
 
 ```sh
-node --test tests/task-data.cjs
+node --test tests/task-data.cjs tests/task-engine.cjs
 node tests/task-reminders.cjs
 node --check js/weekly-focus-app.js
 node --check js/wf-task-data.js
+node --check js/wf-task-engine.js
 ```
 
-Compatibility fixtures are synthetic and contain no account or production data.
+Compatibility and engine fixtures are synthetic and contain no account or production data.
+Engine tests include a 2,500-level tree, archive/restore, bulk validation and the
+real app handler bodies in a VM. A test-only permissive format guard exercises
+nesting through these handlers; production retains the Phase 1 gate.
 The existing `tests/details.html` fixture loads the new module before the app.
 The Sphere fixture remains unchanged. Browser launch was attempted during
 Phase 1 but the execution environment denied Chromium's socket operation;
