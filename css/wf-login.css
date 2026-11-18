@@ -1,5 +1,5 @@
 /* v57 — login gate + Vault PIN */
-body.wf-locked > :not(#wflScreen):not(#wflPin):not(script){visibility:hidden}
+body.wf-locked > :not(#wflScreen):not(#wflPin):not(#wfStartup):not(script){visibility:hidden}
 body.wf-locked{overflow:hidden}
 #signinBanner{display:none!important}
 .wfl-screen{position:fixed;inset:0;z-index:5000;background:var(--canvas);display:none;flex-direction:column;overflow:auto;-webkit-overflow-scrolling:touch}

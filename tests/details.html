@@ -8,6 +8,7 @@
 (async function () {
   const raw = await (await fetch('../index.html')).text();
   const doc = new DOMParser().parseFromString(raw, 'text/html');
+  doc.documentElement.classList.remove('wf-starting'); doc.getElementById('wfStartup').remove();
   const allowed = ['js/wf-task-data.js', 'js/wf-task-engine.js', 'js/wf-detail-ui.js', 'js/weekly-focus-app.js', 'js/wf-sphere-draft.js'];
   doc.querySelectorAll('script').forEach(s => { if (!allowed.some(path => (s.getAttribute('src') || '').startsWith(path))) s.remove(); });
   const base = doc.createElement('base'); base.href = new URL('../', location.href).href; doc.head.prepend(base);

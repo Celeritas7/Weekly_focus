@@ -26,7 +26,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v160", BUILD_N = 160;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v161", BUILD_N = 161;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -5992,8 +5992,12 @@
     } else {
       startCloud();        // connects with the baked-in config, then loads your week once signed in
     }
+    if (window.WFStartup) window.WFStartup.appReady();
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+  // Deferred scripts run while readyState is interactive. Wait for the later
+  // Sphere/logo modules before the first render, just as the parser-blocking
+  // scripts did before startup recovery was added.
+  if (document.readyState !== "complete") document.addEventListener("DOMContentLoaded", init, { once: true }); else init();
 })();
 

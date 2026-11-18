@@ -3,7 +3,7 @@
    never cached; the app's outbox queues edits and syncs them when back online. */
 /* BUMP THIS CONSTANT ON EVERY DEPLOY so browsers reinstall the new build and the
    activate handler purges older caches (stops a stale build being served). */
-const CACHE = "weekly-focus-v160";
+const CACHE = "weekly-focus-v161";
 /* v144: app logos (Akatsuki's logo store, sibling apps' icons) live in their own cache, kept across builds, so the
    sphere shows them offline. Served from the cache at once and refreshed in the background (a changed logo shows on
    the next open). Capped at LOGO_MAX entries. */
@@ -13,9 +13,9 @@ const LOGOS = "wf-logos-v1", LOGO_MAX = 300;
 const SUPA = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
 const ASSETS = [
   "./", "./index.html",
-  "./js/config.js", "./js/akatsuki-client.js", "./js/akatsuki-banner.js", "./js/wf-purchase-adapter.js", "./js/wf-task-data.js?v=160", "./js/wf-task-engine.js?v=160", "./js/weekly-focus-app.js?v=160", "./js/info-feeds.js", "./js/wf-cc-bridge-v2.js",
-  "./css/weekly-focus.css", "./css/home-screens.css?v=153", "./css/wf-login.css", "./js/wf-login.js", "./js/wf-code-hl.js", "./js/wf-code.js", "./js/wf-logos.js", "./js/wf-sphere-draft.js?v=157", "./js/wf-zip.js", "./css/wf-sphere-draft.css?v=155",
-  "./css/wf-detail-ui.css?v=160", "./js/wf-detail-ui.js?v=156",
+  "./js/config.js", "./js/akatsuki-client.js", "./js/akatsuki-banner.js", "./js/wf-purchase-adapter.js", "./js/wf-task-data.js?v=161", "./js/wf-task-engine.js?v=161", "./js/weekly-focus-app.js?v=161", "./js/info-feeds.js", "./js/wf-cc-bridge-v2.js",
+  "./css/weekly-focus.css", "./css/home-screens.css?v=153", "./css/wf-login.css?v=161", "./js/wf-login.js?v=161", "./js/wf-code-hl.js", "./js/wf-code.js", "./js/wf-logos.js", "./js/wf-sphere-draft.js?v=157", "./js/wf-zip.js", "./css/wf-sphere-draft.css?v=155",
+  "./css/wf-detail-ui.css?v=161", "./js/wf-detail-ui.js?v=156",
   "./manifest.webmanifest",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png"
 ];
@@ -31,7 +31,7 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== LOGOS).map((k) => caches.delete(k))))
+      .then((ks) => Promise.all(ks.filter((k) => /^weekly-focus-v\d+$/.test(k) && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -75,9 +75,13 @@ self.addEventListener("fetch", (e) => {
   if (req.mode === "navigate" && !/\/(index\.html)?$/.test(url.pathname)) return;
   if (req.mode === "navigate") {
     e.respondWith(
-      fetch(req)
-        .then((r) => { const cp = r.clone(); caches.open(CACHE).then((c) => c.put("./index.html", cp)); return r; })
-        .catch(() => caches.match("./index.html"))
+      Promise.race([
+        fetch(req).then((r) => {
+          if (!r.ok || !/text\/html/i.test(r.headers.get("content-type") || "")) throw new Error("Invalid app page");
+          const cp = r.clone(); return caches.open(CACHE).then((c) => c.put("./index.html", cp)).catch(() => {}).then(() => r);
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Slow navigation")), 5000))
+      ]).catch(() => caches.open(CACHE).then((c) => c.match("./index.html")).then((hit) => hit || new Response("Weekly Focus could not open. Check your connection and reload. Your saved work has not been cleared.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } })))
     );
     return;
   }
@@ -89,7 +93,8 @@ self.addEventListener("fetch", (e) => {
   // Static same-origin assets (css/js/icons): cache-first, then network (and cache it).
   e.respondWith(
     caches.match(req).then((c) => c || fetch(req).then((r) => {
-      const cp = r.clone(); caches.open(CACHE).then((cache) => cache.put(req, cp)); return r;
+      if (r.ok) { const cp = r.clone(); return caches.open(CACHE).then((cache) => cache.put(req, cp)).catch(() => {}).then(() => r); }
+      return r;
     }).catch(() => c || new Response("", { status: 504, statusText: "offline" })))
   );
 });

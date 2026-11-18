@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="wf-starting">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
@@ -8,17 +8,92 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Weekly Focus">
 <title>Weekly Focus</title>
+<!-- Keep startup feedback independent of downloaded scripts and sign-in responses. -->
+<style>
+#wfStartup{position:fixed;inset:0;z-index:20000;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;background:#f4f3ef;color:#222;font:16px/1.5 system-ui,sans-serif}
+#wfStartup[hidden]{display:none} .wf-starting body>:not(#wfStartup):not(script){visibility:hidden}
+#wfStartup .wf-start-card{width:100%;max-width:420px} #wfStartup h1{font-size:28px;margin:0 0 12px}
+#wfStartup button{min-height:48px;padding:12px 16px;border:1px solid #d7d3e4;border-radius:12px;background:white;color:#353049;font:600 16px system-ui;cursor:pointer;margin:8px 8px 0 0}
+#wfStartup button[data-wf-boot="update"]{background:#6252bf;color:white} #wfStartup button:disabled{opacity:.6}
+#wfStartup small{display:block;margin-top:18px;color:#666}
+</style>
+<script id="wfStartupBoot">
+(function () {
+  var app = false, auth = false, finished = false, timer, message = "Checking your sign-in and opening your week…";
+  function paint() { var el = document.getElementById("wfStartupMessage"); if (el) el.textContent = message; }
+  function fail(text) { if (finished) return; message = text || "Opening is taking longer than expected. Check your connection, then try again."; paint(); }
+  function ready() {
+    if (!app || !auth || finished) return;
+    finished = true; clearTimeout(timer); document.documentElement.classList.remove("wf-starting");
+    var el = document.getElementById("wfStartup"); if (el) el.hidden = true;
+  }
+  function bounded(promise, ms) {
+    return new Promise(function (resolve, reject) {
+      var t = setTimeout(function () { reject(new Error("timeout")); }, ms);
+      Promise.resolve(promise).then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
+    });
+  }
+  async function update() {
+    var buttons = document.querySelectorAll("[data-wf-boot]"); buttons.forEach(function (b) { b.disabled = true; });
+    fail("Updating app files. Your saved work and sign-in will be kept.");
+    try {
+      await bounded((async function () {
+        if (!("serviceWorker" in navigator)) return;
+        var scope = new URL("./", location.href).href;
+        var reg = await navigator.serviceWorker.getRegistration(scope);
+        if (!reg || reg.scope !== scope) reg = await navigator.serviceWorker.register("sw.js", { scope: "./", updateViaCache: "none" });
+        else await reg.update();
+        var worker = reg.installing || reg.waiting;
+        if (worker && worker.state !== "activated") await new Promise(function (resolve, reject) {
+          function check() {
+            if (worker.state === "activated" || worker.state === "redundant") {
+              worker.removeEventListener("statechange", check);
+              if (worker.state === "activated") resolve(); else reject(new Error("install failed"));
+            }
+          }
+          worker.addEventListener("statechange", check); check();
+        });
+      })(), 15000);
+      location.reload();
+    } catch (e) {
+      fail("App files could not be refreshed. Check your connection and try again. Your saved work is still on this device.");
+      buttons.forEach(function (b) { b.disabled = false; });
+    }
+  }
+  window.WFStartup = { appReady: function () { app = true; ready(); }, authReady: function () { auth = true; ready(); }, fail: fail };
+  timer = setTimeout(function () { fail(); }, 12000);
+  document.addEventListener("DOMContentLoaded", paint);
+  document.addEventListener("click", function (e) {
+    var button = e.target.closest && e.target.closest("[data-wf-boot]"); if (!button || button.disabled) return;
+    if (button.getAttribute("data-wf-boot") === "update") update(); else location.reload();
+  });
+  window.addEventListener("error", function (e) {
+    var path = e.filename || (e.target && e.target.src) || "";
+    if (/\/(?:weekly-focus-app|wf-task-data|wf-task-engine|wf-login|config)\.js(?:[?#]|$)/.test(path)) fail("An app file could not start. Try Update app files to reload it safely.");
+  }, true);
+})();
+</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/weekly-focus.css">
 <link rel="stylesheet" href="css/home-screens.css?v=153">
-<link rel="stylesheet" href="css/wf-login.css">
+<link rel="stylesheet" href="css/wf-login.css?v=161">
 <link rel="stylesheet" href="css/wf-sphere-draft.css?v=155">
-<link rel="stylesheet" href="css/wf-detail-ui.css?v=160">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<link rel="stylesheet" href="css/wf-detail-ui.css?v=161">
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body data-mode="personal">
+<section id="wfStartup" aria-label="Opening Weekly Focus">
+  <div class="wf-start-card">
+    <h1>Weekly Focus</h1>
+    <p id="wfStartupMessage" role="status" aria-live="polite">Checking your sign-in and opening your week…</p>
+    <button type="button" data-wf-boot="retry">Try again</button>
+    <button type="button" data-wf-boot="update">Update app files</button>
+    <small>Your saved work and sign-in are kept. · v161</small>
+    <noscript><p>Enable JavaScript in your browser to open Weekly Focus.</p></noscript>
+  </div>
+</section>
 
 <!-- ===================== TOP BAR ===================== -->
 <header class="topbar">
@@ -661,24 +736,24 @@
   </div>
 </div>
 
-<script src="js/config.js"></script>
-<script src="js/info-feeds.js"></script>
-<script src="js/akatsuki-client.js"></script>
-<script src="js/akatsuki-banner.js"></script>
-<script src="js/wf-purchase-adapter.js"></script>
-<script src="https://celeritas7.github.io/Akatsuki/js/akatsuki-broadcast.js"></script>
-<script src="https://celeritas7.github.io/Akatsuki/js/akatsuki-broadcast-panel.js?v=R074"></script>
-<script src="js/wf-detail-ui.js?v=156"></script>
-<script src="js/wf-task-data.js?v=160"></script>
-<script src="js/wf-task-engine.js?v=160"></script>
-<script src="js/weekly-focus-app.js?v=160"></script>
-<script src="js/wf-logos.js"></script>
-<script src="js/wf-sphere-draft.js?v=157"></script>
-<script src="js/wf-cc-bridge-v2.js"></script>
-<script src="js/wf-login.js"></script>
-<script src="js/wf-code-hl.js"></script>
-<script src="js/wf-zip.js"></script>
-<script src="js/wf-code.js"></script>
+<script defer src="js/config.js"></script>
+<script defer src="js/info-feeds.js"></script>
+<script defer src="js/akatsuki-client.js"></script>
+<script defer src="js/akatsuki-banner.js"></script>
+<script defer src="js/wf-purchase-adapter.js"></script>
+<script defer src="https://celeritas7.github.io/Akatsuki/js/akatsuki-broadcast.js"></script>
+<script defer src="https://celeritas7.github.io/Akatsuki/js/akatsuki-broadcast-panel.js?v=R074"></script>
+<script defer src="js/wf-detail-ui.js?v=156"></script>
+<script defer src="js/wf-task-data.js?v=161"></script>
+<script defer src="js/wf-task-engine.js?v=161"></script>
+<script defer src="js/weekly-focus-app.js?v=161"></script>
+<script defer src="js/wf-logos.js"></script>
+<script defer src="js/wf-sphere-draft.js?v=157"></script>
+<script defer src="js/wf-cc-bridge-v2.js"></script>
+<script defer src="js/wf-login.js?v=161"></script>
+<script defer src="js/wf-code-hl.js"></script>
+<script defer src="js/wf-zip.js"></script>
+<script defer src="js/wf-code.js"></script>
 <script>
   // inject toolbar icons + labels (kept out of markup for clarity)
   (function () {
