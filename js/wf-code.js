@@ -10,7 +10,7 @@
   var LANGS = ["Text", "JavaScript", "TypeScript", "Python", "SQL", "HTML", "CSS", "JSON", "Shell", "Java", "C#"];
   var EXT = { JavaScript: "js", TypeScript: "ts", Python: "py", SQL: "sql", HTML: "html", CSS: "css", JSON: "json", Shell: "sh", Java: "java", "C#": "cs", Text: "txt" };
   var SKIP_DIRS = { ".git": 1, "node_modules": 1, ".next": 1, "__pycache__": 1 };
-  var items = {}, db = null, pushT = {}, pulling = false, syncErr = "", NC = {};
+  var items = {}, db = null, pulling = false, syncErr = "", NC = {};
   var sel = { folder: "", file: "" }, q = "", openF = {}, ver = -1, findQ = "", hits = [], hitI = -1, src = [], pend = [], rendered = 0, renderTok = 0;
   var showFind = false, showHist = false, showMore = false, qT = null;
   function $(id) { return document.getElementById(id); }
@@ -71,10 +71,74 @@
 
   /* ---------- device storage ---------- */
   function openDb() { return new Promise(function (res, rej) { var r = indexedDB.open(DB, 1); r.onupgradeneeded = function () { r.result.createObjectStore(STORE, { keyPath: "id" }); }; r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); }; }); }
-  function tx(mode, fn) { return new Promise(function (res, rej) { var t = db.transaction(STORE, mode), out = fn(t.objectStore(STORE)); t.oncomplete = function () { res(out && out.result); }; t.onerror = function () { rej(t.error); }; }); }
+  function tx(mode, fn) { return new Promise(function (res, rej) { var t = db.transaction(STORE, mode), out = fn(t.objectStore(STORE)); t.oncomplete = function () { res(out && out.result); }; t.onabort = t.onerror = function () { rej(t.error); }; }); }
   var put = function (r) { return tx("readwrite", function (st) { st.put(r); }); };
   function getAll() { return tx("readonly", function (st) { return st.getAll(); }); }
-  function save(r) { r.u = Date.now(); r.synced = false; items[r.id] = r; put(r).catch(function () { syncErr = "Couldn't save on this device."; paintFoot(); }); pushSoon(r.id); }
+  var queue = new Set(), deviceState = new Map(), activeId = "", wakeTimer, retryAt = 0, failures = 0, retryId = "";
+  function save(r) {
+    r.u = Math.max(Date.now(), (r.u || 0) + 1);
+    r.synced = false;
+    delete r.cloudErr;
+    items[r.id] = r;
+    var revision = r.u;
+    deviceState.set(r.id, "Saving on device");
+    put(r).then(function () {
+      if (items[r.id].u !== revision) return;
+      if (db) deviceState.delete(r.id);
+      else deviceState.set(r.id, "Device storage unavailable");
+      enqueue(r.id);
+      paintFoot();
+    }, function () {
+      if (items[r.id].u !== revision) return;
+      deviceState.set(r.id, "Device save failed");
+      enqueue(r.id);
+      paintFoot();
+    });
+  }
+  function enqueue(id) {
+    if (!items[id].synced && !items[id].cloudErr) queue.add(id);
+    scheduleUpload();
+  }
+  function scheduleUpload() {
+    if (activeId || wakeTimer || !queue.size || navigator.onLine === false) return;
+    wakeTimer = setTimeout(drainUpload, Math.max(300, retryAt - Date.now()));
+  }
+  async function drainUpload() {
+    wakeTimer = null;
+    var id = queue.values().next().value;
+    queue.delete(id);
+    var r = items[id];
+    if (!r || r.synced || deviceState.get(id) === "Saving on device") { scheduleUpload(); return; }
+    activeId = id;
+    try {
+      var c = sb(), u = await user();
+      if (!c || !u) { queue.add(id); retryAt = Date.now() + 30000; return; }
+      if (!r.del && r.kind === "file" && bytes(r.code) > CLOUD_MAX) {
+        r.cloudErr = "Over 8 MB · device only";
+        return;
+      }
+      paintFoot();
+      var revision = r.u;
+      var res = await c.from("weekly_focus_entries").upsert({
+        user_id: u.id, board_id: BOARD, item_key: (r.kind === "folder" ? "fold:" : "code:") + id,
+        payload: payload(r), updated_at: new Date(revision).toISOString()
+      }, { onConflict: "user_id,board_id,item_key" });
+      if (res.error) throw res.error;
+      if (items[id] === r && r.u === revision) {
+        r.synced = true;
+        try { await put(r); if (db && r.u === revision) deviceState.delete(id); }
+        catch (e) { if (r.u === revision) deviceState.set(id, "Device save failed"); }
+      }
+      failures = 0; retryAt = 0; retryId = "";
+    } catch (e) {
+      queue.add(id);
+      retryId = id;
+      retryAt = Date.now() + Math.min(120000, 3000 * Math.pow(2, Math.min(failures++, 6)));
+    } finally {
+      activeId = "";
+      paintFoot(); paintTreeSoon(); scheduleUpload();
+    }
+  }
 
   /* ---------- cloud ---------- */
   function payload(r) {
@@ -83,19 +147,6 @@
     while (p.vers.length && bytes(JSON.stringify(p)) > CLOUD_MAX) p.vers.pop();
     return p;
   }
-  async function push(id) {
-    var r = items[id], c = sb(), u = await user(); if (!r || !c || !u) { paintFoot(); return; }
-    if (r.kind === "file" && !r.del && bytes(r.code) > CLOUD_MAX) { r.cloudErr = "Over 8 MB: saved on this device only."; paintFoot(); return; }
-    var sentU = r.u;
-    try {
-      var res = await c.from("weekly_focus_entries").upsert({ user_id: u.id, board_id: BOARD, item_key: (r.kind === "folder" ? "fold:" : "code:") + id, payload: payload(r), updated_at: new Date(r.u).toISOString() }, { onConflict: "user_id,board_id,item_key" });
-      if (res.error) throw res.error;
-      if (items[id] && items[id].u === sentU) { items[id].synced = true; delete items[id].cloudErr; await put(items[id]); }
-      syncErr = "";
-    } catch (e) { syncErr = "Not synced yet (" + (e.message || e) + "). Saved on this device; retrying."; }
-    paintFoot(); paintTreeSoon();
-  }
-  function pushSoon(id, ms) { clearTimeout(pushT[id]); pushT[id] = setTimeout(function () { push(id); }, ms == null ? 1200 : ms); }
   async function pull() {
     var c = sb(), u = await user(); if (!c || !u || pulling) return; pulling = true;
     try {
@@ -108,11 +159,11 @@
         items[id] = norm(Object.assign({ id: id, kind: /^fold:/.test(key) ? "folder" : "file" }, p, { synced: true }));
         await put(items[id]); changed = true; if (id === sel.file) openChanged = true;
       }
-      Object.keys(items).forEach(function (id) { if (!items[id].synced) pushSoon(id, 50); });
+      Object.keys(items).forEach(function (id) { if (!items[id].synced) enqueue(id); });
       syncErr = "";
       if (changed) paintTree();
       if (openChanged && ver < 0) paintViewer();
-    } catch (e) { syncErr = "Couldn't reach the cloud. Everything is saved on this device."; }
+    } catch (e) { syncErr = "Couldn't reach the cloud. Cloud refresh pending."; }
     pulling = false; paintFoot(); loadShares();
   }
 
@@ -253,9 +304,10 @@
     var old = $("wfcCss"); if (old) old.remove();
     var st = document.createElement("style"); st.id = "wfcCss"; st.textContent = WFC_CSS; document.head.appendChild(st);
     var sec = document.createElement("section"); sec.className = "screen"; sec.id = "scrCode"; sec.setAttribute("data-screen-label", "Code");
-    sec.innerHTML = '<div class="wfc"><div class="wfc-head"><h2>Code</h2><span class="sub">Drop files or folders. Read and copy. Saved on this device and in the cloud.</span>' +
-      '<div class="wfc-tools"><input class="wfc-search" id="wfcQ" placeholder="Search names and code" autocomplete="off"><button class="tbtn" type="button" id="wfcNewF">New folder</button><button class="tbtn primary" type="button" id="wfcAdd">Add files</button><button class="tbtn wfc-hide-m" type="button" id="wfcAddDir">Add folder</button></div></div>' +
-      '<div class="wfc-grid"><div class="wfc-side"><div class="wfc-drop" id="wfcDrop" contenteditable="true" spellcheck="false" aria-label="Drop files here, or paste code"></div><div class="wfc-tree" id="wfcTree"></div></div><div class="wfc-ed" id="wfcEd"></div></div></div>' +
+    sec.innerHTML = '<div class="wfc"><div class="wfc-head"><h2>Code</h2><button class="tbtn primary" type="button" id="wfcAdd">+ Add</button><input class="wfc-search" id="wfcQ" placeholder="Search files and code" aria-label="Search files and code"></div>' +
+      '<dialog id="wfcAddMenu"><form method="dialog"><button class="wfc-dismiss" aria-label="Close">×</button></form><strong id="wfcDestination"></strong><button id="wfcPick">Add files</button><button id="wfcAddDir">Import folder</button><button id="wfcNewF">New folder</button><button id="wfcPaste">Paste code</button></dialog>' +
+      '<div class="wfc-grid"><div class="wfc-side"><div class="wfc-drop" id="wfcDrop" hidden contenteditable="true" spellcheck="false" aria-label="Paste code"></div><div class="wfc-tree" id="wfcTree"></div><button id="wfcProgress" hidden></button></div><div class="wfc-ed" id="wfcEd"></div></div></div>' +
+      '<dialog id="wfcUploads"><form method="dialog"><button class="wfc-dismiss" aria-label="Close uploads">×</button></form><h2>Uploads</h2><div id="wfcUploadBody"></div></dialog>' +
       '<input type="file" id="wfcFiles" multiple hidden><input type="file" id="wfcDir" webkitdirectory multiple hidden><div class="wfc-modal" id="wfcModal"></div><div class="wfc-toast" id="wfcToast"></div>';
     anchor.insertAdjacentElement("afterend", sec);
     var tab = document.createElement("button"); tab.className = "htab"; tab.type = "button"; tab.setAttribute("data-screen", "scrCode"); tab.innerHTML = ICON + "Code";
@@ -276,22 +328,28 @@
     var match = ql ? function (f) { return f.name.toLowerCase().indexOf(ql) >= 0 || f.code.toLowerCase().indexOf(ql) >= 0; } : null;
     function has(fid) { return filesIn(fid).some(match) || kids(fid).some(function (k) { return has(k.id); }); }
     h += '<div class="wfc-row wfc-root' + (sel.folder === "" ? " tgt" : "") + '" data-fid="" style="--d:0"><span class="nm">ALL CODE</span>' + (isShared("") ? '<span class="wfc-pub" title="Shared by link">\ud83d\udd17</span>' : '') + '<em>' + all("file").length + '</em><button type="button" class="wfc-dots" data-rmenu="1" aria-label="All code actions">\u22ef</button></div>';
+    var browse = mobile() && !ql;
+    if (!folderOk(sel.folder)) sel.folder = "";
+    if (browse) {
+      h = '<div class="wfc-folder-heading">' + (sel.folder ? '<button class="tbtn" data-parent>‹ Back</button> ' + esc(pathLabel(sel.folder)) : 'Folders') +
+        '<button class="wfc-dots" ' + (sel.folder ? 'data-fmenu="' + esc(sel.folder) + '"' : 'data-rmenu="1"') + ' aria-label="Folder actions">⋯</button></div>';
+    }
     var shown = 0;
     (function walk(fid, d) {
       kids(fid).forEach(function (f) {
         if (match && !has(f.id)) return;
         var open = match ? true : !!openF[f.id];
         h += '<div class="wfc-row wfc-fold' + (sel.folder === f.id ? " tgt" : "") + '" data-fid="' + f.id + '" style="--d:' + d + '"><button type="button" class="wfc-car' + (open ? " open" : "") + '" data-car="' + f.id + '" aria-label="' + (open ? "Close" : "Open") + ' folder">' + CAR + '</button>' + FOLD + '<span class="nm">' + esc(f.name) + '</span>' + (isShared(f.id) ? '<span class="wfc-pub" title="Shared by link">\ud83d\udd17</span>' : '') + '<em>' + countIn(f.id) + '</em><button type="button" class="wfc-dots" data-fmenu="' + f.id + '" aria-label="Folder actions">⋯</button></div>';
-        if (open) walk(f.id, d + 1);
+        if (!browse && open) walk(f.id, d + 1);
       });
       filesIn(fid).forEach(function (r) {
         if (match && !match(r)) return; shown++;
         h += '<div class="wfc-row wfc-file' + (sel.file === r.id ? " on" : "") + '" data-id="' + r.id + '" draggable="true" style="--d:' + (d - 1) + '"><span class="wfc-ext" data-l="' + esc(r.lang) + '">' + esc((/\.(\w{1,4})$/.exec(r.name) || [, EXT[r.lang] || "txt"])[1]) + '</span><span class="nm">' + esc(r.name) + '</span>' + (r.synced ? "" : '<span class="wfc-ns" title="Not synced yet"></span>') + '<em>' + nLines(r).toLocaleString() + '</em></div>';
       });
-    })("", 1);
+    })(browse ? sel.folder : "", 1);
     if (match && !shown) h += '<div class="wfc-hint">No file matches “' + esc(q.trim()) + '”.</div>';
-    else if (!all("file").length && !all("folder").length) h += '<div class="wfc-hint">No code yet. Drop files or a folder above, or use Add files. Make folders with New folder.</div>';
-    box.innerHTML = h; paintDrop();
+    else if (!all("file").length && !all("folder").length) h += '<div class="wfc-hint">No files yet. Use + Add to get started.</div>';
+    box.classList.toggle("wfc-browse", browse); box.innerHTML = h; paintDrop(); paintUploads();
   }
 
   function paintViewer() {
@@ -331,10 +389,43 @@
     top.innerHTML = h;
   }
   function paintFoot() {
+    paintUploads();
     var el = $("wfcSt"), r = cur(); if (!el || !r) return;
-    var t = "Saved ✓ device + cloud", c = "ok";
-    if (r.cloudErr) { t = r.cloudErr; c = "warn"; } else if (syncErr) { t = syncErr; c = "warn"; } else if (!sb()) { t = "Saved on this device"; c = ""; } else if (!r.synced) { t = "Saved on this device · syncing…"; c = ""; }
-    el.className = "wfc-st " + c; el.textContent = t;
+    el.textContent = fileState(r) + (r.synced && deviceState.has(r.id) ? " · Uploaded" : "");
+  }
+  function fileState(r) {
+    if (deviceState.has(r.id)) return deviceState.get(r.id);
+    if (r.synced) return "Uploaded";
+    if (r.cloudErr) return r.cloudErr;
+    if (r.id === activeId) return "Uploading now";
+    if (r.id === retryId) return "Waiting to retry";
+    return "Waiting";
+  }
+  function paintUploads() {
+    var btn = $("wfcProgress"); if (!btn) return;
+    var files = all("file"), total = files.length;
+    btn.hidden = !total;
+    if (!total && !$("wfcUploads").open) return;
+    var uploaded = files.filter(function (r) { return r.synced; }).length;
+    var saved = files.filter(function (r) { return db && !deviceState.has(r.id); }).length;
+    var progress = '<progress value="' + uploaded + '" max="' + (total || 1) + '"></progress>';
+    btn.innerHTML = '<b>' + uploaded + ' of ' + total + ' files uploaded ›</b>' + progress + '<small>' + saved + ' saved on this device</small>';
+    if (!$("wfcUploads").open) return;
+    var body = $("wfcUploadBody"), expanded = body.querySelector("details[open]");
+    var groups = new Map();
+    files.forEach(function (r) {
+      var state = fileState(r);
+      if (!groups.has(state)) groups.set(state, []);
+      groups.get(state).push('<li>' + esc(r.name) + '</li>');
+    });
+    var html = '<b>' + saved + ' files saved on this device</b>' + progress;
+    if (navigator.onLine === false) html += '<p>Offline · uploads resume when connected</p>';
+    groups.forEach(function (rows, state) {
+      var list = '<ul>' + rows.join("") + '</ul>';
+      html += state === "Uploaded" ? '<details' + (expanded ? ' open' : '') + '><summary>Uploaded (' + rows.length + ')</summary>' + list + '</details>' :
+        '<h3>' + esc(state) + ' (' + rows.length + ')</h3>' + list;
+    });
+    body.innerHTML = html;
   }
 
   /* ---------- find / go to line ---------- */
@@ -490,11 +581,14 @@
   function wire() {
     var root = $("scrCode");
     root.addEventListener("click", function (e) {
+      if (e.target.closest("[data-parent]")) {
+        sel.folder = items[sel.folder].parent || ""; saveSel(); paintTree(); return;
+      }
       if (!e.target.closest("#wfcPop")) closePop();
       var car = e.target.closest("[data-car]"); if (car) { var cf = car.getAttribute("data-car"); openF[cf] = !openF[cf]; saveSel(); paintTree(); return; }
       var fm = e.target.closest("[data-fmenu]"); if (fm) { folderMenu(fm, fm.getAttribute("data-fmenu")); return; }
       var rm = e.target.closest("[data-rmenu]"); if (rm) { rootMenu(rm); return; }
-      var fr = e.target.closest(".wfc-fold,.wfc-root"); if (fr) { var fid = fr.getAttribute("data-fid") || ""; if (fid && sel.folder === fid) openF[fid] = !openF[fid]; else if (fid) openF[fid] = 1; sel.folder = fid; saveSel(); paintTree(); return; }
+      var fr = e.target.closest(".wfc-fold,.wfc-root"); if (fr) { var fid = fr.getAttribute("data-fid") || ""; if (fid && sel.folder === fid) openF[fid] = !openF[fid]; else if (fid) openF[fid] = 1; sel.folder = fid; if (mobile()) { q = ""; $("wfcQ").value = ""; } saveSel(); paintTree(); return; }
       var fi = e.target.closest(".wfc-file"); if (fi) { open(fi.getAttribute("data-id")); return; }
       var vr = e.target.closest("[data-ver]"); if (vr) { ver = +vr.getAttribute("data-ver"); var keep = showHist; paintViewer(); showHist = keep; paintTop(); return; }
       var a = e.target.closest("[data-wfa]"); if (!a) return; var k = a.getAttribute("data-wfa"), r = cur();
@@ -549,8 +643,8 @@
       e.clipboardData.setData("text/plain", out); e.preventDefault();
     });
     var drop = $("wfcDrop");
-    drop.addEventListener("focus", function () { drop.textContent = ""; });
-    drop.addEventListener("blur", function () { paintDrop(); });
+    drop.addEventListener("focus", function () { drop.textContent = ""; drop.dataset.placeholder = "Paste code here"; });
+    drop.addEventListener("blur", function () { drop.hidden = true; paintDrop(); });
     drop.addEventListener("paste", function (e) { e.preventDefault(); e.stopPropagation(); var txt = (e.clipboardData || window.clipboardData).getData("text/plain") || ""; drop.blur(); pasteText(txt); });
     document.addEventListener("paste", function (e) {
       if (!root.classList.contains("on")) return; var t = e.target; if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
@@ -572,12 +666,17 @@
       var id = e.dataTransfer.getData("application/x-wfc"); if (id) { moveFile(id, fid); return; }
       var list = await fromDrop(e.dataTransfer); importList(list, fid);
     });
-    $("wfcAdd").addEventListener("click", function () { $("wfcFiles").click(); });
-    $("wfcAddDir").addEventListener("click", function () { $("wfcDir").click(); });
-    $("wfcNewF").addEventListener("click", function () { var nm = prompt("Name for the new folder" + (sel.folder ? " inside “" + pathLabel(sel.folder) + "”" : "")); if (nm && nm.trim()) { var f = newFolder(nm.trim(), sel.folder); if (sel.folder) openF[sel.folder] = 1; sel.folder = f.id; saveSel(); paintTree(); } });
-    window.addEventListener("online", pull);
-    window.addEventListener("resize", function () { paintDrop(); });
-    setInterval(function () { if (document.visibilityState === "visible" && root.classList.contains("on")) pull(); else Object.keys(items).forEach(function (id) { if (!items[id].synced) pushSoon(id, 0); }); }, 30000);
+    var addMenu = $("wfcAddMenu");
+    $("wfcAdd").onclick = function () { $("wfcDestination").textContent = "Add to " + pathLabel(sel.folder); addMenu.showModal(); };
+    $("wfcPick").onclick = function () { addMenu.close(); $("wfcFiles").click(); };
+    $("wfcPaste").onclick = function () { addMenu.close(); drop.hidden = false; drop.focus(); };
+    $("wfcProgress").onclick = function () { $("wfcUploads").showModal(); paintUploads(); };
+    $("wfcAddDir").addEventListener("click", function () { addMenu.close(); $("wfcDir").click(); });
+    $("wfcNewF").addEventListener("click", function () { addMenu.close(); var nm = prompt("Name for the new folder" + (sel.folder ? " inside “" + pathLabel(sel.folder) + "”" : "")); if (nm && nm.trim()) { var f = newFolder(nm.trim(), sel.folder); if (sel.folder) openF[sel.folder] = 1; sel.folder = f.id; saveSel(); paintTree(); } });
+    window.addEventListener("online", function () { scheduleUpload(); pull(); paintFoot(); });
+    window.addEventListener("offline", paintFoot);
+    window.matchMedia("(max-width:760px)").addEventListener("change", paintTree);
+    setInterval(function () { if (document.visibilityState === "visible" && root.classList.contains("on")) pull(); else Object.keys(items).forEach(function (id) { if (!items[id].synced) enqueue(id); }); }, 30000);
   }
 
   async function boot() {
@@ -588,6 +687,7 @@
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     try { sel = Object.assign(sel, JSON.parse(lsGet("wfc_sel") || "{}")); openF = JSON.parse(lsGet("wfc_openf") || "{}") || {}; } catch (e) {}
     if (!folderOk(sel.folder)) sel.folder = ""; if (!cur() || mobile()) sel.file = "";
+    Object.keys(items).filter(function (id) { return !items[id].synced; }).forEach(enqueue);
     paintTree(); paintViewer();
     var n = 0, iv = setInterval(function () { if (sb() || ++n > 100) { clearInterval(iv); if (sb()) { pull(); sb().auth.onAuthStateChange(function (ev) { if (ev === "SIGNED_IN" || ev === "TOKEN_REFRESHED") pull(); }); } } }, 150);
     window.__wfCode = { zipBlob: zipBlob, files: function () { return all("file").length; }, folders: function () { return all("folder").length; }, pull: pull,
