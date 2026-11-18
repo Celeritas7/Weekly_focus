@@ -51,8 +51,8 @@
   function cells(v, n) { var h = ""; for (var i = 0; i < n; i++) h += '<div class="wfl-cell' + (i === v.length ? " f" : "") + '">' + (v[i] || "") + '</div>'; return h; }
   function paintCodeCells() { var c = document.querySelector("#wflScreen .wfl-cells"); if (c) c.innerHTML = cells(code, PIN_LEN); }
   function setStatus(msg, warn) { var s = document.querySelector("#wflScreen .wfl-status"); if (s) { s.innerHTML = msg || ""; s.className = "wfl-status" + (warn ? " warn" : ""); } }
-  function show(sc, status, warn) { screen = sc; ensureLogin(); paintLogin(status, warn); document.body.classList.add("wf-locked"); $("wflScreen").setAttribute("aria-hidden", "false"); lockVault(); }
-  function hide() { document.body.classList.remove("wf-locked"); var d = $("wflScreen"); if (d) { d.setAttribute("aria-hidden", "true"); d.innerHTML = ""; } }
+  function show(sc, status, warn) { screen = sc; ensureLogin(); paintLogin(status, warn); document.body.classList.add("wf-locked"); $("wflScreen").setAttribute("aria-hidden", "false"); lockVault(); if (window.WFStartup) window.WFStartup.authReady(); }
+  function hide() { document.body.classList.remove("wf-locked"); var d = $("wflScreen"); if (d) { d.setAttribute("aria-hidden", "true"); d.innerHTML = ""; } if (window.WFStartup) window.WFStartup.authReady(); }
 
   function onLoginClick(e) {
     var a = e.target.closest("[data-wfl]"), d = e.target.closest("[data-wfl-d]"), b = e.target.closest("[data-wfl-back]");
@@ -162,7 +162,24 @@
   function boot() {
     ensureLogin(); guardVault();
     var n = 0, iv = setInterval(function () {
-      if (window.__wfSb) { clearInterval(iv); sb = window.__wfSb; sb.auth.onAuthStateChange(onAuth); sb.auth.getSession().then(function (r) { var s = r && r.data ? r.data.session : null; if (!s) onAuth("INITIAL_SESSION", null); }).catch(function () { onAuth("INITIAL_SESSION", null); }); return; }
+      if (window.__wfSb) {
+        clearInterval(iv); sb = window.__wfSb;
+        var authRevision = 0;
+        sb.auth.onAuthStateChange(function (event, sess) { authRevision++; onAuth(event, sess); });
+        var requestedAt = authRevision;
+        sb.auth.getSession().then(function (r) {
+          // A resolved session is useful even when no INITIAL_SESSION event arrived.
+          // A later sign-out/sign-in event must win over this older async response.
+          if (authRevision !== requestedAt) return;
+          if (r && r.error) { if (window.WFStartup) window.WFStartup.fail("Sign-in could not be checked. Try again when your connection is ready."); return; }
+          onAuth("INITIAL_SESSION", r && r.data ? r.data.session : null);
+        }).catch(function () {
+          if (authRevision !== requestedAt) return;
+          if (offlineKnown()) onAuth("INITIAL_SESSION", null);
+          else if (window.WFStartup) window.WFStartup.fail("Sign-in could not be checked. Try again when your connection is ready.");
+        });
+        return;
+      }
       if (++n > 60) { clearInterval(iv); show("signin", navigator.onLine ? "" : "You&rsquo;re offline and the sign-in library isn&rsquo;t stored on this device yet. Open the app once with signal — after that it opens offline.", !navigator.onLine); }   // v105
     }, 100);
     // Until the client answers, keep the app hidden so nothing flashes before the gate.

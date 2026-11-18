@@ -1,0 +1,25 @@
+name: Startup recovery
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  startup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/startup.cjs
+      - run: node --check js/wf-login.js && node --check sw.js
+      - run: npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/startup-browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: startup-mobile-screenshots
+          path: test-results/*.png
