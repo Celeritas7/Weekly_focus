@@ -17,7 +17,9 @@ requiring a sign-out, reinstall or data reset.
 ## Changes
 
 - The HTML contains its own startup screen and watchdog before dependency
-  downloads. External scripts defer parsing, preserving their execution order.
+  downloads. External scripts defer execution until parsing finishes. App
+  initialization waits for DOMContentLoaded so the Sphere/logo modules are
+  available for the first render.
 - After 12 seconds, a stalled startup gives visible retry guidance. Critical
   script failures produce an actionable message. Both app initialization and
   a rendered auth outcome are required before the startup screen disappears.

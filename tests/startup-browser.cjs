@@ -59,6 +59,7 @@ async function run(name,fn){await fn();console.log('PASS '+name);}
     const {context,page,errors}=await fixture('signedin');
     await page.locator('#wfStartup').waitFor({state:'hidden'});
     assert(await page.locator('#scrSphere').isVisible());
+    await page.locator('.sd-slot[data-sdk="app:fixture"]').waitFor({state:'visible'});
     assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('wf-locked')),false);
     await page.screenshot({path:'test-results/startup-signedin-mobile.png'});
     assert.deepEqual(errors,[]);await context.close();

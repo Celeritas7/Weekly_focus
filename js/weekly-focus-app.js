@@ -5995,6 +5995,9 @@
     if (window.WFStartup) window.WFStartup.appReady();
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+  // Deferred scripts run while readyState is interactive. Wait for the later
+  // Sphere/logo modules before the first render, just as the parser-blocking
+  // scripts did before startup recovery was added.
+  if (document.readyState !== "complete") document.addEventListener("DOMContentLoaded", init, { once: true }); else init();
 })();
 
