@@ -19,9 +19,13 @@
 </style>
 <script id="wfStartupBoot">
 (function () {
-  var app = false, auth = false, finished = false, timer, message = "Checking your sign-in and opening your week…";
-  function paint() { var el = document.getElementById("wfStartupMessage"); if (el) el.textContent = message; }
-  function fail(text) { if (finished) return; message = text || "Opening is taking longer than expected. Check your connection, then try again."; paint(); }
+  var app = false, auth = false, finished = false, timer, message = "Opening your week…", phase = "Loading app files", failed = false;
+  function paint() {
+    var el = document.getElementById("wfStartupMessage"); if (el) el.textContent = message;
+    var detail = document.getElementById("wfStartupDetail"); if (detail) detail.textContent = phase;
+  }
+  function step(text) { if (finished) return; phase = text; paint(); }
+  function fail(text) { if (finished) return; failed = true; message = text || "Opening is taking longer than expected. Check your connection, then try again."; paint(); }
   function ready() {
     if (!app || !auth || finished) return;
     finished = true; clearTimeout(timer); document.documentElement.classList.remove("wf-starting");
@@ -60,8 +64,8 @@
       buttons.forEach(function (b) { b.disabled = false; });
     }
   }
-  window.WFStartup = { appReady: function () { app = true; ready(); }, authReady: function () { auth = true; ready(); }, fail: fail };
-  timer = setTimeout(function () { fail(); }, 12000);
+  window.WFStartup = { appReady: function () { app = true; if (!auth) step("Waiting for sign-in response"); ready(); }, authReady: function () { auth = true; if (!app) step("Preparing the app screen"); ready(); }, fail: fail, step: step };
+  timer = setTimeout(function () { if (!failed) fail(); }, 12000);
   document.addEventListener("DOMContentLoaded", paint);
   document.addEventListener("click", function (e) {
     var button = e.target.closest && e.target.closest("[data-wf-boot]"); if (!button || button.disabled) return;
@@ -78,19 +82,20 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/weekly-focus.css">
 <link rel="stylesheet" href="css/home-screens.css?v=153">
-<link rel="stylesheet" href="css/wf-login.css?v=161">
+<link rel="stylesheet" href="css/wf-login.css?v=162">
 <link rel="stylesheet" href="css/wf-sphere-draft.css?v=155">
-<link rel="stylesheet" href="css/wf-detail-ui.css?v=161">
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<link rel="stylesheet" href="css/wf-detail-ui.css?v=162">
+<script defer src="js/vendor/supabase-2.119.0.js"></script>
 </head>
 <body data-mode="personal">
 <section id="wfStartup" aria-label="Opening Weekly Focus">
   <div class="wf-start-card">
     <h1>Weekly Focus</h1>
-    <p id="wfStartupMessage" role="status" aria-live="polite">Checking your sign-in and opening your week…</p>
+    <p id="wfStartupMessage" role="status" aria-live="polite">Opening your week…</p>
+    <p id="wfStartupDetail">Loading app files</p>
     <button type="button" data-wf-boot="retry">Try again</button>
     <button type="button" data-wf-boot="update">Update app files</button>
-    <small>Your saved work and sign-in are kept. · v161</small>
+    <small>Your saved work and sign-in are kept. · v162</small>
     <noscript><p>Enable JavaScript in your browser to open Weekly Focus.</p></noscript>
   </div>
 </section>
@@ -741,16 +746,16 @@
 <script defer src="js/akatsuki-client.js"></script>
 <script defer src="js/akatsuki-banner.js"></script>
 <script defer src="js/wf-purchase-adapter.js"></script>
-<script defer src="https://celeritas7.github.io/Akatsuki/js/akatsuki-broadcast.js"></script>
-<script defer src="https://celeritas7.github.io/Akatsuki/js/akatsuki-broadcast-panel.js?v=R074"></script>
+<script async src="https://celeritas7.github.io/Akatsuki/js/akatsuki-broadcast.js"></script>
+<script async src="https://celeritas7.github.io/Akatsuki/js/akatsuki-broadcast-panel.js?v=R074"></script>
 <script defer src="js/wf-detail-ui.js?v=156"></script>
-<script defer src="js/wf-task-data.js?v=161"></script>
-<script defer src="js/wf-task-engine.js?v=161"></script>
-<script defer src="js/weekly-focus-app.js?v=161"></script>
+<script defer src="js/wf-task-data.js?v=162"></script>
+<script defer src="js/wf-task-engine.js?v=162"></script>
+<script defer src="js/weekly-focus-app.js?v=162"></script>
 <script defer src="js/wf-logos.js"></script>
 <script defer src="js/wf-sphere-draft.js?v=157"></script>
-<script defer src="js/wf-cc-bridge-v2.js"></script>
-<script defer src="js/wf-login.js?v=161"></script>
+<script defer src="js/wf-cc-bridge-v2.js?v=162"></script>
+<script defer src="js/wf-login.js?v=162"></script>
 <script defer src="js/wf-code-hl.js"></script>
 <script defer src="js/wf-zip.js"></script>
 <script defer src="js/wf-code.js"></script>
@@ -763,7 +768,7 @@
 
   // PWA: register the service worker (only on http/https — no-op in sandboxed previews)
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
-    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+    document.addEventListener("DOMContentLoaded", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
   }
 </script>
 

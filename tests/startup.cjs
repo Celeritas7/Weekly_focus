@@ -84,9 +84,11 @@ test('failed or stalled update keeps recovery controls available',async()=>{
   }
 });
 test('startup UI is in the page before dependency downloads and changed assets are versioned',()=>{
-  assert(html.indexOf('id="wfStartupBoot"')<html.indexOf('cdn.jsdelivr.net'));
+  assert(html.indexOf('id="wfStartupBoot"')<html.indexOf('js/vendor/supabase-2.119.0.js'));
   assert(html.includes('id="wfStartupMessage"'));assert(html.includes('data-wf-boot="update"'));
-  assert([...html.matchAll(/<script[^>]+src=/g)].every(m=>m[0].includes('defer')));
+  assert([...html.matchAll(/<script([^>]+)src="([^"]+)"/g)].every(m=>m[1].includes(m[2].startsWith('https://')?'async':'defer')));
+  assert(!html.includes('cdn.jsdelivr.net'));
+  assert(html.includes('id="wfStartupDetail"'));
   const app=fs.readFileSync('js/weekly-focus-app.js','utf8'),sw=fs.readFileSync('sw.js','utf8');
   const release=app.match(/APP_BUILD = "v(\d+)"/)[1];
   for(const file of ['wf-login.js','wf-login.css'])for(const text of [html,sw])assert(text.includes(file+'?v='+release));
@@ -97,7 +99,7 @@ function worker(fetchImpl){
   const cache={match:async()=>cached.clone(),put:async(k,v)=>{writes.push({key:k,status:v.status})}};
   const c={URL,Response,Promise,setTimeout:(fn)=>{timers.push(fn)},fetch:fetchImpl,
     self:{location:{origin:'https://fixture.test'},registration:{scope:'https://fixture.test/Weekly_focus/'},clients:{claim:async()=>{}},addEventListener:(k,fn)=>{listeners[k]=fn}},
-    caches:{keys:async()=>['weekly-focus-v159','weekly-focus-v160','weekly-focus-v161','wf-logos-v1','arrow-v10','commonplace-v1'],
+    caches:{keys:async()=>['weekly-focus-v159','weekly-focus-v160','weekly-focus-v161','weekly-focus-v162','wf-logos-v1','arrow-v10','commonplace-v1'],
       delete:async k=>{deleted.push(k)},open:async()=>cache,match:async()=>undefined}};
   vm.createContext(c);vm.runInContext(fs.readFileSync('sw.js','utf8'),c);
   return {listeners,deleted,writes,timers,request(mode='navigate'){
@@ -106,7 +108,7 @@ function worker(fetchImpl){
 }
 test('activation removes only old Weekly Focus builds, keeping other apps and logos',async()=>{
   const w=worker();let done;w.listeners.activate({waitUntil:p=>{done=p}});await done;
-  assert.deepEqual(w.deleted,['weekly-focus-v159','weekly-focus-v160']);
+  assert.deepEqual(w.deleted,['weekly-focus-v159','weekly-focus-v160','weekly-focus-v161']);
 });
 test('navigation failures and non-HTML responses cannot poison the offline page',async()=>{
   for(const fn of [async()=>{throw Error('network')},async()=>new Response('Unavailable',{status:503}),async()=>new Response('wrong type')]){
@@ -120,4 +122,25 @@ test('successful page refresh is cached but failed scripts are not',async()=>{
   let w=worker(async()=>new Response('<h1>New app</h1>',{headers:{'content-type':'text/html'}}));
   assert.match(await (await w.request()).text(),/New app/);assert.equal(w.writes.length,1);
   w=worker(async()=>new Response('Missing',{status:404}));assert.equal((await w.request('cors')).status,404);assert.equal(w.writes.length,0);
+});
+
+// A best-effort CDN add still waits forever when the network never settles.
+test('offline installation requires only same-origin files, including the pinned auth SDK',async()=>{
+  const source=fs.readFileSync('sw.js','utf8'),listeners={},assets=[];let skipped=false;
+  const ctx={URL,Response,Promise,setTimeout,self:{addEventListener:(k,fn)=>listeners[k]=fn,skipWaiting:async()=>{skipped=true}},
+    caches:{open:async()=>({addAll:async xs=>{assert(xs.every(x=>x.startsWith('./')));assets.push(...xs)}})}};
+  vm.createContext(ctx);vm.runInContext(source,ctx);let done;listeners.install({waitUntil:p=>done=p});await done;
+  assert(skipped);assert(assets.includes('./js/vendor/supabase-2.119.0.js'));
+});
+
+test('late optional broadcaster starts once and an overlay error cannot abort sign-in',()=>{
+  const source=fs.readFileSync('js/weekly-focus-app.js','utf8');
+  const part=source.slice(source.indexOf('  function startBroadcast()'),source.indexOf('  function ensureClient()'));
+  let listener,starts=0;const ctx={sb:{},window:{},console:{warn(){}},document:{addEventListener:(name,fn)=>{listener=fn}}};
+  vm.createContext(ctx);vm.runInContext(part,ctx);ctx.startBroadcast();assert.equal(starts,0);
+  ctx.window.AkatsukiBroadcast=()=>({start(){starts++}});
+  listener({target:{src:'https://example.invalid/Akatsuki/js/akatsuki-broadcast.js'}});ctx.startBroadcast();
+  assert.equal(starts,1);
+  delete ctx.window.__wfBroadcast;ctx.window.AkatsukiBroadcast=()=>{throw Error('optional failure')};
+  assert.doesNotThrow(()=>ctx.startBroadcast());assert(!ctx.window.__wfBroadcast);
 });
