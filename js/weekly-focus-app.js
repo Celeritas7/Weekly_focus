@@ -26,7 +26,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v161", BUILD_N = 161;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v162", BUILD_N = 162;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -2542,6 +2542,16 @@
   }
   function syncNow() { return freshAuth().then(function () { if (!syncReady()) return; flushOutbox(); cloudPullInventory(false); cloudPullEntries(); cloudPullGroups(); }); }
 
+  function startBroadcast() {
+    if (!sb || !window.AkatsukiBroadcast || window.__wfBroadcast) return;
+    try { window.AkatsukiBroadcast(sb, 'wf').start(); window.__wfBroadcast = true; }
+    catch (e) { console.warn('[wf] Reminder overlay could not start', e && e.message); }
+  }
+  // Optional cross-app downloads may finish before or after the local app.
+  // They must never hold up sign-in, rendering, or service-worker installation.
+  document.addEventListener('load', function (e) {
+    if (e.target && /\/akatsuki-broadcast\.js(?:[?#]|$)/.test(e.target.src || '')) startBroadcast();
+  }, true);
   function ensureClient() {
     if (sb) return sb;
     if (!cloudConfigured() || typeof window.supabase === "undefined") return null;
@@ -2550,7 +2560,7 @@
       global: { headers: { "x-akatsuki-app": "wf" } }
     });
     window.__wfSb = sb;   // shared with wf-cc-bridge-v2.js so it uses this signed-in session
-    if (window.AkatsukiBroadcast && !window.__wfBroadcast) { window.__wfBroadcast = true; window.AkatsukiBroadcast(sb, 'wf').start(); }   // Akatsuki broadcast overlay (once per page)
+    startBroadcast();
 
     var sub = sb.auth.onAuthStateChange(function (event, sess) {
       session = sess || null;
@@ -5909,6 +5919,7 @@
      INIT
      ============================================================ */
   function init() {
+    if (window.WFStartup) window.WFStartup.step("Preparing the Sphere");
     setTimeout(releaseHolds, 3000); setInterval(releaseHolds, 30000);   // 24h holds
     wireDisclosure("appsBacklogHead", "appsBacklogWrap");
     wireDisclosure("studyBacklogHead", "studyBacklogWrap");
@@ -5990,6 +6001,7 @@
         ENTER = true; refreshGroupLists(); renderAll();
       } catch (e) {}
     } else {
+      if (window.WFStartup) window.WFStartup.step("Starting saved sign-in");
       startCloud();        // connects with the baked-in config, then loads your week once signed in
     }
     if (window.WFStartup) window.WFStartup.appReady();

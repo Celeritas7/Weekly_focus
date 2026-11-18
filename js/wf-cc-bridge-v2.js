@@ -282,8 +282,8 @@
     timer = setInterval(sync, SYNC_INTERVAL);
     setTimeout(sync, 4000);                        // first pass once the app settles
   }
-  if (document.readyState === 'complete') start();
-  else window.addEventListener('load', start);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 
   window.WF_CC_SYNC = { now: sync };               // console/manual hook
 })();
