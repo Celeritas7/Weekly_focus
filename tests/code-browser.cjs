@@ -19,7 +19,7 @@ const { chromium } = require("playwright");
       window.__wfSb = {
         auth:{getSession: async () => ({data:{session:{user:{id:"fixture"}}}}),onAuthStateChange(){}},
         from() {return {
-          select(){return {eq:async()=>({data:[]}),data:[]}},
+          select(){return {eq(){return this},order(){return this},limit:async()=>({data:[]}),data:[]}},
           async upsert(row) {
             window.peak = Math.max(++window.busy,window.peak);
             window.writes.push([row.item_key,Date.now()]);
