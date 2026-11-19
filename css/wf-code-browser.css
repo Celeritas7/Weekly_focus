@@ -26,3 +26,6 @@
   #scrCode .wfc-dots { opacity:1; min-width:44px; min-height:44px; }
   #scrCode dialog { margin:auto auto 0; width:100%; max-width:100%; border-radius:22px 22px 0 0; padding-bottom:max(20px,env(safe-area-inset-bottom)); }
 }
+
+.wfc-refresh { display:flex; gap:8px; align-items:center; justify-content:space-between; color:var(--mid); }
+.wfc-refresh button { margin-left:auto; }

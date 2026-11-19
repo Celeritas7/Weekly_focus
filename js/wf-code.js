@@ -78,6 +78,7 @@
   function save(r) {
     r.u = Math.max(Date.now(), (r.u || 0) + 1);
     r.synced = false;
+    delete r.remoteStamp;
     delete r.cloudErr;
     items[r.id] = r;
     var revision = r.u;
@@ -147,24 +148,66 @@
     while (p.vers.length && bytes(JSON.stringify(p)) > CLOUD_MAX) p.vers.pop();
     return p;
   }
+  var lastRefresh = 0, refreshMessage = "", readyToRefresh = false;
+  function showRefresh() {
+    var label = $("wfcRefreshStatus");
+    if (!label) return;
+    label.textContent = [navigator.onLine === false ? "Offline" : refreshMessage,
+      lastRefresh ? "Last refreshed " + new Date(lastRefresh).toLocaleString() : ""].filter(Boolean).join(" · ");
+    $("wfcRefresh").disabled = pulling || navigator.onLine === false;
+  }
   async function pull() {
-    var c = sb(), u = await user(); if (!c || !u || pulling) return; pulling = true;
+    var c = sb();
+    if (!readyToRefresh || !c || pulling || navigator.onLine === false) return;
+    pulling = true;
+    var changed = false, openChanged = false;
     try {
-      var res = await c.from("weekly_focus_entries").select("item_key,payload").eq("board_id", BOARD);
-      if (res.error) throw res.error;
-      var changed = false, openChanged = false;
-      for (var i = 0; i < (res.data || []).length; i++) {
-        var row = res.data[i], key = String(row.item_key || ""), id = key.replace(/^(code|fold):/, ""), p = row.payload || {}, l = items[id];
-        if (!id || (l && (p.u || 0) <= (l.u || 0))) continue;
-        items[id] = norm(Object.assign({ id: id, kind: /^fold:/.test(key) ? "folder" : "file" }, p, { synced: true }));
-        await put(items[id]); changed = true; if (id === sel.file) openChanged = true;
+      var u = await user();
+      if (!u) { refreshMessage = "Sign in to refresh"; return; }
+      refreshMessage = "Checking for changes"; showRefresh();
+      var after = "", downloaded = 0;
+      for (;;) {
+        var query = c.from("weekly_focus_entries").select("item_key,updated_at")
+          .eq("user_id", u.id).eq("board_id", BOARD).order("item_key").limit(100);
+        if (after) query = query.gt("item_key", after);
+        var page = await query;
+        if (page.error) throw page.error;
+        if (!page.data.length) break;
+        for (var meta of page.data) {
+          var key = meta.item_key, id = key.replace(/^(code|fold):/, ""), local = items[id];
+          if (!id || !/^(code|fold):/.test(key)) continue;
+          if (local && (!local.synced || local.remoteStamp === meta.updated_at ||
+              (!local.remoteStamp && Date.parse(meta.updated_at) === local.u))) continue;
+          // Each payload can be several MB. Fetch only one at a time.
+          var detail = await c.from("weekly_focus_entries").select("payload,updated_at")
+            .eq("user_id", u.id).eq("board_id", BOARD).eq("item_key", key).maybeSingle();
+          if (detail.error) throw detail.error;
+          if (!detail.data) continue;
+          local = items[id];
+          var row = detail.data, payload = row.payload;
+          if (local && (!local.synced || (payload.u || 0) < local.u)) continue;
+          var record = norm(Object.assign({}, payload, { id: id, kind: key.startsWith("fold:") ? "folder" : "file",
+            synced: true, remoteStamp: row.updated_at }));
+          await put(record);
+          // A local edit during this transaction queued its own, newer device write.
+          if (items[id] !== local || (local && !local.synced)) continue;
+          items[id] = record; changed = true;
+          if (id === sel.file) openChanged = true;
+          refreshMessage = "Received " + (++downloaded) + " changes"; showRefresh();
+        }
+        after = page.data[page.data.length - 1].item_key;
+        if (page.data.length < 100) break;
       }
-      Object.keys(items).forEach(function (id) { if (!items[id].synced) enqueue(id); });
-      syncErr = "";
+      lastRefresh = Date.now(); refreshMessage = "";
+    } catch (e) {
+      refreshMessage = "Refresh incomplete · retry available";
+    } finally {
+      pulling = false; showRefresh();
       if (changed) paintTree();
       if (openChanged && ver < 0) paintViewer();
-    } catch (e) { syncErr = "Couldn't reach the cloud. Cloud refresh pending."; }
-    pulling = false; paintFoot(); loadShares();
+      paintFoot();
+    }
+    loadShares();
   }
 
   /* ---------- adding files ---------- */
@@ -306,7 +349,7 @@
     var sec = document.createElement("section"); sec.className = "screen"; sec.id = "scrCode"; sec.setAttribute("data-screen-label", "Code");
     sec.innerHTML = '<div class="wfc"><div class="wfc-head"><h2>Code</h2><button class="tbtn primary" type="button" id="wfcAdd">+ Add</button><input class="wfc-search" id="wfcQ" placeholder="Search files and code" aria-label="Search files and code"></div>' +
       '<dialog id="wfcAddMenu"><form method="dialog"><button class="wfc-dismiss" aria-label="Close">×</button></form><strong id="wfcDestination"></strong><button id="wfcPick">Add files</button><button id="wfcAddDir">Import folder</button><button id="wfcNewF">New folder</button><button id="wfcPaste">Paste code</button></dialog>' +
-      '<div class="wfc-grid"><div class="wfc-side"><div class="wfc-drop" id="wfcDrop" hidden contenteditable="true" spellcheck="false" aria-label="Paste code"></div><div class="wfc-tree" id="wfcTree"></div><button id="wfcProgress" hidden></button></div><div class="wfc-ed" id="wfcEd"></div></div></div>' +
+      '<div class="wfc-grid"><div class="wfc-side"><div class="wfc-drop" id="wfcDrop" hidden contenteditable="true" spellcheck="false" aria-label="Paste code"></div><div class="wfc-tree" id="wfcTree"></div><button id="wfcProgress" hidden></button><div class="wfc-refresh"><small id="wfcRefreshStatus" role="status"></small><button class="tbtn" id="wfcRefresh" type="button">Refresh</button></div></div><div class="wfc-ed" id="wfcEd"></div></div></div>' +
       '<dialog id="wfcUploads"><form method="dialog"><button class="wfc-dismiss" aria-label="Close uploads">×</button></form><h2>Uploads</h2><div id="wfcUploadBody"></div></dialog>' +
       '<input type="file" id="wfcFiles" multiple hidden><input type="file" id="wfcDir" webkitdirectory multiple hidden><div class="wfc-modal" id="wfcModal"></div><div class="wfc-toast" id="wfcToast"></div>';
     anchor.insertAdjacentElement("afterend", sec);
@@ -674,7 +717,11 @@
     $("wfcAddDir").addEventListener("click", function () { addMenu.close(); $("wfcDir").click(); });
     $("wfcNewF").addEventListener("click", function () { addMenu.close(); var nm = prompt("Name for the new folder" + (sel.folder ? " inside “" + pathLabel(sel.folder) + "”" : "")); if (nm && nm.trim()) { var f = newFolder(nm.trim(), sel.folder); if (sel.folder) openF[sel.folder] = 1; sel.folder = f.id; saveSel(); paintTree(); } });
     window.addEventListener("online", function () { scheduleUpload(); pull(); paintFoot(); });
-    window.addEventListener("offline", paintFoot);
+    $("wfcRefresh").onclick = pull;
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && root.classList.contains("on")) pull();
+    });
+    window.addEventListener("offline", function () { showRefresh(); paintFoot(); });
     window.matchMedia("(max-width:760px)").addEventListener("change", paintTree);
     setInterval(function () { if (document.visibilityState === "visible" && root.classList.contains("on")) pull(); else Object.keys(items).forEach(function (id) { if (!items[id].synced) enqueue(id); }); }, 30000);
   }
@@ -689,6 +736,7 @@
     if (!folderOk(sel.folder)) sel.folder = ""; if (!cur() || mobile()) sel.file = "";
     Object.keys(items).filter(function (id) { return !items[id].synced; }).forEach(enqueue);
     paintTree(); paintViewer();
+    readyToRefresh = true; showRefresh();
     var n = 0, iv = setInterval(function () { if (sb() || ++n > 100) { clearInterval(iv); if (sb()) { pull(); sb().auth.onAuthStateChange(function (ev) { if (ev === "SIGNED_IN" || ev === "TOKEN_REFRESHED") pull(); }); } } }, 150);
     window.__wfCode = { zipBlob: zipBlob, files: function () { return all("file").length; }, folders: function () { return all("folder").length; }, pull: pull,
       add: function (name, text, dirs) { return importList([{ name: name, size: text.length, read: function () { return Promise.resolve(text); }, dirs: dirs || [] }], sel.folder); } };
