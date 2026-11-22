@@ -54,3 +54,9 @@ On PostgreSQL 16.2 two owners independently edited the same board/item and reuse
 **Deployment boundary.** The fixture simulates an already authenticated gateway. It does not verify signed tokens, run PostgREST or exercise the hosted project's grants or RLS policies. The current browser bridge uses the Weekly Focus user's session and writes a full payload. Before deployment, a trusted server-side bridge would need to derive its owner binding from a verified account, keep its credential off the client and recompute the desired flag. The prototype's single-owner login demonstrates the restriction only. The current app and its offline queue still use their existing write paths.
 
 **Next phase.** Prototype the client outbox transition with a stable operation ID, original base revision and confirmed snapshot. Test offline reopen, retry after lost acknowledgment and preservation of legacy unversioned drafts before enabling the new writes.
+
+### Phase 3D — browser outbox prototype
+
+The revision-aware outbox in `js/wf-revision-outbox.mjs` uses separate account/board storage and serializes tab writes with Web Locks. Capture the base from the view where the edit was made. Pulls update the confirmed snapshot independently. Conflicts and unversioned legacy task drafts survive reconnect and reload. After a committed response, pull the authoritative snapshot before using the new revision for another edit. Storage errors propagate to the caller. The existing app sender is still in use until the server and all shared writers are ready.
+
+Run the PostgreSQL suite with `WF_BROWSER_QUEUE=1`, Python Playwright installed and `CHROMIUM_BIN` set to a Chromium executable. Two Chromium contexts exercise the client against real PostgreSQL transactions on loopback. No hosted account or phone is used.
