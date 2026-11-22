@@ -105,6 +105,8 @@ def main():
         try:
             subprocess.run(ctl+["-l",str(root/"log"),"-o",f"-h 127.0.0.1 -p {port} -c unix_socket_directories=''","start"],check=True)
             check(port,pwd)
+            from recovery import rehearse
+            rehearse(port, pwd)
         finally:
             if (Path(data)/"postmaster.pid").exists():
                 subprocess.run(ctl+["-m","fast","stop"],check=True)

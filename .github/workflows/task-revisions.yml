@@ -24,3 +24,15 @@ jobs:
       - run: pip install 'psycopg[binary]>=3.2,<4' playwright
       - run: python -m playwright install --with-deps chromium
       - run: PATH="$(pg_config --bindir):$PATH" WF_BROWSER_QUEUE=1 python tests/task-db/check.py
+  hosted-version-recovery:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rehearse on PostgreSQL 17.6 with synthetic data
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/workspace:ro" -w /workspace \
+            -e PYTHONDONTWRITEBYTECODE=1 postgres:17.6-bookworm bash -ec '
+              apt-get update -qq
+              apt-get install -y -qq python3-psycopg
+              exec gosu postgres /usr/bin/python3 tests/task-db/check.py
+            '
