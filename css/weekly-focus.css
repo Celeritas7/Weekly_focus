@@ -2005,3 +2005,11 @@ body.wdrag .wtile.empty{opacity:1;filter:none}
 /* v150 · inactive apps (moons) and links on the board tiles: dimmed, after the active ones */
 .sph-moon.dim,.sph-glink.off{opacity:.45;filter:grayscale(.8)}
 .sph-glink.off{border-style:dashed}
+
+.week-history { display: grid; gap: .7rem; margin-top: 1rem; justify-items: start; }
+.week-history details { width: 100%; min-width: 0; overflow-wrap: anywhere; }
+.week-history summary { cursor: pointer; font-weight: 600; }
+.week-history label { display: block; margin-block: .7rem; }
+.week-history label[hidden] { display: none; }
+.week-history select { max-width: 100%; }
+.week-history p { white-space: pre-wrap; }

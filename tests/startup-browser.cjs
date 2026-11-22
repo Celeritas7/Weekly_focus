@@ -109,6 +109,30 @@ async function realFixture(cached=false,expired=false){
       await context.close();
     }
   });
+  await run('weekly reviews keep historical counts, notes and original task identities',async()=>{
+    const {context,page}=await fixture('signedin');
+    await page.locator('[data-sphere-view="scrWeek"]').click();
+    const save=page.locator('#saveWeekProgress'), history=page.locator('#weekHistoryBody');
+    await page.locator('#weekInput').fill('2026-11-16');
+    await page.locator('#eowCarry').fill('Continue reading');
+    await save.click();
+    assert.match(await history.innerText(), /Fixture goal · 1 of 2 complete/);
+    assert.match(await history.innerText(), /Continue reading/);
+    await save.click();
+    assert.equal(await page.locator('#weekHistoryChoice option').count(),1);
+    await page.locator('#weekInput').fill('2026-11-23');
+    await page.locator('#fiveGrid [data-sid="one"] [data-act="subtoggle"]').click();
+    await page.locator('#eowCarry').fill('Ready to publish');
+    await save.click();
+    assert.match(await history.innerText(), /Fixture goal · 2 of 2 complete/);
+    const previous=page.locator('#weekHistoryChoice option').filter({hasText:'2026-11-16'});
+    await page.locator('#weekHistoryChoice').selectOption(await previous.getAttribute('value'));
+    assert.match(await history.innerText(), /Fixture goal · 1 of 2 complete/);
+    assert.match(await history.innerText(), /Synthetic task/);
+    assert.match(await history.innerText(), /Continue reading/);
+    assert.equal(await page.locator('#fiveGrid [data-sid="one"]').count(),1);
+    await context.close();
+  });
   await run('signed-out session shows login and keeps private app UI hidden',async()=>{
     const {context,page,errors}=await fixture('signedout');
     await page.getByRole('button',{name:'Continue with Google'}).waitFor();

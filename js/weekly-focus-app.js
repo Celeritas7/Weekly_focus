@@ -26,7 +26,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v165", BUILD_N = 165;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v166", BUILD_N = 166;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1793,7 +1793,80 @@
   }
 
   /* ---- meta (week + eow) ---- */
+  var WEEK_PREFIX = "__week_review:";
+  function savedWeekKeys() {
+    return Object.keys(entries).filter(function (key) {
+      var r = entries[key];
+      return key.startsWith(WEEK_PREFIX) && r && r.format === 1 && Array.isArray(r.goals) && Array.isArray(r.items);
+    }).sort(function (a,b) { return String(entries[b].savedAt).localeCompare(String(entries[a].savedAt)) || b.localeCompare(a); });
+  }
+  function saveWeeklyReview() {
+    var week = String(meta.weekOf || "").trim();
+    if (!week) { toast("Enter the week in Week of first."); $("weekInput").focus(); return; }
+    if (STALE) { toast("Update Weekly Focus before saving a review."); return; }
+    if (!window.__WF_SEED && !obUid()) { toast("Sign in before saving a review."); return; }
+    if (!window.__WF_SEED && !localLoaded && !(boardPulled && invPulled)) {
+      toast("Wait for this board to load before saving its review."); return;
+    }
+    var saved = savedWeekKeys().find(function (key) { return entries[key].week === week; });
+    if (!saved) {
+      var ids = new Set(targetOrder);
+      sdRows().forEach(function (r) { if (r.goals.length) ids.add(r.id); });
+      var items = Array.from(ids, function (id) {
+        var progress = TaskEngine.checklistSummary(getEntry(id).subtasks);
+        return { id: id, name: labelFor(id).name, goals: goalsOf(id).map(function (g) { return g.id; }),
+          rank: targetOrder.indexOf(id) + 1, targetDone: targetDone(id), kind: progress.kind,
+          done: progress.done, total: progress.total, remaining: progress.blockers.map(function (b,i) {
+            return { id: progress.blockerIds[i], text: b.text };
+          }) };
+      });
+      var snapshot = { format: 1, week: week, savedAt: nowISO(), goals: goalList().map(function (g) {
+        return { id: g.id, name: g.name };
+      }), items: items, wins: meta.eowDone || "", carry: meta.eowCarry || "", notes: meta.eowNotes || "" };
+      saved = WEEK_PREFIX + uid();
+      entries[saved] = snapshot;
+      cloudPushEntry(saved,snapshot);
+      saveCache();
+    }
+    renderWeekHistory(saved);
+    $("weekHistory").open = true;
+  }
+  function historyCount(items) {
+    if (items.some(function (r) { return r.kind === "unresolved"; })) return "Checklist needs review";
+    var done = 0, total = 0;
+    items.forEach(function (r) { done += Number(r.done) || 0; total += Number(r.total) || 0; });
+    return total ? done + " of " + total + " complete" :
+      items.some(function (r) { return r.kind === "empty-active"; }) ? "No active checklist items" : "No checklist";
+  }
+  function renderWeekHistory(selected) {
+    var keys = savedWeekKeys(), choice = $("weekHistoryChoice"), current = selected || choice.value;
+    $("weekHistoryCount").textContent = "(" + keys.length + ")";
+    choice.parentElement.hidden = !keys.length;
+    choice.innerHTML = keys.map(function (key) {
+      var r = entries[key];
+      return '<option value="' + esc(key) + '">' + esc(r.week + " · " + new Date(r.savedAt).toLocaleString()) + '</option>';
+    }).join("");
+    if (keys.includes(current)) choice.value = current;
+    var r = entries[choice.value];
+    if (!r) { $("weekHistoryBody").textContent = "No weekly reviews saved yet."; return; }
+    var items = r.items.filter(function (x) { return x && Array.isArray(x.goals) && Array.isArray(x.remaining); });
+    var targets = items.filter(function (x) { return x.rank; }).sort(function (a,b) { return a.rank-b.rank; });
+    function list(rows) { return '<ul>' + rows.join("") + '</ul>'; }
+    function section(name, rows) { return rows.length ? '<h4>' + name + '</h4>' + list(rows) : ""; }
+    var goals = r.goals.filter(Boolean).map(function (g) {
+      return '<li>' + esc(g.name) + ' · ' + historyCount(items.filter(function (x) { return x.goals.includes(g.id); })) + '</li>';
+    });
+    var remaining = items.filter(function (x) { return x.remaining.length; }).map(function (x) {
+      return '<li>' + esc(x.name) + list(x.remaining.filter(Boolean).map(function (b) { return '<li>' + esc(b.text) + '</li>'; })) + '</li>';
+    });
+    $("weekHistoryBody").innerHTML = section("Goal progress", goals) + section("Weekly targets",targets.map(function (x) {
+      return '<li>' + esc(x.name) + ' · ' + (x.targetDone ? 'Marked done' : 'Open') + '</li>';
+    })) + section("Unfinished at review", remaining) + [["What got done",r.wins],["Carry over",r.carry],["Notes and decisions",r.notes]].map(function (pair) {
+      return pair[1] ? '<h4>' + pair[0] + '</h4><p>' + esc(pair[1]) + '</p>' : '';
+    }).join("");
+  }
   function renderMeta() {
+    renderWeekHistory();
     $("weekInput").value = meta.weekOf || "";
     $("eowDone").value = meta.eowDone || "";
     $("eowCarry").value = meta.eowCarry || "";
@@ -2911,7 +2984,7 @@
       if (!wasPulled && boardDirty) { boardDirty = false; cloudPushBoard(); }   // v100: a pre-pull edit goes up only now, on top of the real meta
       recSync();   // v103: push records made here before the pull + any being moved off an old board row
       Object.keys(map).forEach(function (k) {                     // union-merge subtasks: remote ∪ local-current
-        if (k === BOARD_ITEM) return;
+        if (k === BOARD_ITEM || k.startsWith(WEEK_PREFIX)) return;
         // Keep the raw payload and unsent outbox intact; never normalize-and-write an
         // ambiguous or newer task format merely because this device pulled it.
         if (taskWriteIssue(k, map[k])) return;
@@ -5922,6 +5995,8 @@
      INIT
      ============================================================ */
   function init() {
+    $("saveWeekProgress").addEventListener("click", saveWeeklyReview);
+    $("weekHistoryChoice").addEventListener("change", function () { renderWeekHistory(); });
     if (window.WFStartup) window.WFStartup.step("Preparing the Sphere");
     setTimeout(releaseHolds, 3000); setInterval(releaseHolds, 30000);   // 24h holds
     wireDisclosure("appsBacklogHead", "appsBacklogWrap");
