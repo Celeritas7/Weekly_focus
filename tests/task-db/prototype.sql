@@ -19,6 +19,12 @@ CREATE TABLE wf_demo.receipts (
   PRIMARY KEY(owner_id,writer,board,item,operation)
 );
 
+CREATE FUNCTION wf_demo.actor() RETURNS SETOF wf_demo.actors
+LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
+  SELECT * FROM wf_demo.actors WHERE login = session_user
+$$;
+REVOKE ALL ON FUNCTION wf_demo.actor() FROM PUBLIC;
+
 -- Limited to one-level, existing active tasks and the CC flag.
 CREATE FUNCTION wf_demo.apply(p_board text, p_item text, p_op text, p_base bigint,
                               p_field text, p_sub text, p_value boolean)
@@ -32,7 +38,7 @@ DECLARE
   idx integer;
   matches integer;
 BEGIN
-  SELECT * INTO actor FROM wf_demo.actors WHERE login = session_user;
+  SELECT * INTO actor FROM wf_demo.actor();
   IF NOT FOUND OR p_field IS NULL OR
      NOT ((actor.writer='wf' AND p_field='done' AND nullif(p_sub,'') IS NOT NULL)
        OR (actor.writer='cc' AND p_field='ccActive' AND p_sub IS NULL)) THEN

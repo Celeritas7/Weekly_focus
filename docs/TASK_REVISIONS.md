@@ -44,3 +44,13 @@ The prototype covers existing flat tasks only. Dedicated PostgreSQL logins stand
 2. Extend the client outbox with the original base revision, stable operation ID and separate confirmed snapshot. Keep unversioned pending writes as reviewable drafts. Never assign today's revision to yesterday's queued payload.
 3. Exercise create/delete tombstones, bulk changes, imports, restores and board deletion. Migrate CC to a narrow flag operation and Roadmap to commit-based replies. Reject stale legacy whole-entry writes at the server before permitting nested editing.
 4. Validate on the target PostgreSQL version with a restore rehearsal and rollback plan. Seek separate approval for any production migration.
+
+## Phase 3C — owner and writer permissions
+
+The disposable PostgreSQL suite now runs a second permission configuration after the concurrency tests. Run the same command above. The authenticated role has two entry points: read a single owned entry and submit a revision-checked checklist edit. The trusted test gateway selects the authenticated database role and supplies the owner's UUID as a transaction-local subject. The bridge has a separate login bound to one owner and can submit only a flag edit. Neither role has direct table grants.
+
+On PostgreSQL 16.2 two owners independently edited the same board/item and reused an operation ID. An item present only under the second owner was absent from the first owner's reads and writes. Missing and malformed claims failed closed, including a request on a reused connection. A bridge update advanced only the assigned owner's revision. The suite checks function privileges for the gateway, anonymous, authenticated, bridge and retired device roles.
+
+**Deployment boundary.** The fixture simulates an already authenticated gateway. It does not verify signed tokens, run PostgREST or exercise the hosted project's grants or RLS policies. The current browser bridge uses the Weekly Focus user's session and writes a full payload. Before deployment, a trusted server-side bridge would need to derive its owner binding from a verified account, keep its credential off the client and recompute the desired flag. The prototype's single-owner login demonstrates the restriction only. The current app and its offline queue still use their existing write paths.
+
+**Next phase.** Prototype the client outbox transition with a stable operation ID, original base revision and confirmed snapshot. Test offline reopen, retry after lost acknowledgment and preservation of legacy unversioned drafts before enabling the new writes.
