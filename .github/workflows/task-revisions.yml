@@ -1,0 +1,26 @@
+name: Task revision prototypes
+on:
+  pull_request:
+    paths:
+      - 'js/wf-revision-*.mjs'
+      - 'tests/task-db/**'
+      - 'tests/task-outbox.cjs'
+      - 'tests/task-writers.cjs'
+      - '.github/workflows/task-revisions.yml'
+permissions:
+  contents: read
+jobs:
+  queue:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/task-outbox.cjs tests/task-writers.cjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install 'psycopg[binary]>=3.2,<4' playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: PATH="$(pg_config --bindir):$PATH" WF_BROWSER_QUEUE=1 python tests/task-db/check.py

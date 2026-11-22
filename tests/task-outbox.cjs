@@ -34,6 +34,11 @@ test("offline edit, fresh process recovery, lost acknowledgment and legacy draft
       assert.deepEqual(state.operations.map(op=>op.status),['review','legacy-draft']);
       assert.equal(state.operations[1].intent.row.payload.notes,'keep');
       assert.deepEqual(state.snapshots,[{item:'entry',revision:10,payload:{done:false}}]);
-      assert.deepEqual((await openTaskOutbox('other','board',send).inspect()).operations,[]);`);
+      assert.deepEqual((await openTaskOutbox('other','board',send).inspect()).operations,[]);
+      const changes = [{item:'entry',base:10,kind:'delete'}];
+      await q.enqueueBatch(changes,false,'batch-1');
+      send = op => {assert.deepEqual(op.intent.changes,changes);return {status:'replayed'}};
+      await q.flush();
+      assert.equal((await q.inspect()).operations.length,2);`);
   } finally {rmSync(dir,{recursive:true,force:true});}
 });
