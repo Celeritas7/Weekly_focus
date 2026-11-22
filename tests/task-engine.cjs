@@ -191,3 +191,15 @@ test('offline shell loads engine before app and caches the matching release',()=
   assert(html.indexOf('js/wf-task-engine.js')<html.indexOf('js/weekly-focus-app.js'));
   for(const s of [html,sw])for(const f of ['wf-task-engine.js','wf-detail-ui.css'])assert(s.includes(f+'?v='+release));
 });
+
+test('Sphere blockers retain nested order and parked work, excluding archived branches',()=>{
+  const tasks = [...tree(),task('hidden',null,false,{archived:true}),task('child','hidden'),
+    task('later',null,false,{lat:true})];
+  const summary = E.checklistSummary(tasks);
+  assert.deepEqual([summary.done,summary.total],[2,4]);
+  assert.deepEqual(summary.blockers.map(b=>[b.text,b.depth,b.parent,b.parked]),[
+    ['root',0,true,false],['group',1,true,false],['b',2,false,false],['later',0,false,true]
+  ]);
+  assert.equal(E.checklistSummary([]).kind,'none');
+  assert.equal(E.checklistSummary([task('a','missing')]).kind,'unresolved');
+});

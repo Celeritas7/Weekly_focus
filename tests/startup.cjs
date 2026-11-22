@@ -99,7 +99,7 @@ function worker(fetchImpl){
   const cache={match:async()=>cached.clone(),put:async(k,v)=>{writes.push({key:k,status:v.status})}};
   const c={URL,Response,Promise,setTimeout:(fn)=>{timers.push(fn)},fetch:fetchImpl,
     self:{location:{origin:'https://fixture.test'},registration:{scope:'https://fixture.test/Weekly_focus/'},clients:{claim:async()=>{}},addEventListener:(k,fn)=>{listeners[k]=fn}},
-    caches:{keys:async()=>['weekly-focus-v159','weekly-focus-v160','weekly-focus-v161','weekly-focus-v162','weekly-focus-v163','weekly-focus-v164','wf-logos-v1','arrow-v10','commonplace-v1'],
+    caches:{keys:async()=>['weekly-focus-v159','weekly-focus-v160','weekly-focus-v161','weekly-focus-v162','weekly-focus-v163','weekly-focus-v164','weekly-focus-v165','wf-logos-v1','arrow-v10','commonplace-v1'],
       delete:async k=>{deleted.push(k)},open:async()=>cache,match:async()=>undefined}};
   vm.createContext(c);vm.runInContext(fs.readFileSync('sw.js','utf8'),c);
   return {listeners,deleted,writes,timers,request(mode='navigate'){
@@ -108,7 +108,7 @@ function worker(fetchImpl){
 }
 test('activation removes only old Weekly Focus builds, keeping other apps and logos',async()=>{
   const w=worker();let done;w.listeners.activate({waitUntil:p=>{done=p}});await done;
-  assert.deepEqual(w.deleted,['weekly-focus-v159','weekly-focus-v160','weekly-focus-v161','weekly-focus-v162','weekly-focus-v163']);
+  assert.deepEqual(w.deleted,['weekly-focus-v159','weekly-focus-v160','weekly-focus-v161','weekly-focus-v162','weekly-focus-v163','weekly-focus-v164']);
 });
 test('navigation failures and non-HTML responses cannot poison the offline page',async()=>{
   for(const fn of [async()=>{throw Error('network')},async()=>new Response('Unavailable',{status:503}),async()=>new Response('wrong type')]){
