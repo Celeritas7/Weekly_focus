@@ -39,6 +39,26 @@ export function openTaskOutbox(owner, board, transport) {
     });
   }
 
+  async function enqueueBatch(changes, close = false, id = crypto.randomUUID()) {
+    return access(state => {
+      if (!Array.isArray(changes) || typeof close !== "boolean") throw new Error("Invalid batch");
+      for (const {item, base} of changes) {
+        const snapshot = state.snapshots.find(row => row.item === item);
+        if (!Number.isSafeInteger(base) || base < 0 || !snapshot || base > snapshot.revision)
+          throw new Error("Batch requires an observed revision for each item");
+      }
+      const intent = {changes, close};
+      const existing = state.operations.find(op => op.id === id);
+      if (existing) {
+        if (!existing.batch || JSON.stringify(existing.intent) !== JSON.stringify(intent))
+          throw new Error("Operation ID reused");
+        return id;
+      }
+      state.operations.push({id, batch:true, intent, status:"pending"});
+      return id;
+    });
+  }
+
   // Take a copy. Never consume or mutate the original persisted legacy queue.
   async function preserveLegacy(rows) {
     await access(state => {
@@ -61,7 +81,7 @@ export function openTaskOutbox(owner, board, transport) {
         // A lost response leaves the original ID, base and intent on disk.
         const reply = await transport({ owner, board, ...op });
         const committed = ["applied", "replayed"].includes(reply.status);
-        if (committed && (!Number.isSafeInteger(reply.version) || reply.version !== op.base + 1))
+        if (committed && !op.batch && (!Number.isSafeInteger(reply.version) || reply.version !== op.base + 1))
           throw new Error("Invalid acknowledgment");
         if (!committed && !["conflict", "blocked", "missing", "refused", "id-reused",
                             "missing-precondition", "exists", "deleted"].includes(reply.status))
@@ -74,5 +94,5 @@ export function openTaskOutbox(owner, board, transport) {
       }
     });
   }
-  return { observe, enqueue, preserveLegacy, flush, inspect: () => access(s => s, false) };
+  return { observe, enqueue, enqueueBatch, preserveLegacy, flush, inspect: () => access(s => s, false) };
 }

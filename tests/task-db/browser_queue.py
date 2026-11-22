@@ -11,7 +11,7 @@ def check_browser_queue(connect):
     module = Path(__file__).resolve().parents[2] / "js/wf-revision-outbox.mjs"
     owner = "00000000-0000-4000-8000-000000000002"
     with connect("wf_demo_gateway") as db, sync_playwright() as pw:
-        browser = pw.chromium.launch(executable_path=os.getenv("CHROMIUM_BIN", "chromium"),
+        browser = pw.chromium.launch(executable_path=os.getenv("CHROMIUM_BIN"),
                                      args=["--no-sandbox"])
         def device():
             context = browser.new_context()

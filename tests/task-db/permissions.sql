@@ -31,7 +31,7 @@ RETURNS TABLE(revision bigint,payload jsonb)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
   SELECT e.revision,e.payload FROM wf_demo.entries e JOIN wf_demo.actor() a
     ON a.owner_id=e.owner_id AND a.writer='wf'
-    WHERE e.board=p_board AND e.item=p_item
+    WHERE e.board=p_board AND e.item=p_item AND NOT e.removed
 $$;
 REVOKE ALL ON FUNCTION wf_demo.read_entry(text,text) FROM PUBLIC;
 GRANT USAGE ON SCHEMA wf_demo TO wf_demo_authenticated;
