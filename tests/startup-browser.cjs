@@ -29,7 +29,7 @@ async function fixture(mode,{width=390,missingEngine=false,slowDependency=false}
     const session={user:{id:'fixture',email:'fixture@example.invalid'},refresh_token:'synthetic-only'};
     localStorage.setItem('wf_pending_fixture','keep draft');
     window.__WF_SEED={apps:[{id:'app:fixture',name:'Mobile fixture',group:'General'}],study:[],office:[],targets:['app:fixture'],
-      entries:{'app:fixture':{active:true,subtasks:[{id:'one',t:'Synthetic task',done:false}],notes:'Preserve notes'}},meta:{}};
+      entries:{'app:fixture':{active:true,goals:['g'],subtasks:[{id:'one',t:'Synthetic task',done:false},{id:'two',t:'Finished task',done:true}],notes:'Preserve notes'}},meta:{goals:[{id:'g',name:'Fixture goal'},{id:'empty',name:'Empty goal'}]}};
     window.__wfSb={auth:{onAuthStateChange(callback){window.__authEvent=callback},getSession(){
       if(mode==='pending')return new Promise(resolve=>{window.__resolveSession=resolve});
       return Promise.resolve({data:{session:mode==='signedout'?null:session}});
@@ -91,6 +91,23 @@ async function realFixture(cached=false,expired=false){
     assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('wf-locked')),false);
     await page.screenshot({path:'test-results/startup-signedin-mobile.png'});
     assert.deepEqual(errors,[]);await context.close();
+  });
+  await run('Sphere goal and bubble show checklist progress on desktop and phone layouts',async()=>{
+    for (const width of [360, 1152]) {
+      const {context,page}=await fixture('signedin',{width});
+      const card=page.locator('#sdGrid section[data-goal="g"]');
+      const summary=card.locator('summary');
+      await summary.click();
+      assert.match(await summary.innerText(),/1 of 2 complete/);
+      assert(await card.getByText('Synthetic task',{exact:true}).isVisible());
+      assert.equal(await card.getByText('Finished task',{exact:true}).count(),0);
+      assert(await page.locator('#sdGrid section[data-goal="empty"]').getByText('No checklist').isVisible());
+      await card.getByRole('button',{name:/Mobile fixture.*Show details/i}).click();
+      const panel=page.locator('#sdInfoCard');
+      await panel.locator('.sd-progress summary').click();
+      assert(await panel.getByText('Synthetic task',{exact:true}).isVisible());
+      await context.close();
+    }
   });
   await run('signed-out session shows login and keeps private app UI hidden',async()=>{
     const {context,page,errors}=await fixture('signedout');

@@ -59,7 +59,10 @@
       reason: g.issues.length ? "Repair the checklist references first." : !g.active.has(key) ? "This task is archived, deleted or unavailable." : blocked.length ? "Finish the nested subtasks first." : "" };
   }
   function progress(items, id) {
-    var g = analyze(items), scoped = id != null, key = String(id);
+    return graphProgress(analyze(items), id);
+  }
+  function graphProgress(g, id) {
+    var scoped = id != null, key = String(id);
     var result = { done: 0, total: 0, pct: null, kind: "none", blockerIds: [], issues: g.issues };
     if (scoped && !g.byId.has(key)) result.issues.push({ code: "missing-task", id: id });
     if (result.issues.length) { result.kind = "unresolved"; return result; }
@@ -72,6 +75,19 @@
     result.blockerIds = ids.filter(function (k) { return !g.byId.get(k).done; });
     result.pct = result.total ? result.done / result.total : null;
     result.kind = result.total ? "checklist" : (scoped ? g.children.get(key).length > 0 : g.nodes.length > 0) ? "empty-active" : "none";
+    return result;
+  }
+  function checklistSummary(items) {
+    var graph = analyze(items), result = graphProgress(graph), depth = new Map();
+    result.blockers = [];
+    graph.order.forEach(function (id) {
+      if (!graph.active.has(id)) return;
+      var task = graph.byId.get(id);
+      var level = task.parentId == null ? 0 : depth.get(String(task.parentId)) + 1;
+      depth.set(id, level);
+      if (!task.done) result.blockers.push({ text: task.t || "Untitled task", depth: level,
+        parent: graph.children.get(id).length > 0, parked: !graph.actionable.has(id) });
+    });
     return result;
   }
   function failed(items, reason, blockers, issues) {
@@ -135,5 +151,5 @@
     } else return failed(items, "Unknown task action.");
     return transition(items, g.nodes.map(function (n) { return String(n.id) === key ? Object.assign(n, patch) : n; }), options);
   }
-  return Object.freeze({ analyze: analyze, completion: completion, progress: progress, transition: transition, command: command });
+  return Object.freeze({ analyze: analyze, completion: completion, progress: progress, checklistSummary: checklistSummary, transition: transition, command: command });
 });

@@ -26,7 +26,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v164", BUILD_N = 164;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v165", BUILD_N = 165;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1836,10 +1836,10 @@
     ["app", "study", "office"].forEach(function (kind) {
       activeItems(kind).forEach(function (it) {
         if (isSpecialItem(it) || isCore(it.id)) return;
-        var pr = subProgress(it.id), last = 0;
+        var pr = TaskEngine.checklistSummary(getEntry(it.id).subtasks), last = 0;
         visibleSubs(subs(it.id)).forEach(function (s) { if (s.u > last) last = s.u; });
         rows.push({ id: it.id, kind: kind, name: it.name, group: (it.group || "").trim() || "Unsorted",
-          pri: SD_PRI[getEntry(it.id).pri] || "", done: pr ? pr.done : 0, total: pr ? pr.total : 0, next: nextSub(it.id),
+          pri: SD_PRI[getEntry(it.id).pri] || "", done: pr.done, total: pr.total, checklist: pr, next: nextSub(it.id),
           age: last ? Math.max(0, Math.floor((now - last) / 864e5)) : null, logo: window.WFLogos ? window.WFLogos.logoFor(it) : null,
           open: activeSubs(subs(it.id)).filter(function (x) { return !x.done; }).map(function (x) { return x.t || ""; }).slice(0, 40),
           notes: typeof getEntry(it.id).notes === "string" ? getEntry(it.id).notes.slice(0, 1200) : "",

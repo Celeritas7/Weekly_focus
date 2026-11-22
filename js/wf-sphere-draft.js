@@ -184,6 +184,32 @@
   function linkTile(l) { var K = LK[l.kind] || LK.web;
     return '<a class="sd-glink sd-gl-' + esc(l.kind in LK ? l.kind : "web") + (l.off ? ' sd-off' : '') + '" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="' + esc(l.t + " \u2014 " + l.url) + '"><span class="sd-gl-i" aria-hidden="true">' + esc(K.i) + '</span><span class="sd-gl-t">' + esc(l.t) + '</span><small>' + K.l + '</small></a>'; }
   function linksHtml(g) { var ls = g.links || []; ls = ls.filter(function (l) { return !l.off; }).concat(ls.filter(function (l) { return l.off; })); return ls.length ? '<div class="sd-glinks" aria-label="Links for ' + esc(g.name) + '">' + ls.map(linkTile).join("") + '</div>' : ''; }
+  function progressHtml(rows, grouped) {
+    var done = 0, total = 0, inactive = false, unresolved = false, sections = [];
+    var seen = new Set();
+    rows.forEach(function (row) {
+      if (seen.has(row.id) || !row.checklist) return;
+      seen.add(row.id);
+      var p = row.checklist;
+      done += p.done; total += p.total;
+      inactive = inactive || p.kind === "empty-active";
+      unresolved = unresolved || p.kind === "unresolved";
+      if (!p.blockers.length && p.kind !== "unresolved") return;
+      var list = p.kind === "unresolved" ? '<p>Checklist references need review.</p>' :
+        '<ul>' + p.blockers.map(function (b) {
+          return '<li style="--depth:' + Math.min(b.depth, 3) + '">' + esc(b.text) +
+            (b.parent ? ' <small>Parent task</small>' : '') + (b.parked ? ' <small>Parked</small>' : '') + '</li>';
+        }).join("") + '</ul>';
+      sections.push((grouped ? '<strong>' + esc(row.name) + '</strong>' : '') + list);
+    });
+    var label = unresolved ? "Checklist needs review" : total ? done + " of " + total + " complete" :
+      inactive ? "No active checklist items" : "No checklist";
+    var bar = total && !unresolved ? '<progress aria-hidden="true" max="' + total + '" value="' + done + '"></progress>' : '';
+    var content = esc(label) + bar;
+    if (!sections.length) return '<div class="sd-progress">' + content + '</div>';
+    return '<details class="sd-progress"><summary>' + content + '</summary>' +
+      '<div class="sd-blockers">' + sections.join("") + '</div></details>';
+  }
   function goalHtml(list) {
     var gs = goals(), out = [], placed = {};
     var sph = sorted(ROWS.filter(function (r) { return where(r.id) && (kindF === "all" || r.kind === kindF) && (!q || (r.name + " " + r.group).toLowerCase().indexOf(q) >= 0); }));
@@ -198,6 +224,7 @@
       out.push('<section class="sd-cat sd-pur" data-sddrop="goal" data-goal="' + esc(gg.id) + '" style="--cc:' + goalCol(gg.hue) + '" aria-label="' + esc(gg.name) + '"><h3 class="sd-cat-h"><i></i>' + esc(gg.name) + ' <span title="' + (its.length + inS.length) + ' apps' + (inS.length ? ', ' + inS.length + ' in the sphere' : '') + '">' + (its.length + inS.length) + '</span>' +
         '<button type="button" class="sd-pgoal sd-has" data-sd="gedit" data-goal="' + esc(gg.id) + '" aria-label="Rename or delete the goal ' + esc(gg.name) + '">\u270e</button>' +
         (its.length ? '<button type="button" class="sd-catorb" data-sd="catorb" data-goal="' + esc(gg.id) + '" aria-label="Send all ' + its.length + ' serving ' + esc(gg.name) + ' to orbit" title="Send the table apps of this goal to orbit">Orbit all</button>' : '') + '</h3>' +
+        progressHtml(ROWS.filter(function (r) { return (r.goals || []).indexOf(gg.id) >= 0; }), true) +
         '<div class="sd-goal-actions">' +
         (H.appAdd ? '<button type="button" class="sd-btn sd-primary" data-sd="appnew" data-goal="' + esc(gg.id) + '" aria-label="New app for ' + esc(gg.name) + '">+ New app</button>' : '') +
         '<button type="button" class="sd-btn" data-sd="gpick" data-goal="' + esc(gg.id) + '" aria-label="Link existing apps or links to ' + esc(gg.name) + '">Link existing</button></div>' +
@@ -248,11 +275,17 @@
   function renderPool() {
     var left = ROWS.filter(function (r) { return !where(r.id); });
     var list = visible();
+    var expanded = new Set(Array.from($("sdGrid").querySelectorAll(".sd-progress[open]"), function (d) {
+      return d.closest("section").dataset.goal;
+    }));
     $("sdGrid").classList.toggle("sd-goalgrid", GRP === "goal");   // v142: goals as compact cards
-    $("sdGrid").innerHTML = GRP === "goal" && (list.length || (!q && kindF === "all")) ? goalHtml(list)
+    $("sdGrid").innerHTML = GRP === "goal" && (list.length || ROWS.some(function (r) { return where(r.id); }) || (!q && kindF === "all")) ? goalHtml(list)
       : !list.length
       ? '<div class="sd-empty-pool">' + (q || kindF !== "all" ? "Nothing matches. Clear the search or pick another filter." : ROWS.length ? "Everything is in the sphere. Tap a planet to send it back." : "No active items yet. Switch on an app or topic on the board first.") + '</div>'
       : GRP === "cat" ? groupedHtml(list) : '<div class="sd-bubs">' + list.map(cardHtml).join("") + '</div>';
+    $("sdGrid").querySelectorAll("details.sd-progress").forEach(function (d) {
+      d.open = expanded.has(d.closest("section").dataset.goal);
+    });
     root.querySelectorAll("#sdSeg button").forEach(function (b) {
       var kd = b.getAttribute("data-kind"), n = kd === "all" ? left.length : left.filter(function (x) { return x.kind === kd; }).length;
       b.textContent = (kd === "all" ? "All" : kd === "app" ? "Apps" : KIND[kd].l) + " " + n; b.setAttribute("aria-pressed", kindF === kd ? "true" : "false");
@@ -313,23 +346,20 @@
     var it = BY[k]; if (!it) return;
     if (INFO !== k) infoFrom = document.activeElement; INFO = k; GSET = false;
     var w = where(k), p = PRI[it.pri] || PRI[""], L = it.logo, MAX = H.max, free = ST.five.length < MAX, i;
-    var pct = it.total ? Math.round(it.done / it.total * 100) : 0;
     var logo = L && L.url ? '<img src="' + esc(L.url) + '" alt="" referrerpolicy="no-referrer">' : L && L.emoji ? '<span class="sd-ih-emo">' + esc(L.emoji) + '</span>' : '<span class="sd-ih-mono">' + esc(mono(it.name)) + '</span>';
     var status = w ? (w.orbit ? "In orbit" : "Target #" + (w.five + 1)) : "On the table";
     var slots = ""; for (i = 0; i < MAX; i++) slots += '<button type="button" class="sd-slotbtn' + (w && w.five === i ? " sd-cur" : "") + '" data-sd="slot" data-i="' + i + '" aria-label="Make it target ' + (i + 1) + '">' + (i + 1) + '</button>';
     slots += '<button type="button" class="sd-slotbtn sd-orbbtn' + (w && w.orbit ? " sd-cur" : "") + '" data-sd="orbit">Orbit</button>';
     var primary = w ? '<button type="button" class="sd-btn sd-big" data-sd="back">Send back to the table</button>'
       : '<button type="button" class="sd-btn sd-primary sd-big" data-sd="add">' + (free ? "Add as #" + (ST.five.length + 1) : "Add to orbit") + '</button>';
-    var tasks = (it.open || []).length ? '<ul class="sd-tasks">' + it.open.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join("") + '</ul>' : '<p class="sd-none-txt">No open subtasks.</p>';
     $("sdInfoCard").innerHTML =
       '<div class="sd-ih"><span class="sd-ih-logo" style="--pc:' + (p.l ? p.c : "var(--hair)") + ';--kc:' + KIND[it.kind].c + '">' + logo + '</span>' +
         '<div class="sd-ih-t"><h3 id="sdInfoT">' + esc(it.name) + '</h3><div class="sd-ih-m">' + KIND[it.kind].l + ' · ' + esc(it.group) + (p.l ? ' · <b style="color:' + p.c + '">' + p.l + '</b>' : '') + '</div><div class="sd-ih-s">' + status + '</div></div>' +
         '<button type="button" class="sd-x" data-sd="infoclose" aria-label="Close">×</button></div>' +
       goalSum(it) +
       (w && w.five != null ? '' : '<button type="button" class="sd-btn sd-nombtn sd-nomtop' + (it.nom ? " sd-on" : "") + '" data-sd="nom" aria-pressed="' + (it.nom ? "true" : "false") + '">' + (it.nom ? "\u2605 Nominated for the Five \u00b7 remove" : "\u2606 Nominate for the Five") + '</button>') +
-      '<div class="sd-ip">' + (it.total ? '<span class="sd-ip-bar"><i style="width:' + pct + '%;background:' + KIND[it.kind].c + '"></i></span><span>' + it.done + '/' + it.total + ' done</span>' : '<span>No subtasks yet</span>') +
-        '<span class="sd-ip-age' + (it.age != null && it.age >= 14 ? " sd-stale" : "") + '">' + ageTxt(it.age) + '</span></div>' +
-      '<div class="sd-isec"><h4>Open tasks <span>' + (it.open || []).length + '</span></h4>' + tasks + '</div>' +
+      progressHtml([it], false) +
+      '<div class="sd-ip"><span class="sd-ip-age' + (it.age != null && it.age >= 14 ? " sd-stale" : "") + '">' + ageTxt(it.age) + '</span></div>' +
       (it.notes ? '<div class="sd-isec"><h4>Notes</h4><p class="sd-notes">' + esc(it.notes) + '</p></div>' : '') +
       logoSec(k, it) +
       '<div class="sd-iact">' + primary + '<div class="sd-iplace"><span>' + (w ? "Move it to" : "Or place it at") + '</span><div class="sd-slots">' + slots + '</div></div></div>' +
