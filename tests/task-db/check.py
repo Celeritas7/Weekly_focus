@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 import time
 
+from permissions import check_permissions
+
 import psycopg
 from psycopg import sql
 
@@ -77,6 +79,7 @@ def check(port, pwd):
         assert race(admin, phone, pc, lambda: apply(pc, "duplicate", 13, True)) == ("replayed", 14)
         assert admin.execute("select count(*) from wf_demo.receipts").fetchone() == (6,)
         print("PASS concurrent duplicate applied once")
+        check_permissions(admin, connect, cc, pwd, apply)
         print("PostgreSQL", admin.execute("show server_version").fetchone()[0])
 
 
