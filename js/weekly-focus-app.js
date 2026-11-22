@@ -73,7 +73,9 @@
   function save() {}
   function getEntry(k) { return entries[k] || {}; }
   function taskWriteIssue(k, next) { return TASK_LOCKS[k] || TaskData.writeIssue(entries[k]) || TaskData.writeIssue(next); }
+  var previewSync = null; // Installed only by the isolated, seeded test app.
   function patch(k, p) {
+    if (previewSync) { toast("The sync preview supports checklist completion only."); return false; }
     var next = Object.assign({}, entries[k], p), issue = taskWriteIssue(k, next);
     if (STALE || issue) { toast(issue || "Update Weekly Focus before editing this newer board."); return false; }
     if (Object.prototype.hasOwnProperty.call(p, "subtasks")) {
@@ -2132,6 +2134,7 @@
     }
     if (a === "subtoggle") {
       var sid = e.target.closest("[data-sid]").getAttribute("data-sid");
+      if (previewSync) { previewSync.toggle(key, sid); return; }
       var subs_norm = normSubs(subs(key));   // backfill ids
       patch(key, { subtasks: subs_norm.map(function (x) { return x.id === sid ? Object.assign({}, x, { done: !x.done, u: Date.now() }) : x; }) });
       renderCols(); renderPulse(); renderFive(); return;
@@ -5999,6 +6002,14 @@
         state.apps = SD.apps || []; state.study = SD.study || []; state.office = SD.office || [];
         rebuildIndex(); entries = SD.entries || {}; targetOrder = SD.targets || []; meta = SD.meta || {};
         ENTER = true; refreshGroupLists(); renderAll();
+        if (SD.previewSync) {
+          previewSync = SD.previewSync;
+          previewSync.mount(function (key, payload) {
+            if (!itemById(key)) return;
+            entries[key] = payload;
+            renderAll(); refreshBuildSheet();
+          }, openBuildSheet);
+        }
       } catch (e) {}
     } else {
       if (window.WFStartup) window.WFStartup.step("Starting saved sign-in");

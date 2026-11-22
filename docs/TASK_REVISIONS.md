@@ -79,3 +79,26 @@ The disposable database runner now backs up its populated fixture with pg_dump a
 **Next implementation:** connect the new task sender, pull and conflict-review paths to revision-aware endpoints in an isolated app deployment. Route the trusted CC writer and Roadmap acknowledgments through the same commit boundary. Exercise the existing owner/history triggers and old clients before proposing a production migration.
 
 **Physical acceptance on the isolated deployment:** start from the same unfinished test task on both devices. Go offline on desktop and complete it. On the online phone, complete it and then reopen it. Reconnect desktop and verify the phone's reopen survives, the desktop edit appears for review, and retrying adds no second completion. Repeat with devices reversed. Production activation requires separate approval.
+
+### Isolated app sync preview
+
+With the same local prerequisites as the database rehearsal, run
+`WF_SYNC_PILOT_PORT=8768 python tests/task-db/check.py` and open
+`http://localhost:8768`. The runner creates a temporary database and serves the
+Weekly Focus UI with one synthetic task. Keep the process running during the
+check. Use **Open sample task** and its normal completion checkbox. For an
+Android phone connected to the development computer by USB with debugging
+enabled, `adb reverse tcp:8768 tcp:8768` makes that same localhost URL available
+in Android Chrome. Each device has its own outbox. Stop the runner with Ctrl+C.
+
+Disconnect one browser after opening the sample and complete the task there.
+Complete and reopen it on the connected device, then reconnect the first.
+The review strip shows the saved and pending values. **Keep saved task** discards
+only that draft. **Apply my edit** sends a new intent based on the reviewed
+revision. **Sync now** pulls changes from the other device.
+
+The preview covers the single flat checklist toggle; authentication is synthetic.
+The preview server binds to loopback, serves a restricted asset set and accepts
+only this task operation. Preview assets are outside the production shell and
+the production app receives no preview seed. The browser suite runs this
+scenario twice with the two device roles exchanged.

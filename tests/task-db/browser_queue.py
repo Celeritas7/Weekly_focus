@@ -72,5 +72,8 @@ def check_browser_queue(connect):
         with request(db, json.dumps({"sub":owner})):
             revision, payload = db.execute("select * from wf_demo.read_entry('board','entry')").fetchone()
         assert revision == 3 and payload["subtasks"][0]["done"]
+        from pilot import check_pilot, check_shared_writers
+        check_shared_writers(connect)
+        check_pilot(connect, browser)
         browser.close()
         print("PASS Chromium two-device conflict, reload, lost reply, replay and legacy draft")
