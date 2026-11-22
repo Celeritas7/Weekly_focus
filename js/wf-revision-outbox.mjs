@@ -94,5 +94,21 @@ export function openTaskOutbox(owner, board, transport) {
       }
     });
   }
-  return { observe, enqueue, enqueueBatch, preserveLegacy, flush, inspect: () => access(s => s, false) };
+  // Resolve only the reviewed draft. Retrying binds a new operation to the
+  // exact revision displayed to the user, even if another device edits again.
+  async function resolveReview(id, observedBase, retry) {
+    return access(state => {
+      const index = state.operations.findIndex(row => row.id === id && row.status === "review" && !row.batch);
+      if (index < 0) return;
+      const draft = state.operations[index];
+      if (retry) {
+        const current = state.snapshots.find(row => row.item === draft.item);
+        if (!current || current.revision !== observedBase) throw new Error("Refresh before reviewing this edit");
+        state.operations.push({id:crypto.randomUUID(), item:draft.item, base:observedBase,
+          intent:draft.intent, status:"pending"});
+      }
+      state.operations.splice(index, 1);
+    });
+  }
+  return { observe, enqueue, enqueueBatch, preserveLegacy, flush, resolveReview, inspect: () => access(s => s, false) };
 }

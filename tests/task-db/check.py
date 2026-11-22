@@ -86,6 +86,14 @@ def check(port, pwd):
         if os.getenv("WF_BROWSER_QUEUE") == "1":
             from browser_queue import check_browser_queue
             check_browser_queue(connect)
+        if os.getenv("WF_SYNC_PILOT_PORT"):
+            from pilot import serve
+            with serve(connect, int(os.environ["WF_SYNC_PILOT_PORT"])) as url:
+                print("Synthetic Weekly Focus preview:", url, flush=True)
+                try:
+                    while True: time.sleep(1)
+                except KeyboardInterrupt:
+                    pass
         print("PostgreSQL", admin.execute("show server_version").fetchone()[0])
 
 
