@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from pathlib import Path
+import os
 import secrets
 import socket
 import subprocess
@@ -80,6 +81,9 @@ def check(port, pwd):
         assert admin.execute("select count(*) from wf_demo.receipts").fetchone() == (6,)
         print("PASS concurrent duplicate applied once")
         check_permissions(admin, connect, cc, pwd, apply)
+        if os.getenv("WF_BROWSER_QUEUE") == "1":
+            from browser_queue import check_browser_queue
+            check_browser_queue(connect)
         print("PostgreSQL", admin.execute("show server_version").fetchone()[0])
 
 
