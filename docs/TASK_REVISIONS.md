@@ -27,3 +27,20 @@ Use a server-assigned revision per (authenticated user, board_id, item_key), plu
 Run `node --test tests/task-revision-contract.cjs`. The isolated one-entry transaction model uses the existing task engine. It tests an offline PC completion racing a phone completion/reopen, a lost acknowledgment, ID reuse, CC reflection, and legacy or unauthorized writes. The writer argument represents an already authenticated authority in the fixture. These examples do not exercise PostgreSQL locks, RLS, browsers or physical devices.
 
 Phase 3B should prototype the atomic write and receipt contract in isolation, exercise two real concurrent database sessions and lost responses, and design the transition for old clients and queued data. Audit direct deletes (including board deletion), imports, restore and outside writers before enforcement. Verify authenticated authority for CC rather than trusting a client-supplied writer string. Keep nesting gated until the engine, outboxes, bridge, Roadmap acknowledgments and legacy-write protections work together. Any production migration requires separate approval.
+
+## Phase 3B — isolated database results
+
+The fixture in `tests/task-db` creates a disposable loopback PostgreSQL cluster, creates separate password-authenticated PC, phone and CC sessions, and seeds one synthetic entry. The runner waits for PostgreSQL to report a blocked writer before committing the winning transaction. Run as a non-root user with PostgreSQL's initdb and pg_ctl on PATH, Python 3 and psycopg 3:
+
+    python tests/task-db/check.py
+
+Verified on PostgreSQL 16.2. The offline completion returned conflict at revision 10 after the phone reopened the task. Replaying a previously committed operation returned its original revision. Changing its intent under the same ID was rejected. Two simultaneous deliveries of one operation advanced the revision once. Rolling back removed the edit and its receipt together. CC's stale reflection conflicted and its fresh flag update preserved task state, source and notes.
+
+The prototype covers existing flat tasks only. Dedicated PostgreSQL logins stand in for application authority. These results establish locking and receipt behavior, not hosted Supabase authentication, RLS parity or end-to-end phone behavior.
+
+### Transition before enforcement
+
+1. Prototype hosted-style actor resolution in isolation. Ordinary user credentials shared across apps cannot authenticate a CC writer by themselves. Test two owners and all grant paths.
+2. Extend the client outbox with the original base revision, stable operation ID and separate confirmed snapshot. Keep unversioned pending writes as reviewable drafts. Never assign today's revision to yesterday's queued payload.
+3. Exercise create/delete tombstones, bulk changes, imports, restores and board deletion. Migrate CC to a narrow flag operation and Roadmap to commit-based replies. Reject stale legacy whole-entry writes at the server before permitting nested editing.
+4. Validate on the target PostgreSQL version with a restore rehearsal and rollback plan. Seek separate approval for any production migration.
