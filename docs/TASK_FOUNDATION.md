@@ -132,3 +132,5 @@ The Sphere fixture remains unchanged. Browser launch was attempted during
 Phase 1 but the execution environment denied Chromium's socket operation;
 layout and physical-phone checks are pending. Merging is not deployment or
 device verification.
+
+Phase 3A writer trace, proposed revision contract and test scope are in [Shared task revisions](TASK_REVISIONS.md).
