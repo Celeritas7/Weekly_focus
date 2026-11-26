@@ -30,6 +30,15 @@ async function fixture(mode,{width=390,missingEngine=false,slowDependency=false}
     localStorage.setItem('wf_pending_fixture','keep draft');
     window.__WF_SEED={apps:[{id:'app:fixture',name:'Mobile fixture',group:'General'}],study:[],office:[],targets:['app:fixture'],
       entries:{'app:fixture':{active:true,goals:['g'],subtasks:[{id:'one',t:'Synthetic task',done:false},{id:'two',t:'Finished task',done:true}],notes:'Preserve notes'}},meta:{goals:[{id:'g',name:'Fixture goal'},{id:'empty',name:'Empty goal'}]}};
+    if(mode==='deadlines') {
+      const now=new Date(), today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+      window.__WF_SEED.entries['app:fixture'].subtasks=[
+        {id:'group',t:'Submit application'}, {id:'old',parentId:'group',t:'Send form',dl:true,when:'2020-01-01'},
+        {id:'today',t:'Call office',urg:true,when:today}, {id:'later',urg:true,when:'2099-01-01'},
+        {id:'finished',done:true,dl:true,when:today},{id:'plain',when:today},
+        {id:'inactive',archived:true},{id:'hidden',parentId:'inactive',dl:true,when:today}
+      ];
+    }
     if(mode==='tree') window.__WF_SEED.entries['app:fixture'].subtasks=[
       {id:'p',t:'Plan route'}, {id:'inner',parentId:'p',t:'Compare trains'},
       {id:'a',parentId:'inner',t:'Check fare',done:true},{id:'b',parentId:'inner',t:'Check schedule'},
@@ -113,6 +122,19 @@ async function realFixture(cached=false,expired=false){
       assert(await panel.getByText('Synthetic task',{exact:true}).isVisible());
       await context.close();
     }
+  });
+  await run('urgent panel filters nested deadlines and opens task settings',async()=>{
+    const {context,page}=await fixture('deadlines',{width:360});
+    const panel=page.locator('#urgentDeadlines');
+    await panel.locator('summary').click();
+    assert.equal(await panel.locator('#urgentCount').innerText(),'2');
+    assert.match(await panel.locator('li').first().innerText(),/Send form/);
+    assert.match(await panel.locator('li').first().innerText(),/Submit application/);
+    await page.emulateMedia({reducedMotion:'reduce'});
+    assert.equal(await panel.locator('#urgentCount').evaluate(el=>getComputedStyle(el).animationName),'none');
+    await panel.getByRole('button',{name:'Task settings'}).first().click();
+    assert.equal(await page.locator('#tkName').innerText(),'Send form');
+    await context.close();
   });
   await run('task tree expands nested branches at phone and desktop widths',async()=>{
     for(const width of [360,1152]){

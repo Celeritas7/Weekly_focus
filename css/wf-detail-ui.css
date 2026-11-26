@@ -94,3 +94,15 @@ html:has(.wf-detail-dialog[open]) { overflow: hidden; }
 .wf-task-tree small { display: inline-block; color: var(--mid); }
 .wf-task-tree ul ul ul ul { margin-inline-start: 0; padding-inline-start: .3rem; }
 .wf-task-tree ul ul ul ul li::before { inset-inline-start: -.3rem; width: .25rem; }
+
+.urgent-deadlines { margin: .6rem 0; padding: .4rem .75rem; border: 1px solid var(--hair); border-radius: .75rem; }
+.urgent-deadlines summary { cursor: pointer; font-weight: 650; padding-block: .25rem; }
+#urgentCount { display: inline-block; padding: 0 .45rem; border-radius: 1rem; }
+#urgentCount.has-due { color: white; background: #a2312d; }
+@media (prefers-reduced-motion: no-preference) {
+  #urgentCount.has-due { animation: wf-deadline-pulse 1.8s ease-out 3; }
+  @keyframes wf-deadline-pulse { 50% { box-shadow: 0 0 0 4px #ab302a32; } }
+}
+.urgent-deadlines ul { list-style: none; max-height: 48vh; overflow: auto; padding: 0; }
+.urgent-deadlines li { border-top: 1px solid var(--hair); padding: .55rem 0; overflow-wrap: anywhere; }
+.urgent-deadlines small { display: block; margin-block: .15rem .35rem; }
