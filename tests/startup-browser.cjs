@@ -30,6 +30,11 @@ async function fixture(mode,{width=390,missingEngine=false,slowDependency=false}
     localStorage.setItem('wf_pending_fixture','keep draft');
     window.__WF_SEED={apps:[{id:'app:fixture',name:'Mobile fixture',group:'General'}],study:[],office:[],targets:['app:fixture'],
       entries:{'app:fixture':{active:true,goals:['g'],subtasks:[{id:'one',t:'Synthetic task',done:false},{id:'two',t:'Finished task',done:true}],notes:'Preserve notes'}},meta:{goals:[{id:'g',name:'Fixture goal'},{id:'empty',name:'Empty goal'}]}};
+    if(mode==='tree') window.__WF_SEED.entries['app:fixture'].subtasks=[
+      {id:'p',t:'Plan route'}, {id:'inner',parentId:'p',t:'Compare trains'},
+      {id:'a',parentId:'inner',t:'Check fare',done:true},{id:'b',parentId:'inner',t:'Check schedule'},
+      {id:'old',parentId:'p',t:'Archived option',archived:true}
+    ];
     window.__wfSb={auth:{onAuthStateChange(callback){window.__authEvent=callback},getSession(){
       if(mode==='pending')return new Promise(resolve=>{window.__resolveSession=resolve});
       return Promise.resolve({data:{session:mode==='signedout'?null:session}});
@@ -106,6 +111,25 @@ async function realFixture(cached=false,expired=false){
       const panel=page.locator('#sdInfoCard');
       await panel.locator('.sd-progress summary').click();
       assert(await panel.getByText('Synthetic task',{exact:true}).isVisible());
+      await context.close();
+    }
+  });
+  await run('task tree expands nested branches at phone and desktop widths',async()=>{
+    for(const width of [360,1152]){
+      const {context,page}=await fixture('tree',{width});
+      await page.locator('#sdGrid section[data-goal="g"] .sd-bub').click();
+      await page.getByRole('button',{name:'Open the full card to edit'}).click();
+      const tree=page.locator('#bsBody .wf-task-tree');
+      await tree.getByText('Task tree',{exact:true}).click();
+      const parent=tree.locator('summary').filter({hasText:'Plan route'});
+      assert.match(await parent.innerText(),/1\/2/);
+      await parent.click();
+      await tree.getByText('Compare trains',{exact:true}).click();
+      assert(await tree.getByText('Check fare',{exact:true}).isVisible());
+      assert(await tree.getByText('Check schedule',{exact:true}).isVisible());
+      assert.equal(await tree.getByText('Archived option').count(),0);
+      await parent.click();
+      assert.equal(await tree.getByText('Check schedule',{exact:true}).isVisible(),false);
       await context.close();
     }
   });

@@ -84,3 +84,13 @@ html:has(.wf-detail-dialog[open]) { overflow: hidden; }
 /* Foundation: unavailable task actions stay visible, with a reason in details. */
 .sub-check:disabled, .hcheck:disabled, .lat-act:disabled { opacity: .42; cursor: not-allowed; }
 .task-readonly { padding: 10px 12px; border: 1px solid var(--hair); border-radius: 10px; color: var(--mid); font-size: 13px; line-height: 1.5; }
+
+.wf-task-tree { margin: .6rem 0; font-size: .92rem; overflow-wrap: anywhere; }
+.wf-task-tree summary { cursor: pointer; padding: .35rem .15rem; }
+.wf-task-tree summary:focus-visible { outline: 2px solid var(--brand); }
+.wf-task-tree ul { list-style: none; margin: 0 0 .25rem .4rem; padding-inline-start: .85rem; border-inline-start: 1px solid var(--hair); }
+.wf-task-tree li { position: relative; padding-block: .15rem; }
+.wf-task-tree li::before { content: ""; position: absolute; inset-inline-start: -.85rem; top: .95rem; width: .7rem; border-top: 1px solid var(--hair); }
+.wf-task-tree small { display: inline-block; color: var(--mid); }
+.wf-task-tree ul ul ul ul { margin-inline-start: 0; padding-inline-start: .3rem; }
+.wf-task-tree ul ul ul ul li::before { inset-inline-start: -.3rem; width: .25rem; }

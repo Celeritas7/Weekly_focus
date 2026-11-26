@@ -26,7 +26,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v166", BUILD_N = 166;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v167", BUILD_N = 167;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -1723,6 +1723,55 @@
   }
   function nextSub(id) { var a = activeSubs(subs(id)).filter(function (x) { return !x.done; }); return a.length ? (a[0].t || "") : ""; }
   function priName(p) { return p === "H" ? "High" : p === "M" ? "Medium" : "Low"; }
+  // Disclosure state is local to this board. Viewing a branch never queues an edit.
+  var treeOpen = new Map();
+  document.addEventListener("toggle", function (event) {
+    var node = event.target;
+    if (!node.matches || !node.matches("details[data-tree-key]") || !node.isConnected) return;
+    var key = node.dataset.treeKey;
+    if (node.open) treeOpen.set(key, true); else treeOpen.delete(key);
+  }, true);
+  function taskTreeHtml(item, raw) {
+    var graph = TaskEngine.analyze(raw), html = [];
+    function disclosure(id) {
+      var key = JSON.stringify([item,id]);
+      return '<details data-tree-key="' + esc(key) + '"' + (treeOpen.has(key) ? ' open' : '') + '>';
+    }
+    html.push(disclosure(null), '<summary>Task tree</summary>');
+    if (graph.issues.length) return html.join("") + '<p>Check the checklist references to view this tree.</p></details>';
+    if (!graph.active.size) return html.join("") + '<p>' + (graph.nodes.length ? 'No active checklist items' : 'No checklist') + '</p></details>';
+    var totals = new Map(), depth = 0;
+    // Children follow parents in graph.order, so one reverse pass builds branch totals.
+    for (var i = graph.order.length - 1; i >= 0; i--) {
+      var k = graph.order[i];
+      if (!graph.active.has(k)) continue;
+      var node = graph.byId.get(k), count = totals.get(k) || {done:0,total:0,children:0};
+      if (!graph.children.get(k).length) { count.done = node.done ? 1 : 0; count.total = 1; }
+      totals.set(k,count);
+      if (node.parentId != null) {
+        var parent = String(node.parentId), sum = totals.get(parent) || {done:0,total:0,children:0};
+        sum.done += count.done; sum.total += count.total; sum.children++; totals.set(parent,sum);
+      }
+    }
+    var depths = new Map();
+    html.push('<ul>');
+    graph.order.forEach(function (key) {
+      if (!graph.active.has(key)) return;
+      var task = graph.byId.get(key), level = task.parentId == null ? 0 : depths.get(String(task.parentId))+1;
+      while (depth > level) { html.push('</ul></details></li>'); depth--; }
+      depths.set(key,level);
+      var counts = totals.get(key), status = task.done ? 'Done' : 'Open';
+      if (!graph.actionable.has(key)) status += ' · Parked';
+      var label = '<span class="tree-label">' + esc(task.t || 'Untitled task') + '</span> <small>' + status +
+        (counts.children ? ' · ' + counts.done + '/' + counts.total : '') + '</small>';
+      html.push('<li>');
+      if (counts.children) { html.push(disclosure(key), '<summary>',label,'</summary><ul>'); depth++; }
+      else html.push(label,'</li>');
+    });
+    while (depth--) html.push('</ul></details></li>');
+    html.push('</ul></details>');
+    return html.join("");
+  }
   var taskReminderPanel = null;
   function reminderButton() { return '<button type="button" data-act="subreminder" title="Akatsuki reminder schedule and status" aria-label="Akatsuki reminder schedule and status" style="min-height:36px;padding:4px 8px;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;cursor:pointer">Reminder</button>'; }
   async function openSubReminder(key, sid) {
@@ -1773,6 +1822,7 @@
     return '<div class="detail' + (id === OPENING ? ' opening' : '') + '">' + priCtl +
       '<input class="obj" data-act="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
       goalRowHtml(id) + taskReadOnlyHtml(id) +
+      '<div class="wf-task-tree">' + taskTreeHtml(id, e.subtasks) + '</div>' +
       '<ul class="subs">' + rows + '</ul>' +
       '<div class="sub-add"><textarea class="sub-new" rows="2" data-act="subnew" aria-label="New checklist item" placeholder="Add a task or improvement\u2026"></textarea><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
       latStripHtml(id) +
@@ -3772,7 +3822,7 @@
      survives in memory and cloudPullEntries would seed it into the next account's empty board. */
   function resetBoardState() {
     state = { apps: [], study: [], office: [] }; itemIndex = {}; rebuildIndex();
-    TASK_LOCKS = {}; entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true; boardU = 0; lastCloudSig = ""; boardPulled = false; boardDirty = false; REC_SIG = {}; recMigrating = false; TRASH = {}; HELD = {}; CONF = { inv: null, tl: null, ib: null, meta: null, t: null }; localLoaded = false; STALE = false; SEEN = { ent: false, inv: false };   // v105 / v106
+    treeOpen.clear(); TASK_LOCKS = {}; entries = {}; targetOrder = []; meta = {}; detailOpen = {}; outbox = {}; invTs = ""; invPulled = false; firstPull = true; boardU = 0; lastCloudSig = ""; boardPulled = false; boardDirty = false; REC_SIG = {}; recMigrating = false; TRASH = {}; HELD = {}; CONF = { inv: null, tl: null, ib: null, meta: null, t: null }; localLoaded = false; STALE = false; SEEN = { ent: false, inv: false };   // v105 / v106
   }
   var lastUid = null;   // v100: user id of the last pull — a different account must start from a clean board
   function switchBoard(name) {
