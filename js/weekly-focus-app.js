@@ -26,7 +26,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v167", BUILD_N = 167;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v168", BUILD_N = 168;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -799,6 +799,39 @@
       full: WF_DOW[d.getDay()] + ", " + WF_MON[d.getMonth()] + " " + d.getDate() + (time ? " at " + time : "")
     };
   }
+  function renderUrgentDeadlines() {
+    var rows = [];
+    ["app","study","office"].forEach(function (kind) {
+      activeItems(kind).forEach(function (item) {
+        var tasks = subs(item.id);
+        if (!tasks.some(function (t) { return t && t.when && (t.urg || t.dl); })) return;
+        var graph = TaskEngine.analyze(tasks);
+        graph.actionable.forEach(function (id) {
+          var task = graph.byId.get(id);
+          if (task.done || !(task.urg || task.dl) || typeof task.when !== "string" || !task.when) return;
+          var due = whenInfo(task.when);
+          if (due && due.diff <= 0) rows.push({ item:item, task:task, due:due,
+            parent:task.parentId == null ? null : graph.byId.get(String(task.parentId)) });
+        });
+      });
+    });
+    rows.sort(function (a,b) {
+      return Number(b.due.pastDue) - Number(a.due.pastDue) || a.task.when.localeCompare(b.task.when) ||
+        a.item.name.localeCompare(b.item.name);
+    });
+    $("urgentCount").textContent = rows.length;
+    $("urgentCount").classList.toggle("has-due", rows.length > 0);
+    var html = rows.length ? rows.map(function (r) {
+      var address = esc(JSON.stringify([r.item.id,r.task.id]));
+      return '<li><strong>' + esc(r.task.t || "Untitled task") + '</strong><small>' +
+        esc([r.item.name,r.parent && (r.parent.t || "Untitled task"),r.due.rel,r.due.time].filter(Boolean).join(" · ")) +
+        '</small><div><button type="button" class="tbtn" data-due-settings="' + address + '">Task settings</button> ' +
+        '<button type="button" class="tbtn" data-due-reminder="' + address + '">Reminder / snooze</button></div></li>';
+    }).join("") : "";
+    var host = $("urgentRows");
+    var markup = html ? '<ul>' + html + '</ul>' : '<p>No urgent deadlines due today or overdue.</p>';
+    if (host._deadlineMarkup !== markup) { host.innerHTML = markup; host._deadlineMarkup = markup; }
+  }
   function whenChipHtml(x) {
     if (!x.when) return '<button class="sub-when add" data-act="whenedit" title="Add a date">' + IC.cal + '</button>';
     var v = whenView(x);
@@ -1029,7 +1062,7 @@
       h.classList.toggle("tf-hide", !vis);
     });
   }
-  function renderCols() { renderColumn("app"); renderColumn("study"); renderColumn("office"); renderSpecial(); applyTagFilter(); refreshBuildSheet(); renderBuildBand(); }
+  function renderCols() { renderUrgentDeadlines(); renderColumn("app"); renderColumn("study"); renderColumn("office"); renderSpecial(); applyTagFilter(); refreshBuildSheet(); renderBuildBand(); }
   function spordOf(id) { var e = entries[id]; return (e && e.spord != null) ? e.spord : null; }
   function specialSorted() {
     var items = activeItems("app").concat(activeItems("study")).filter(isSpecialItem).filter(function (it) { return !getEntry(it.id).arch; });
@@ -5913,7 +5946,7 @@
     geoCheck(false);   // silent check on open if the user opted in before
     document.addEventListener("visibilitychange", function () { if (!document.hidden) geoCheck(false); });
     /* minute tick: lets check-in nudges + ASAP states appear without a reload */
-    setInterval(function () { renderTodayScreen(); }, 60000);
+    setInterval(function () { renderTodayScreen(); renderUrgentDeadlines(); }, 60000);
     pingLauncher(); setInterval(pingLauncher, 60000);
     var pad = $("plAskDays");
     if (pad) pad.addEventListener("click", function (e) {
@@ -6045,6 +6078,13 @@
      INIT
      ============================================================ */
   function init() {
+    $("urgentDeadlines").addEventListener("click", function (e) {
+      var button = e.target.closest("[data-due-settings],[data-due-reminder]");
+      if (!button) return;
+      var address = JSON.parse(button.dataset.dueSettings || button.dataset.dueReminder);
+      if (button.hasAttribute("data-due-settings")) openTaskSheet(address[0],address[1]);
+      else openSubReminder(address[0],address[1]);
+    });
     $("saveWeekProgress").addEventListener("click", saveWeeklyReview);
     $("weekHistoryChoice").addEventListener("change", function () { renderWeekHistory(); });
     if (window.WFStartup) window.WFStartup.step("Preparing the Sphere");
