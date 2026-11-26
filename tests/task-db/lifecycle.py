@@ -69,3 +69,44 @@ def check_branch_restore(admin, connect):
         assert leaf == tasks[2] and separate == tasks[3] and data["notes"]=="keep"
         assert edit("hide",2,"branch",True) == ("applied",3)
     print("PASS branch restoration reopens ancestors, preserves history and nested archives")
+
+
+def check_repeat(admin, connect):
+    owner = "00000000-0000-4000-8000-000000000001"
+    tasks = [{"id":"a","t":"Read","done":True,"history":[123],"rv":"keep"},
+             {"id":"b","t":"Write","done":True}]
+    def seed(item, **overrides):
+        payload = dict(repeatChecklist=True, notes="keep", subtasks=tasks)
+        payload.update(overrides)
+        admin.execute("insert into wf_demo.entries(owner_id,board,item,revision,payload) values(%s,'repeat',%s,1,%s)",
+                      (owner,item,json.dumps(payload)))
+    seed("sample")
+    for item, overrides in [
+        ("ordinary", {"repeatChecklist":False}), ("empty", {"subtasks":[]}),
+        ("archived", {"subtasks":[dict(tasks[0], archived=True)]}),
+        ("shared", {"subtasks":[dict(tasks[0], src="rm")]}),
+        ("duplicate", {"subtasks":tasks[:1]*2}), ("history", {"checklistRuns":{}}),
+    ]:
+        seed(item, **overrides)
+    with connect("wf_demo_gateway") as db, request(db,json.dumps({"sub":owner})):
+        def reset(item, op, base):
+            return db.execute("select * from wf_demo.apply('repeat',%s,%s,%s,'nextRun',null,true)",
+                              (item,op,base)).fetchone()
+        for item in ["ordinary","empty","archived","shared","duplicate","history"]:
+            assert reset(item,"try",1) == ("blocked",1)
+        assert reset("sample","one",1) == ("applied",2)
+        assert reset("sample","one",1) == ("replayed",2)
+        assert reset("sample","other-device",1) == ("conflict",2)
+        assert reset("sample","premature",2) == ("blocked",2)
+        for base, task in enumerate(tasks,2):
+            assert db.execute("select * from wf_demo.apply('repeat','sample',%s,%s,'done',%s,true)",
+                              ("finish-"+task["id"],base,task["id"])).fetchone() == ("applied",base+1)
+        assert reset("sample","two",4) == ("applied",5)
+        payload = db.execute("select payload from wf_demo.read_entry('repeat','sample')").fetchone()[0]
+        assert [run["id"] for run in payload["checklistRuns"]] == ["one","two"]
+        for run in payload["checklistRuns"]:
+            assert run["completedTasks"] == [{"id":t["id"],"text":t["t"]} for t in tasks]
+        for current, original in zip(payload["subtasks"],tasks):
+            assert current == dict(original,done=False,u=current["u"])
+        assert payload["notes"] == "keep"
+    print("PASS recurring checklist history across two runs, retries and stale devices")
