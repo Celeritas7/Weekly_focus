@@ -39,7 +39,8 @@ def serve(connect, port=0):
         <label><input type="checkbox" id="pilot-offline">Pause sync</label>
         <button id="pilot-open">Open sample task</button><button id="pilot-refresh">Sync now</button>
         <button id="pilot-next" disabled>Start next checklist</button>
-        <output id="pilot-history"></output>
+        <label><input type="checkbox" id="pilot-weekly" disabled>Repeat Mondays (Japan time)</label>
+        <output id="pilot-due"></output> <output id="pilot-history"></output>
         <span hidden id="pilot-review"><button data-choice="keep">Keep saved task</button>
         <button data-choice="retry">Apply my edit</button></span></aside>"""
     shell = re.sub(r"<body\b([^>]*)>",lambda m:f'<body{m[1]} data-pilot="{instance}">'+toolbar,shell,count=1)
@@ -66,8 +67,9 @@ def serve(connect, port=0):
             if path == "/": return self.send(shell.encode(),"text/html; charset=utf-8")
             if path == "/pilot/entry":
                 with connect("wf_demo_gateway") as db, request(db,json.dumps({"sub":OWNER})):
+                    server_ms = db.execute("select (extract(epoch from statement_timestamp())*1000)::bigint").fetchone()[0]
                     revision, data = db.execute("select * from wf_demo.read_entry(%s,%s)",(BOARD,ITEM)).fetchone()
-                return self.send(json.dumps(dict(revision=revision,payload=data)).encode(),"application/json")
+                return self.send(json.dumps(dict(revision=revision,payload=data,serverMs=server_ms)).encode(),"application/json")
             if path == "/pilot.mjs": file = Path(__file__).with_name("pilot.mjs")
             elif path in {"/js/"+name for name in allowed}: file = ROOT / path[1:]
             elif re.fullmatch(r"/(?:css/[\w-]+\.css|icons/[\w-]+\.png)",path): file = ROOT / path[1:]
@@ -86,7 +88,8 @@ def serve(connect, port=0):
                 intent=op["intent"]
                 if (op["owner"]!=instance or op["board"]!=BOARD or op["item"]!=ITEM or
                     not ((intent["field"] in ("done","archived") and isinstance(intent["sub"],str))
-                         or (intent["field"]=="nextRun" and intent["sub"] is None and intent["value"] is True)) or type(intent["value"]) is not bool or
+                         or (intent["field"]=="weeklySchedule" and intent["sub"] is None)
+                         or (intent["field"] in ("nextRun","scheduledRun") and intent["sub"] is None and intent["value"] is True)) or type(intent["value"]) is not bool or
                     type(op["base"]) is not int or not isinstance(op["id"],str)):
                     return self.send_error(400)
             except (KeyError,TypeError,ValueError): return self.send_error(400)
@@ -166,6 +169,32 @@ def check_pilot(connect, browser):
             assert device.locator(parent).is_disabled()
             assert device.locator("#pilot-next").is_disabled()
             assert " on" not in device.locator('#bsBody [data-act="subtoggle"]').first.get_attribute("class")
+        page.locator("#pilot-weekly").check()
+        revision += 1
+        page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
+        assert "Next scheduled date" in page.locator("#pilot-due").inner_text()
+        # Simulate a missed Monday on the synthetic board, then reconnect both devices.
+        with connect("fixture_admin") as admin:
+            admin.execute("""update wf_demo.entries set revision=revision+1,
+                payload=jsonb_set(payload,'{nextWeeklyRun}','1000') where owner_id=%s and board=%s and item=%s""",
+                (OWNER,BOARD,ITEM))
+        revision += 1
+        page.locator("#pilot-refresh").click()
+        page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
+        toggle(page)
+        revision += 1
+        page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
+        page.locator(parent).click()
+        revision += 2  # Completing the parent and advancing the due checklist are separate revisions.
+        page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
+        other.reload()
+        for device in (page,other):
+            device.get_by_text("2 finished runs · last run 1 of 1 complete",exact=True).wait_for()
+            assert device.locator("#pilot-weekly").is_checked()
+            assert device.locator("#pilot-next").is_disabled()
+        other.locator("#pilot-weekly").uncheck()
+        other.get_by_text(f"Synced · revision {revision+1}",exact=True).wait_for()
+        assert not other.locator("#pilot-due").inner_text()
         for ctx,_ in devices: ctx.close()
     print("PASS real Weekly Focus checklist: offline conflict and review in both directions")
 

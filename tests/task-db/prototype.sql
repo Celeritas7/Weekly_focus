@@ -117,11 +117,14 @@ DECLARE
   intent jsonb := jsonb_build_array(p_base,p_field,p_sub,p_value);
   idx integer;
   matches integer;
+  next_monday bigint := (extract(epoch FROM ((date_trunc('week',statement_timestamp() AT TIME ZONE 'Asia/Tokyo')
+                        + interval '7 days') AT TIME ZONE 'Asia/Tokyo'))*1000)::bigint;
 BEGIN
   SELECT * INTO actor FROM wf_demo.actor();
   IF NOT FOUND OR p_field IS NULL OR
      NOT ((actor.writer='wf' AND p_field IN ('done','lat','archived') AND nullif(p_sub,'') IS NOT NULL)
-       OR (actor.writer='wf' AND p_field='nextRun' AND p_sub IS NULL AND p_value IS TRUE)
+       OR (actor.writer='wf' AND p_field IN ('nextRun','scheduledRun') AND p_sub IS NULL AND p_value IS TRUE)
+       OR (actor.writer='wf' AND p_field='weeklySchedule' AND p_sub IS NULL)
        OR (actor.writer='cc' AND p_field='ccActive' AND p_sub IS NULL)) THEN
     RETURN QUERY SELECT 'refused'::text,NULL::bigint; RETURN;
   END IF;
@@ -141,8 +144,25 @@ BEGIN
   END IF;
   IF entry.removed THEN RETURN QUERY SELECT 'deleted'::text,entry.revision; RETURN; END IF;
   IF entry.revision <> p_base THEN RETURN QUERY SELECT 'conflict'::text,entry.revision; RETURN; END IF;
-  IF p_field='nextRun' THEN
-    -- Pilot supports manually repeated, Weekly Focus-owned checklists.
+  IF p_field='weeklySchedule' THEN
+    IF entry.payload->'repeatChecklist' IS DISTINCT FROM 'true'::jsonb
+       OR coalesce(entry.payload->'taskSchemaVersion','1'::jsonb) <> '1'::jsonb THEN
+      RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
+    END IF;
+    IF p_value THEN
+      IF jsonb_typeof(entry.payload->'subtasks') IS DISTINCT FROM 'array' THEN
+        RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
+      END IF;
+      IF NOT EXISTS (SELECT FROM wf_demo.repeat_nodes(entry.payload->'subtasks') WHERE active AND leaf) THEN
+        RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
+      END IF;
+      IF NOT (entry.payload ? 'nextWeeklyRun') THEN
+        entry.payload := entry.payload || jsonb_build_object('nextWeeklyRun',next_monday);
+      END IF;
+    ELSE
+      entry.payload := entry.payload - 'nextWeeklyRun';
+    END IF;
+  ELSIF p_field IN ('nextRun','scheduledRun') THEN
     DECLARE
       tasks jsonb := entry.payload->'subtasks';
       history jsonb := coalesce(entry.payload->'checklistRuns','[]'::jsonb);
@@ -153,6 +173,12 @@ BEGIN
       IF entry.payload->'repeatChecklist' IS DISTINCT FROM 'true'::jsonb
          OR coalesce(entry.payload->'taskSchemaVersion','1'::jsonb) <> '1'::jsonb
          OR jsonb_typeof(tasks) IS DISTINCT FROM 'array' OR jsonb_typeof(history) <> 'array' THEN
+        RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
+      END IF;
+      IF p_field='scheduledRun' AND (
+           jsonb_typeof(entry.payload->'nextWeeklyRun') IS DISTINCT FROM 'number'
+           OR entry.payload->'nextWeeklyRun' > to_jsonb(stamp)
+           OR entry.payload->'nextWeeklyRun' <= '0'::jsonb) THEN
         RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
       END IF;
       SELECT jsonb_agg(CASE WHEN active THEN node || jsonb_build_object('done',false,'u',stamp)
@@ -166,7 +192,12 @@ BEGIN
       END IF;
       entry.payload := entry.payload || jsonb_build_object('subtasks',next_tasks,
         'checklistRuns',history || jsonb_build_array(jsonb_build_object('id',p_op,
-          'closedAt',stamp,'revision',p_base,'completedTasks',finished)));
+          'closedAt',stamp,'revision',p_base,'completedTasks',finished)
+          || CASE WHEN p_field='scheduledRun' THEN jsonb_build_object('scheduledFor',entry.payload->'nextWeeklyRun')
+                  ELSE '{}'::jsonb END));
+      IF entry.payload ? 'nextWeeklyRun' THEN
+        entry.payload := entry.payload || jsonb_build_object('nextWeeklyRun',next_monday);
+      END IF;
     END;
   ELSIF p_field='archived' THEN
     IF coalesce(entry.payload->'taskSchemaVersion','1'::jsonb) <> '1'::jsonb THEN

@@ -134,3 +134,43 @@ def check_repeat(admin, connect):
             assert current == dict(original,done=False,u=current["u"])
         assert payload["notes"] == "keep"
     print("PASS recurring checklist history across two runs, retries and stale devices")
+
+
+
+def check_weekly_schedule(admin, connect):
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import datetime, timezone, timedelta
+    from threading import Barrier
+
+    owner = "00000000-0000-4000-8000-000000000001"
+    task = {"id":"a","t":"Read","done":True}
+    payload = {"repeatChecklist":True,"subtasks":[task],"nextWeeklyRun":1000}
+    admin.execute("insert into wf_demo.entries(owner_id,board,item,revision,payload) values(%s,'schedule','item',1,%s)",
+                  (owner,json.dumps(payload)))
+    def apply(field, op, base, value=True, barrier=None):
+        with connect("wf_demo_gateway") as db, request(db,json.dumps({"sub":owner})):
+            if barrier:
+                barrier.wait(timeout=5)
+            return db.execute("select * from wf_demo.apply('schedule','item',%s,%s,%s,null,%s)",
+                              (op,base,field,value)).fetchone()
+    barrier = Barrier(2)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        attempts = [pool.submit(apply,"scheduledRun","weekly:1000:1",1,True,barrier) for _ in range(2)]
+        assert sorted(f.result() for f in attempts) == [("applied",2),("replayed",2)]
+    def read():
+        return admin.execute("select payload from wf_demo.entries where board='schedule'").fetchone()[0]
+    saved = read()
+    runs = saved["checklistRuns"]
+    assert len(runs)==1 and runs[0]["scheduledFor"]==1000 and not saved["subtasks"][0]["done"]
+    japan = timezone(timedelta(hours=9))
+    boundary = datetime.fromtimestamp(saved["nextWeeklyRun"]/1000,japan)
+    closed = datetime.fromtimestamp(runs[0]["closedAt"]/1000,japan)
+    assert boundary.weekday()==0 and boundary.hour==boundary.minute==boundary.second==0
+    assert closed < boundary <= closed + timedelta(days=7)
+    assert apply("scheduledRun","again",2)==("blocked",2)
+    assert apply("weeklySchedule","disable",2,False)==("applied",3)
+    assert "nextWeeklyRun" not in read()
+    assert apply("scheduledRun","old-device",2)==("conflict",3)
+    assert apply("scheduledRun","disabled",3)==("blocked",3)
+    assert read()["checklistRuns"]==runs
+    print("PASS simultaneous weekly rollover, missed weeks, Japan boundary and cancellation")
