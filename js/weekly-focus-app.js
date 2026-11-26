@@ -1880,7 +1880,7 @@
     return '<div class="detail' + (id === OPENING ? ' opening' : '') + '">' + priCtl +
       '<input class="obj" data-act="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
       goalRowHtml(id) + taskReadOnlyHtml(id) +
-      '<div class="wf-task-tree">' + taskTreeHtml(id, e.subtasks) + archivePanelHtml(id, subs(id)) + '</div>' +
+      '<div class="wf-task-tree">' + taskTreeHtml(id, e.subtasks) + '</div>' + archivePanelHtml(id, subs(id)) +
       '<ul class="subs">' + rows + '</ul>' +
       '<div class="sub-add"><textarea class="sub-new" rows="2" data-act="subnew" aria-label="New checklist item" placeholder="Add a task or improvement\u2026"></textarea><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
       latStripHtml(id) +
