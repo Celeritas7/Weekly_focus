@@ -76,6 +76,35 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION wf_demo.archive_tasks(jsonb,text,boolean,bigint) FROM PUBLIC;
 
+-- Return no rows for ambiguous, unsupported or disconnected repeat checklists.
+CREATE FUNCTION wf_demo.repeat_nodes(tasks jsonb)
+RETURNS TABLE(node jsonb, ord bigint, id text, path text[], active boolean, leaf boolean)
+LANGUAGE sql SET search_path=pg_catalog AS $$
+  WITH RECURSIVE nodes AS (
+    SELECT n, position, n->>'id' AS key, n->>'parentId' AS parent,
+           NOT (n @> '{"archived":true}' OR n @> '{"del":true}') AS visible
+    FROM jsonb_array_elements(tasks) WITH ORDINALITY AS rows(n,position)
+  ), valid AS (
+    SELECT count(*)=count(DISTINCT key) AND bool_and(
+      jsonb_typeof(n->'id')='string' AND key<>'' AND n->>'src' IS NULL
+      AND n->>'occurrenceId' IS NULL
+      AND (parent IS NULL OR jsonb_typeof(n->'parentId')='string')
+      AND NOT EXISTS (SELECT FROM unnest(ARRAY['done','del','archived']) flag
+                      WHERE n ? flag AND jsonb_typeof(n->flag)<>'boolean')
+    ) AS ok FROM nodes
+  ), walk AS (
+    SELECT key, ARRAY[key] AS ancestors, visible FROM nodes WHERE parent IS NULL AND (SELECT ok FROM valid)
+    UNION ALL
+    SELECT n.key, w.ancestors||n.key, w.visible AND n.visible
+    FROM walk w JOIN nodes n ON n.parent=w.key
+  )
+  SELECT n.n,n.position,n.key,w.ancestors,w.visible,
+         NOT EXISTS (SELECT FROM nodes child WHERE child.parent=n.key)
+  FROM walk w JOIN nodes n USING(key)
+  WHERE (SELECT count(*) FROM nodes)=(SELECT count(*) FROM walk);
+$$;
+REVOKE ALL ON FUNCTION wf_demo.repeat_nodes(jsonb) FROM PUBLIC;
+
 -- Limited to one-level, existing active tasks and the CC flag.
 CREATE FUNCTION wf_demo.apply(p_board text, p_item text, p_op text, p_base bigint,
                               p_field text, p_sub text, p_value boolean)
@@ -113,7 +142,7 @@ BEGIN
   IF entry.removed THEN RETURN QUERY SELECT 'deleted'::text,entry.revision; RETURN; END IF;
   IF entry.revision <> p_base THEN RETURN QUERY SELECT 'conflict'::text,entry.revision; RETURN; END IF;
   IF p_field='nextRun' THEN
-    -- Pilot supports manually repeated flat, Weekly Focus-owned checklists.
+    -- Pilot supports manually repeated, Weekly Focus-owned checklists.
     DECLARE
       tasks jsonb := entry.payload->'subtasks';
       history jsonb := coalesce(entry.payload->'checklistRuns','[]'::jsonb);
@@ -126,18 +155,15 @@ BEGIN
          OR jsonb_typeof(tasks) IS DISTINCT FROM 'array' OR jsonb_typeof(history) <> 'array' THEN
         RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
       END IF;
-      IF jsonb_array_length(tasks)=0 OR EXISTS (
-        SELECT FROM jsonb_array_elements(tasks) t
-        WHERE jsonb_typeof(t->'id') IS DISTINCT FROM 'string' OR nullif(t->>'id','') IS NULL
-           OR t->'done' IS DISTINCT FROM 'true'::jsonb OR t->>'parentId' IS NOT NULL
-           OR t->>'occurrenceId' IS NOT NULL OR t->>'src' IS NOT NULL
-           OR t->>'archived'='true' OR t->>'del'='true'
-      ) OR EXISTS (SELECT FROM jsonb_array_elements(tasks) t GROUP BY t->>'id' HAVING count(*)>1) THEN
+      SELECT jsonb_agg(CASE WHEN active THEN node || jsonb_build_object('done',false,'u',stamp)
+                            ELSE node END ORDER BY ord),
+             jsonb_agg(jsonb_build_object('id',id,'text',node->>'t') ORDER BY ord)
+               FILTER (WHERE active AND leaf)
+        INTO next_tasks,finished FROM wf_demo.repeat_nodes(tasks)
+        HAVING bool_and(node @> '{"done":true}') FILTER (WHERE active);
+      IF finished IS NULL THEN
         RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
       END IF;
-      SELECT jsonb_agg(t || jsonb_build_object('done',false,'u',stamp) ORDER BY ord),
-             jsonb_agg(jsonb_build_object('id',t->'id','text',t->>'t') ORDER BY ord)
-        INTO next_tasks,finished FROM jsonb_array_elements(tasks) WITH ORDINALITY AS rows(t,ord);
       entry.payload := entry.payload || jsonb_build_object('subtasks',next_tasks,
         'checklistRuns',history || jsonb_build_array(jsonb_build_object('id',p_op,
           'closedAt',stamp,'revision',p_base,'completedTasks',finished)));
@@ -149,6 +175,24 @@ BEGIN
     DECLARE updated jsonb := wf_demo.archive_tasks(entry.payload->'subtasks',p_sub,p_value,
         floor(extract(epoch FROM statement_timestamp())*1000)::bigint);
     BEGIN
+      IF updated IS NULL THEN RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN; END IF;
+      entry.payload := jsonb_set(entry.payload,'{subtasks}',updated);
+    END;
+  ELSIF p_field='done' AND entry.payload @> '{"repeatChecklist":true}' THEN
+    DECLARE updated jsonb;
+    BEGIN
+      IF coalesce(entry.payload->'taskSchemaVersion','1'::jsonb) <> '1'::jsonb
+         OR jsonb_typeof(entry.payload->'subtasks') IS DISTINCT FROM 'array' THEN
+        RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
+      END IF;
+      WITH nodes AS (SELECT * FROM wf_demo.repeat_nodes(entry.payload->'subtasks')),
+      target AS (SELECT path FROM nodes WHERE id=p_sub AND active)
+      SELECT jsonb_agg(CASE WHEN id=p_sub OR (NOT p_value AND id=ANY(target.path) AND node @> '{"done":true}')
+                       THEN node || jsonb_build_object('done',p_value,'u',floor(extract(epoch FROM statement_timestamp())*1000)::bigint)
+                       ELSE node END ORDER BY ord)
+        INTO updated FROM nodes CROSS JOIN target
+        WHERE NOT p_value OR NOT EXISTS (SELECT FROM nodes child WHERE child.active AND child.id<>p_sub
+                                         AND p_sub=ANY(child.path) AND NOT child.node @> '{"done":true}');
       IF updated IS NULL THEN RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN; END IF;
       entry.payload := jsonb_set(entry.payload,'{subtasks}',updated);
     END;

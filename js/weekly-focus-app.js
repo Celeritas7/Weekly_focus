@@ -26,7 +26,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v169", BUILD_N = 169;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v170", BUILD_N = 170;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -222,10 +222,13 @@
   function subs(k) { var a = getEntry(k).subtasks; return Array.isArray(a) ? a : []; }
   function subCompletionAttrs(k, x) {
     var issue = STALE ? "Update Weekly Focus before editing this newer board." : taskWriteIssue(k);
+    if (!STALE && previewSync && previewSync.supportsRepeat && previewSync.supportsRepeat(k)) issue = "";
     if (!issue && !x.done) issue = TaskEngine.completion(subs(k), x.id).reason;
     return issue ? ' disabled aria-disabled="true" data-completion-blocked="1" title="' + esc(issue) + '"' : '';
   }
   function taskReadOnlyHtml(k) {
+    if (!STALE && previewSync && previewSync.supportsRepeat && previewSync.supportsRepeat(k))
+      return '<p class="task-readonly">Complete each branch after finishing its subtasks.</p>';
     var issue = STALE ? "Update Weekly Focus before editing this newer board." : taskWriteIssue(k);
     return issue ? '<p class="task-readonly" role="status">' + esc(issue) + '</p>' : '';
   }
