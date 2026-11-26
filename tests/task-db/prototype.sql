@@ -92,6 +92,7 @@ BEGIN
   SELECT * INTO actor FROM wf_demo.actor();
   IF NOT FOUND OR p_field IS NULL OR
      NOT ((actor.writer='wf' AND p_field IN ('done','lat','archived') AND nullif(p_sub,'') IS NOT NULL)
+       OR (actor.writer='wf' AND p_field='nextRun' AND p_sub IS NULL AND p_value IS TRUE)
        OR (actor.writer='cc' AND p_field='ccActive' AND p_sub IS NULL)) THEN
     RETURN QUERY SELECT 'refused'::text,NULL::bigint; RETURN;
   END IF;
@@ -111,7 +112,37 @@ BEGIN
   END IF;
   IF entry.removed THEN RETURN QUERY SELECT 'deleted'::text,entry.revision; RETURN; END IF;
   IF entry.revision <> p_base THEN RETURN QUERY SELECT 'conflict'::text,entry.revision; RETURN; END IF;
-  IF p_field='archived' THEN
+  IF p_field='nextRun' THEN
+    -- Pilot supports manually repeated flat, Weekly Focus-owned checklists.
+    DECLARE
+      tasks jsonb := entry.payload->'subtasks';
+      history jsonb := coalesce(entry.payload->'checklistRuns','[]'::jsonb);
+      stamp bigint := floor(extract(epoch FROM statement_timestamp())*1000)::bigint;
+      next_tasks jsonb;
+      finished jsonb;
+    BEGIN
+      IF entry.payload->'repeatChecklist' IS DISTINCT FROM 'true'::jsonb
+         OR coalesce(entry.payload->'taskSchemaVersion','1'::jsonb) <> '1'::jsonb
+         OR jsonb_typeof(tasks) IS DISTINCT FROM 'array' OR jsonb_typeof(history) <> 'array' THEN
+        RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
+      END IF;
+      IF jsonb_array_length(tasks)=0 OR EXISTS (
+        SELECT FROM jsonb_array_elements(tasks) t
+        WHERE jsonb_typeof(t->'id') IS DISTINCT FROM 'string' OR nullif(t->>'id','') IS NULL
+           OR t->'done' IS DISTINCT FROM 'true'::jsonb OR t->>'parentId' IS NOT NULL
+           OR t->>'occurrenceId' IS NOT NULL OR t->>'src' IS NOT NULL
+           OR t->>'archived'='true' OR t->>'del'='true'
+      ) OR EXISTS (SELECT FROM jsonb_array_elements(tasks) t GROUP BY t->>'id' HAVING count(*)>1) THEN
+        RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
+      END IF;
+      SELECT jsonb_agg(t || jsonb_build_object('done',false,'u',stamp) ORDER BY ord),
+             jsonb_agg(jsonb_build_object('id',t->'id','text',t->>'t') ORDER BY ord)
+        INTO next_tasks,finished FROM jsonb_array_elements(tasks) WITH ORDINALITY AS rows(t,ord);
+      entry.payload := entry.payload || jsonb_build_object('subtasks',next_tasks,
+        'checklistRuns',history || jsonb_build_array(jsonb_build_object('id',p_op,
+          'closedAt',stamp,'revision',p_base,'completedTasks',finished)));
+    END;
+  ELSIF p_field='archived' THEN
     IF coalesce(entry.payload->'taskSchemaVersion','1'::jsonb) <> '1'::jsonb THEN
       RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
     END IF;

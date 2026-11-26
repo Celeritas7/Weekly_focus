@@ -20,7 +20,7 @@ BOARD = "pilot"
 @contextmanager
 def serve(connect, port=0):
     instance = str(uuid4())
-    payload = {"active":True,"notes":"Synthetic test board","ccActive":False,
+    payload = {"repeatChecklist":True,"active":True,"notes":"Synthetic test board","ccActive":False,
                "subtasks":[{"id":"leaf","t":"Review the sample checklist","done":False}]}
     with connect("fixture_admin") as admin:
         admin.execute("insert into wf_demo.entries(owner_id,board,item,revision,payload) values(%s,%s,%s,1,%s)",
@@ -36,6 +36,8 @@ def serve(connect, port=0):
         <b>Sync preview</b> <output id="pilot-status" aria-live="polite">Connecting…</output>
         <label><input type="checkbox" id="pilot-offline">Pause sync</label>
         <button id="pilot-open">Open sample task</button><button id="pilot-refresh">Sync now</button>
+        <button id="pilot-next" disabled>Start next checklist</button>
+        <output id="pilot-history"></output>
         <span hidden id="pilot-review"><button data-choice="keep">Keep saved task</button>
         <button data-choice="retry">Apply my edit</button></span></aside>"""
     shell = re.sub(r"<body\b([^>]*)>",lambda m:f'<body{m[1]} data-pilot="{instance}">'+toolbar,shell,count=1)
@@ -81,7 +83,8 @@ def serve(connect, port=0):
                 op=json.loads(self.rfile.read(size))
                 intent=op["intent"]
                 if (op["owner"]!=instance or op["board"]!=BOARD or op["item"]!=ITEM or
-                    intent["field"] not in ("done","archived") or not isinstance(intent["sub"],str) or type(intent["value"]) is not bool or
+                    not ((intent["field"] in ("done","archived") and isinstance(intent["sub"],str))
+                         or (intent["field"]=="nextRun" and intent["sub"] is None and intent["value"] is True)) or type(intent["value"]) is not bool or
                     type(op["base"]) is not int or not isinstance(op["id"],str)):
                     return self.send_error(400)
             except (KeyError,TypeError,ValueError): return self.send_error(400)
@@ -143,6 +146,15 @@ def check_pilot(connect, browser):
             revision += 1
             page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
             assert page.locator('#bsBody [data-act="subtoggle"]').count() == (0 if action=="Archive" else 1)
+        page.get_by_role("button",name="Start next checklist").click()
+        revision += 1
+        page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
+        other = devices[1][1]
+        other.locator("#pilot-refresh").click()
+        for device in (page,other):
+            device.get_by_text("1 finished run · last run 1 of 1 complete",exact=True).wait_for()
+            assert device.locator("#pilot-next").is_disabled()
+            assert " on" not in device.locator('#bsBody [data-act="subtoggle"]').first.get_attribute("class")
         for ctx,_ in devices: ctx.close()
     print("PASS real Weekly Focus checklist: offline conflict and review in both directions")
 

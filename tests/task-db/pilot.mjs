@@ -18,7 +18,7 @@ async function paint() {
   shown = structuredClone(snapshot.payload);
   const pending = state.operations.find(row=>row.status==="pending");
   draft = state.operations.find(row=>row.status==="review");
-  if (pending) {
+  if (pending && pending.intent.field !== "nextRun") {
     const intent = pending.intent;
     const type = intent.field === "archived" ? (intent.value ? "archive" : "restore") : "done";
     const edit = WFTaskEngine.command(shown.subtasks,{type,id:intent.sub,done:intent.value});
@@ -26,6 +26,19 @@ async function paint() {
   }
   display(item, shown);
   controls.hidden = !draft;
+  const runs = shown.checklistRuns || [];
+  const last = runs.at(-1);
+  const count = last?.completedTasks.length;
+  document.querySelector("#pilot-history").textContent = last ?
+    runs.length + " finished run" + (runs.length === 1 ? "" : "s") + " · last run " + count + " of " + count + " complete" : "";
+  document.querySelector("#pilot-next").disabled = !!(pending || draft) || !shown.repeatChecklist ||
+    !shown.subtasks.length || !shown.subtasks.every(task=>task.done && !task.archived && !task.del);
+  controls.querySelector('[data-choice="retry"]').hidden = draft?.intent.field === "nextRun";
+  if (draft?.intent.field === "nextRun" || pending?.intent.field === "nextRun") {
+    status.textContent = draft ? "The checklist changed. Review the saved run before starting another." :
+      "Next checklist queued. Waiting for confirmation.";
+    return;
+  }
   if (draft && draft.intent.field === "archived") {
     status.textContent = "Review needed. Your edit: " + (draft.intent.value ? "archive" : "restore") +
       ". Check the saved branch before retrying.";
@@ -57,6 +70,11 @@ window.__WF_SEED = {apps:[{id:item,name:"Sync practice",group:"General"}],target
       document.querySelector("#pilot-open").onclick=()=>sheet(item,true);
       document.querySelector("#pilot-refresh").onclick=()=>run();
       document.querySelector("#pilot-offline").onchange=()=>run();
+      document.querySelector("#pilot-next").onclick=()=>run(async()=>{
+        const state=await queue.inspect();
+        if (state.operations.length) throw Error("Resolve the pending edit first");
+        await queue.enqueue(item,revision,{field:"nextRun",sub:null,value:true});
+      });
       controls.onclick=e=>{
         const action=e.target.dataset.choice;
         if (action && draft) run(()=>queue.resolveReview(draft.id,revision,action==="retry"));

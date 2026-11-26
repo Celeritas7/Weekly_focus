@@ -115,3 +115,16 @@ conflict review and replay receipts.
 On a regular board the full card lists previously archived branch roots under
 **Archived branches**. Archive writes require the revision-aware transport,
 currently enabled in the isolated preview only.
+
+### Manual repeat in the isolated sync preview
+
+Complete the sample checklist, then choose **Start next checklist**. The preview
+shows the number of finished runs and the last run's completed/total count.
+The revision-checked operation records the finished task IDs and titles, then
+reopens the same tasks in one transaction. Task notes, ratings and existing
+history stay on the tasks. An offline request waits for confirmation. A stale
+request goes to review and requires a fresh choice after reviewing the saved run.
+
+This phase supports explicitly repeatable, flat Weekly Focus checklists.
+Scheduling, nested or shared recurring tasks, reminder dispatch and live-board
+activation are separate work. The test database uses synthetic records only.
