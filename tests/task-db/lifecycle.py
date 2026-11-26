@@ -44,3 +44,28 @@ def check_lifecycle(admin, connect):
         assert not admin.execute("""select has_function_privilege('wf_demo_cc',
             'wf_demo.batch(text,text,jsonb,boolean)','execute')""").fetchone()[0]
     print("PASS atomic bulk rollback, import replay, tombstone restore and closed board fence")
+
+
+def check_branch_restore(admin, connect):
+    owner = "00000000-0000-4000-8000-000000000001"
+    tasks = [
+        {"id":"parent","done":True},{"id":"branch","parentId":"parent","archived":True},
+        {"id":"leaf","parentId":"branch","done":False,"history":[1,2],"src":"rm"},
+        {"id":"separate","parentId":"branch","archived":True,"done":False}
+    ]
+    admin.execute("insert into wf_demo.entries(owner_id,board,item,revision,payload) values(%s,'archive','entry',1,%s)",
+                  (owner,json.dumps({"notes":"keep","subtasks":tasks})))
+    with connect("wf_demo_gateway") as db, request(db,json.dumps({"sub":owner})):
+        def edit(op, base, sub, value):
+            return db.execute("select * from wf_demo.apply('archive','entry',%s,%s,'archived',%s,%s)",
+                              (op,base,sub,value)).fetchone()
+        assert edit("hidden",1,"separate",False) == ("blocked",1)
+        assert edit("restore",1,"branch",False) == ("applied",2)
+        assert edit("restore",1,"branch",False) == ("replayed",2)
+        assert edit("stale",1,"branch",True) == ("conflict",2)
+        data = db.execute("select payload from wf_demo.read_entry('archive','entry')").fetchone()[0]
+        parent, branch, leaf, separate = data["subtasks"]
+        assert not parent["done"] and not branch["archived"]
+        assert leaf == tasks[2] and separate == tasks[3] and data["notes"]=="keep"
+        assert edit("hide",2,"branch",True) == ("applied",3)
+    print("PASS branch restoration reopens ancestors, preserves history and nested archives")

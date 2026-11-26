@@ -18,9 +18,19 @@ async function paint() {
   shown = structuredClone(snapshot.payload);
   const pending = state.operations.find(row=>row.status==="pending");
   draft = state.operations.find(row=>row.status==="review");
-  if (pending) shown.subtasks[0].done = pending.intent.value;
+  if (pending) {
+    const intent = pending.intent;
+    const type = intent.field === "archived" ? (intent.value ? "archive" : "restore") : "done";
+    const edit = WFTaskEngine.command(shown.subtasks,{type,id:intent.sub,done:intent.value});
+    if (edit.ok) shown.subtasks = edit.items;
+  }
   display(item, shown);
   controls.hidden = !draft;
+  if (draft && draft.intent.field === "archived") {
+    status.textContent = "Review needed. Your edit: " + (draft.intent.value ? "archive" : "restore") +
+      ". Check the saved branch before retrying.";
+    return;
+  }
   status.textContent = draft ? "Review needed. Saved task: " + (shown.subtasks[0].done?"complete":"open") +
     ". Your edit: " + (draft.intent.value?"complete":"open") + "." :
     pending ? "Edit saved on this device." : "Synced · revision " + revision;
@@ -53,6 +63,14 @@ window.__WF_SEED = {apps:[{id:item,name:"Sync practice",group:"General"}],target
       };
       window.addEventListener("online",()=>run());
       run();
+    },
+    archive(key,sub,value) {
+      if (key!==item || !shown || draft) return;
+      run(async()=>{
+        const state=await queue.inspect();
+        if (state.operations.some(op=>op.status==="pending")) throw Error("Sync your pending edit first");
+        await queue.enqueue(item,revision,{field:"archived",sub,value});
+      });
     },
     toggle(key,sub) {
       if (key!==item || sub!=="leaf" || !shown || draft) return;

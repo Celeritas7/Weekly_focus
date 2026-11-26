@@ -26,7 +26,7 @@
   function hueFor(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function nowISO() { return new Date().toISOString(); }
-  var APP_BUILD = "v168", BUILD_N = 168;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
+  var APP_BUILD = "v169", BUILD_N = 169;   // v105: shown in the Cloud panel; compared with sw.js on the server and with the board row (old-build guard)
 
   /* ---------------- ring builder ---------------- */
   function ringSVG(pct, size, sw, cls) {
@@ -263,7 +263,14 @@
   function ctxNorm(a) { if (!Array.isArray(a)) return []; var out = []; a.forEach(function (c) { c = ctxCanon(String(c || "").trim()); if (c && out.indexOf(c) < 0) out.push(c); }); return out; }
   function normSubs(arr) { return TaskData.normalize(arr, ctxNorm); }
   function mergeSubs(a, b) { return TaskData.merge(a, b, ctxNorm); }
-  function visibleSubs(arr) { return normSubs(arr).filter(function (s) { return !s.del; }); }
+  function visibleSubs(arr) {
+    var rows = normSubs(arr);
+    if (rows.some(function (x) { return x.archived || x.parentId != null; })) {
+      var graph = TaskEngine.analyze(rows);
+      if (!graph.issues.length) return rows.filter(function (x) { return graph.active.has(String(x.id)); });
+    }
+    return rows.filter(function (x) { return !x.del; });
+  }
   /* v64 (phase 9): parked tasks — "for later". They stay in the list's count but never nag:
      no Today row, no overdue banner, no calendar dot, no agenda, no flow. */
   function activeSubs(arr) { return visibleSubs(arr).filter(function (s) { return !s.lat; }); }
@@ -1756,6 +1763,24 @@
   }
   function nextSub(id) { var a = activeSubs(subs(id)).filter(function (x) { return !x.done; }); return a.length ? (a[0].t || "") : ""; }
   function priName(p) { return p === "H" ? "High" : p === "M" ? "Medium" : "Low"; }
+  function archivePanelHtml(item, tasks) {
+    var editable = previewSync && previewSync.archive;
+    if (!editable && !tasks.some(function (s) { return s && s.archived; })) return "";
+    var graph = TaskEngine.analyze(tasks);
+    if (graph.issues.length) return "";
+    var rows = [];
+    graph.order.forEach(function (id) {
+      var node = graph.byId.get(id);
+      if (node.del || (node.parentId != null && !graph.active.has(String(node.parentId)))) return;
+      if (!editable && !node.archived) return;
+      var action = node.archived ? "Restore" : "Archive";
+      rows.push('<li>' + esc(node.t || "Untitled task") + (editable ?
+        ' <button type="button" class="tbtn" data-archive-item="' + esc(item) + '" data-archive-id="' +
+        esc(id) + '" data-archive-value="' + (!node.archived) + '">' + action + '</button>' : '') + '</li>');
+    });
+    return rows.length ? '<details><summary>' + (editable ? "Archive / restore tasks" : "Archived branches") +
+      '</summary><ul>' + rows.join("") + '</ul></details>' : "";
+  }
   // Disclosure state is local to this board. Viewing a branch never queues an edit.
   var treeOpen = new Map();
   document.addEventListener("toggle", function (event) {
@@ -1855,7 +1880,7 @@
     return '<div class="detail' + (id === OPENING ? ' opening' : '') + '">' + priCtl +
       '<input class="obj" data-act="obj" placeholder="Objective \u2014 what does done look like?" value="' + esc(e.objective || "") + '">' +
       goalRowHtml(id) + taskReadOnlyHtml(id) +
-      '<div class="wf-task-tree">' + taskTreeHtml(id, e.subtasks) + '</div>' +
+      '<div class="wf-task-tree">' + taskTreeHtml(id, e.subtasks) + '</div>' + archivePanelHtml(id, subs(id)) +
       '<ul class="subs">' + rows + '</ul>' +
       '<div class="sub-add"><textarea class="sub-new" rows="2" data-act="subnew" aria-label="New checklist item" placeholder="Add a task or improvement\u2026"></textarea><button class="sub-addbtn" data-act="subadd">Add</button></div>' +
       latStripHtml(id) +
@@ -6078,6 +6103,11 @@
      INIT
      ============================================================ */
   function init() {
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest("[data-archive-id]");
+      if (button && previewSync && previewSync.archive) previewSync.archive(button.dataset.archiveItem,
+        button.dataset.archiveId, button.dataset.archiveValue === "true");
+    });
     $("urgentDeadlines").addEventListener("click", function (e) {
       var button = e.target.closest("[data-due-settings],[data-due-reminder]");
       if (!button) return;

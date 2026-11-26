@@ -102,3 +102,16 @@ The preview server binds to loopback, serves a restricted asset set and accepts
 only this task operation. Preview assets are outside the production shell and
 the production app receives no preview seed. The browser suite runs this
 scenario twice with the two device roles exchanged.
+
+### Branch archive and restore
+
+In the isolated sync preview, open the sample task's full card and expand
+**Archive / restore tasks**. Archiving removes the branch from active progress.
+Restoring an unfinished branch reopens completed ancestors in the same
+revision. An independently archived child stays archived. The operation keeps
+the task ID, notes, source and completion history. It uses the existing queue,
+conflict review and replay receipts.
+
+On a regular board the full card lists previously archived branch roots under
+**Archived branches**. Archive writes require the revision-aware transport,
+currently enabled in the isolated preview only.
