@@ -81,8 +81,9 @@ def check(port, pwd):
         assert admin.execute("select count(*) from wf_demo.receipts").fetchone() == (6,)
         print("PASS concurrent duplicate applied once")
         check_permissions(admin, connect, cc, pwd, apply)
-        from lifecycle import check_lifecycle
+        from lifecycle import check_lifecycle, check_branch_restore
         check_lifecycle(admin, connect)
+        check_branch_restore(admin, connect)
         if os.getenv("WF_BROWSER_QUEUE") == "1":
             from browser_queue import check_browser_queue
             check_browser_queue(connect)

@@ -36,6 +36,46 @@ LANGUAGE sql SET search_path = pg_catalog AS $$
 $$;
 REVOKE ALL ON FUNCTION wf_demo.lock_board(text,text) FROM PUBLIC;
 
+-- Compute a branch archive transition from the locked, authoritative payload.
+-- NULL means the graph or requested transition needs review.
+CREATE FUNCTION wf_demo.archive_tasks(tasks jsonb, target text, hiding boolean, edited bigint)
+RETURNS jsonb LANGUAGE plpgsql SET search_path=pg_catalog AS $$
+DECLARE result jsonb;
+BEGIN
+  IF jsonb_typeof(tasks) IS DISTINCT FROM 'array' THEN RETURN NULL; END IF;
+  IF EXISTS (SELECT FROM jsonb_array_elements(tasks) n GROUP BY n->>'id'
+             HAVING nullif(n->>'id','') IS NULL OR count(*) <> 1) THEN RETURN NULL; END IF;
+  WITH RECURSIVE nodes AS (
+    SELECT n, ord, n->>'id' AS id, n->>'parentId' AS parent,
+      coalesce(n->>'del','false')='true' AS deleted,
+      coalesce(n->>'archived','false')='true' AS archived
+    FROM jsonb_array_elements(tasks) WITH ORDINALITY t(n,ord)
+  ), walk AS (
+    SELECT id, ARRAY[id] AS path, NOT deleted AS available,
+      NOT deleted AND NOT (CASE WHEN id=target THEN hiding ELSE archived END) AS active
+    FROM nodes WHERE parent IS NULL
+    UNION ALL
+    SELECT c.id, w.path||c.id, w.active AND NOT c.deleted,
+      w.active AND NOT c.deleted AND NOT (CASE WHEN c.id=target THEN hiding ELSE c.archived END)
+    FROM walk w JOIN nodes c ON c.parent=w.id
+  ), reopen AS (
+    SELECT DISTINCT unnest(w.path) AS id FROM walk w JOIN nodes n USING(id)
+    WHERE NOT hiding AND target=ANY(w.path) AND w.active AND coalesce(n.n->>'done','false') <> 'true'
+  )
+  SELECT jsonb_agg(
+    CASE WHEN n.id=target OR (r.id IS NOT NULL AND n.n->>'done'='true')
+      THEN n.n || jsonb_build_object('u',edited)
+        || CASE WHEN n.id=target THEN jsonb_build_object('archived',hiding) ELSE '{}'::jsonb END
+        || CASE WHEN r.id IS NOT NULL THEN '{"done":false}'::jsonb ELSE '{}'::jsonb END
+      ELSE n.n END ORDER BY n.ord)
+  INTO result FROM nodes n LEFT JOIN reopen r USING(id)
+  WHERE (SELECT count(*) FROM walk)=(SELECT count(*) FROM nodes)
+    AND EXISTS (SELECT FROM nodes t JOIN walk USING(id)
+                WHERE t.id=target AND available AND t.archived<>hiding);
+  RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION wf_demo.archive_tasks(jsonb,text,boolean,bigint) FROM PUBLIC;
+
 -- Limited to one-level, existing active tasks and the CC flag.
 CREATE FUNCTION wf_demo.apply(p_board text, p_item text, p_op text, p_base bigint,
                               p_field text, p_sub text, p_value boolean)
@@ -51,7 +91,7 @@ DECLARE
 BEGIN
   SELECT * INTO actor FROM wf_demo.actor();
   IF NOT FOUND OR p_field IS NULL OR
-     NOT ((actor.writer='wf' AND p_field IN ('done','lat') AND nullif(p_sub,'') IS NOT NULL)
+     NOT ((actor.writer='wf' AND p_field IN ('done','lat','archived') AND nullif(p_sub,'') IS NOT NULL)
        OR (actor.writer='cc' AND p_field='ccActive' AND p_sub IS NULL)) THEN
     RETURN QUERY SELECT 'refused'::text,NULL::bigint; RETURN;
   END IF;
@@ -71,7 +111,17 @@ BEGIN
   END IF;
   IF entry.removed THEN RETURN QUERY SELECT 'deleted'::text,entry.revision; RETURN; END IF;
   IF entry.revision <> p_base THEN RETURN QUERY SELECT 'conflict'::text,entry.revision; RETURN; END IF;
-  IF p_field IN ('done','lat') THEN
+  IF p_field='archived' THEN
+    IF coalesce(entry.payload->'taskSchemaVersion','1'::jsonb) <> '1'::jsonb THEN
+      RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;
+    END IF;
+    DECLARE updated jsonb := wf_demo.archive_tasks(entry.payload->'subtasks',p_sub,p_value,
+        floor(extract(epoch FROM statement_timestamp())*1000)::bigint);
+    BEGIN
+      IF updated IS NULL THEN RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN; END IF;
+      entry.payload := jsonb_set(entry.payload,'{subtasks}',updated);
+    END;
+  ELSIF p_field IN ('done','lat') THEN
     IF COALESCE(entry.payload->'taskSchemaVersion','1'::jsonb) <> '1'::jsonb OR
        jsonb_typeof(entry.payload->'subtasks') IS DISTINCT FROM 'array' THEN
       RETURN QUERY SELECT 'blocked'::text,entry.revision; RETURN;

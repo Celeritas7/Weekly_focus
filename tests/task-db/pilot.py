@@ -81,13 +81,13 @@ def serve(connect, port=0):
                 op=json.loads(self.rfile.read(size))
                 intent=op["intent"]
                 if (op["owner"]!=instance or op["board"]!=BOARD or op["item"]!=ITEM or
-                    intent["field"]!="done" or intent["sub"]!="leaf" or type(intent["value"]) is not bool or
+                    intent["field"] not in ("done","archived") or not isinstance(intent["sub"],str) or type(intent["value"]) is not bool or
                     type(op["base"]) is not int or not isinstance(op["id"],str)):
                     return self.send_error(400)
             except (KeyError,TypeError,ValueError): return self.send_error(400)
             with connect("wf_demo_gateway") as db, request(db,json.dumps({"sub":OWNER})):
-                status,version=db.execute("select * from wf_demo.apply(%s,%s,%s,%s,'done','leaf',%s)",
-                    (BOARD,ITEM,op["id"],op["base"],intent["value"])).fetchone()
+                status,version=db.execute("select * from wf_demo.apply(%s,%s,%s,%s,%s,%s,%s)",
+                    (BOARD,ITEM,op["id"],op["base"],intent["field"],intent["sub"],intent["value"])).fetchone()
             self.send(json.dumps(dict(status=status,version=version)).encode(),"application/json")
     with ThreadingHTTPServer(("127.0.0.1",port),Handler) as server:
         thread=Thread(target=server.serve_forever,daemon=True)
@@ -134,6 +134,15 @@ def check_pilot(connect, browser):
                 continue
             page.get_by_role("button",name="Keep saved task").click()
             page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
+        page = devices[0][1]
+        for action in ("Archive","Restore"):
+            panel = page.locator("#bsBody details").filter(has=page.get_by_text("Archive / restore tasks",exact=True))
+            if not panel.get_by_role("button",name=action,exact=True).is_visible():
+                panel.locator("summary").click()
+            panel.get_by_role("button",name=action,exact=True).click()
+            revision += 1
+            page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
+            assert page.locator('#bsBody [data-act="subtoggle"]').count() == (0 if action=="Archive" else 1)
         for ctx,_ in devices: ctx.close()
     print("PASS real Weekly Focus checklist: offline conflict and review in both directions")
 
