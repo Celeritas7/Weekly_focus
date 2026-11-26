@@ -138,3 +138,18 @@ deleted branches keep their values, and reopening a child during a run also
 reopens its completed ancestors. Cycles, missing parents, ambiguous IDs and
 shared-source checklists cannot start a run. Scheduling and live-board
 activation remain separate work.
+
+### Scheduled weekly recurrence in the isolated pilot
+
+Select **Repeat Mondays (Japan time)** on the sample checklist. The first
+boundary is the following Monday at 00:00 in Asia/Tokyo. During online sync,
+a complete checklist past its boundary starts a new run. Checks also run when
+the pilot returns to the foreground and every minute while it is visible.
+Unfinished work carries forward until all active tasks and parents are done.
+After several missed weeks, only the actual finished run is recorded. Its history
+includes the original scheduled boundary. The next boundary is the upcoming Monday.
+
+The database verifies the due time and original revision. Both devices derive
+the same operation ID from the boundary and revision. Disabling the schedule
+keeps past runs. Manual advancement remains available. The pilot runs on
+reconnect or while open and creates no Akatsuki reminders or background jobs.

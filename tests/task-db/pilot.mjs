@@ -18,7 +18,7 @@ async function paint() {
   shown = structuredClone(snapshot.payload);
   const pending = state.operations.find(row=>row.status==="pending");
   draft = state.operations.find(row=>row.status==="review");
-  if (pending && pending.intent.field !== "nextRun") {
+  if (pending && ["done","archived"].includes(pending.intent.field)) {
     const intent = pending.intent;
     const type = intent.field === "archived" ? (intent.value ? "archive" : "restore") : "done";
     const edit = WFTaskEngine.command(shown.subtasks,{type,id:intent.sub,done:intent.value});
@@ -34,10 +34,21 @@ async function paint() {
   const progress = WFTaskEngine.progress(shown.subtasks);
   document.querySelector("#pilot-next").disabled = !!(pending || draft) || !shown.repeatChecklist ||
     progress.kind !== "checklist" || progress.blockerIds.length > 0;
+  const weekly = document.querySelector("#pilot-weekly");
+  weekly.disabled = !!(pending || draft) || !shown.repeatChecklist;
+  weekly.checked = pending?.intent.field === "weeklySchedule" ? pending.intent.value : !!shown.nextWeeklyRun;
+  document.querySelector("#pilot-due").textContent = shown.nextWeeklyRun ? "Next scheduled date: " +
+    new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Tokyo",dateStyle:"medium"}).format(shown.nextWeeklyRun) : "";
   controls.querySelector('[data-choice="retry"]').hidden = draft?.intent.field === "nextRun";
   if (draft?.intent.field === "nextRun" || pending?.intent.field === "nextRun") {
     status.textContent = draft ? "The checklist changed. Review the saved run before starting another." :
       "Next checklist queued. Waiting for confirmation.";
+    return;
+  }
+  if (draft?.intent.field === "weeklySchedule" || pending?.intent.field === "weeklySchedule") {
+    const value = (draft || pending).intent.value ? "on" : "off";
+    status.textContent = draft ? "Review needed. Your weekly schedule change: " + value + "." :
+      "Weekly schedule change queued.";
     return;
   }
   if (draft && draft.intent.field === "archived") {
@@ -54,8 +65,19 @@ async function sync() {
   const pull = async () => {
     const row = await api("entry");
     await queue.observe(item,row.revision,row.payload);
+    return row;
   };
-  await pull(); await queue.flush(); await pull();
+  await pull();
+  await queue.flush();
+  const row = await pull();
+  const due = row.payload.nextWeeklyRun;
+  if (!Number.isSafeInteger(due) || due <= 0 || due > row.serverMs) return;
+  const progress = WFTaskEngine.progress(row.payload.subtasks);
+  if (progress.kind !== "checklist" || progress.blockerIds.length || (await queue.inspect()).operations.length) return;
+  const reply = await api("commit",{id:"weekly:"+due+":"+row.revision,owner,board,item,base:row.revision,
+    intent:{field:"scheduledRun",sub:null,value:true}});
+  if (!["applied","replayed","conflict","blocked"].includes(reply.status)) throw Error("Scheduled run needs review");
+  await pull();
 }
 async function run(action) {
   if (busy) return;
@@ -76,6 +98,16 @@ window.__WF_SEED = {apps:[{id:item,name:"Sync practice",group:"General"}],target
         if (state.operations.length) throw Error("Resolve the pending edit first");
         await queue.enqueue(item,revision,{field:"nextRun",sub:null,value:true});
       });
+      document.querySelector("#pilot-weekly").onchange=e=>{
+        const value=e.target.checked;
+        run(async()=>{
+          if ((await queue.inspect()).operations.length) throw Error("Resolve the pending edit first");
+          await queue.enqueue(item,revision,{field:"weeklySchedule",sub:null,value});
+        });
+      };
+      const checkSchedule=()=>{ if (!document.hidden && shown?.nextWeeklyRun) run(); };
+      document.addEventListener("visibilitychange",checkSchedule);
+      setInterval(checkSchedule,60000);
       controls.onclick=e=>{
         const action=e.target.dataset.choice;
         if (action && draft) run(()=>queue.resolveReview(draft.id,revision,action==="retry"));
