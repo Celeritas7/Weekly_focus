@@ -81,6 +81,12 @@ def check_repeat(admin, connect):
         admin.execute("insert into wf_demo.entries(owner_id,board,item,revision,payload) values(%s,'repeat',%s,1,%s)",
                       (owner,item,json.dumps(payload)))
     seed("sample")
+    hidden = {"id":"keep","parentId":"hidden","done":True,"u":4}
+    seed("tree", subtasks=[dict(tasks[0],parentId="branch"),dict(tasks[1],parentId="branch"),
+                          {"id":"branch","parentId":"root","done":True},{"id":"root","done":True},
+                          {"id":"hidden","parentId":"root","archived":True},hidden])
+    seed("loop", subtasks=[dict(tasks[0],parentId="b"),dict(tasks[1],parentId="a")])
+    seed("orphan", subtasks=[dict(tasks[0],parentId="missing")])
     for item, overrides in [
         ("ordinary", {"repeatChecklist":False}), ("empty", {"subtasks":[]}),
         ("archived", {"subtasks":[dict(tasks[0], archived=True)]}),
@@ -92,8 +98,26 @@ def check_repeat(admin, connect):
         def reset(item, op, base):
             return db.execute("select * from wf_demo.apply('repeat',%s,%s,%s,'nextRun',null,true)",
                               (item,op,base)).fetchone()
-        for item in ["ordinary","empty","archived","shared","duplicate","history"]:
+        for item in ["loop","orphan","ordinary","empty","archived","shared","duplicate","history"]:
             assert reset(item,"try",1) == ("blocked",1)
+        def toggle(task, base, value):
+            return db.execute("select * from wf_demo.apply('repeat','tree',%s,%s,'done',%s,%s)",
+                              (task+str(base),base,task,value)).fetchone()
+        def read_tree():
+            return db.execute("select payload from wf_demo.read_entry('repeat','tree')").fetchone()[0]
+        assert toggle("a",1,False) == ("applied",2)
+        assert [n["done"] for n in read_tree()["subtasks"][:4]] == [False,True,False,False]
+        assert toggle("branch",2,True) == ("blocked",2)
+        assert toggle("keep",2,False) == ("blocked",2)
+        for base, key in enumerate(["a","branch","root"],2):
+            assert reset("tree","early",base) == ("blocked",base)
+            assert toggle(key,base,True) == ("applied",base+1)
+        assert reset("tree","again",5) == ("applied",6)
+        assert reset("tree","again",5) == ("replayed",6)
+        tree = read_tree()
+        assert tree["checklistRuns"][0]["completedTasks"] == [{"id":"a","text":"Read"},{"id":"b","text":"Write"}]
+        assert all(not n["done"] for n in tree["subtasks"][:4])
+        assert tree["subtasks"][4:] == [{"id":"hidden","parentId":"root","archived":True},hidden]
         assert reset("sample","one",1) == ("applied",2)
         assert reset("sample","one",1) == ("replayed",2)
         assert reset("sample","other-device",1) == ("conflict",2)

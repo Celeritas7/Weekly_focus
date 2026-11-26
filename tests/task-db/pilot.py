@@ -21,7 +21,9 @@ BOARD = "pilot"
 def serve(connect, port=0):
     instance = str(uuid4())
     payload = {"repeatChecklist":True,"active":True,"notes":"Synthetic test board","ccActive":False,
-               "subtasks":[{"id":"leaf","t":"Review the sample checklist","done":False}]}
+               "subtasks":[{"id":"leaf","t":"Review the sample checklist","done":False,"parentId":"review"},
+                          {"id":"review","t":"Weekly review","done":False},
+                          {"id":"saved","t":"Archived idea","parentId":"review","archived":True}]}
     with connect("fixture_admin") as admin:
         admin.execute("insert into wf_demo.entries(owner_id,board,item,revision,payload) values(%s,%s,%s,1,%s)",
                       (OWNER,BOARD,ITEM,json.dumps(payload)))
@@ -111,6 +113,8 @@ def check_pilot(connect, browser):
             devices.append((context,page))
         def toggle(page):
             page.locator('#bsBody [data-act="subtoggle"]').first.click()
+        parent = '#bsBody [data-sid="review"] [data-act="subtoggle"]'
+        assert devices[0][1].locator(parent).is_disabled()
         revision=1
         for local, remote in (devices,devices[::-1]):
             ctx,page=local
@@ -140,12 +144,18 @@ def check_pilot(connect, browser):
         page = devices[0][1]
         for action in ("Archive","Restore"):
             panel = page.locator("#bsBody details").filter(has=page.get_by_text("Archive / restore tasks",exact=True))
-            if not panel.get_by_role("button",name=action,exact=True).is_visible():
+            leaf_button = panel.locator('[data-archive-id="leaf"]')
+            if not leaf_button.is_visible():
                 panel.locator("summary").click()
-            panel.get_by_role("button",name=action,exact=True).click()
+            assert leaf_button.inner_text() == action
+            leaf_button.click()
             revision += 1
             page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
-            assert page.locator('#bsBody [data-act="subtoggle"]').count() == (0 if action=="Archive" else 1)
+            assert page.locator('#bsBody [data-act="subtoggle"]').count() == (1 if action=="Archive" else 2)
+        assert page.locator("#pilot-next").is_disabled()
+        page.locator(parent).click()
+        revision += 1
+        page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
         page.get_by_role("button",name="Start next checklist").click()
         revision += 1
         page.get_by_text(f"Synced · revision {revision}",exact=True).wait_for()
@@ -153,6 +163,7 @@ def check_pilot(connect, browser):
         other.locator("#pilot-refresh").click()
         for device in (page,other):
             device.get_by_text("1 finished run · last run 1 of 1 complete",exact=True).wait_for()
+            assert device.locator(parent).is_disabled()
             assert device.locator("#pilot-next").is_disabled()
             assert " on" not in device.locator('#bsBody [data-act="subtoggle"]').first.get_attribute("class")
         for ctx,_ in devices: ctx.close()

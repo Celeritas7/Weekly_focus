@@ -31,8 +31,9 @@ async function paint() {
   const count = last?.completedTasks.length;
   document.querySelector("#pilot-history").textContent = last ?
     runs.length + " finished run" + (runs.length === 1 ? "" : "s") + " · last run " + count + " of " + count + " complete" : "";
+  const progress = WFTaskEngine.progress(shown.subtasks);
   document.querySelector("#pilot-next").disabled = !!(pending || draft) || !shown.repeatChecklist ||
-    !shown.subtasks.length || !shown.subtasks.every(task=>task.done && !task.archived && !task.del);
+    progress.kind !== "checklist" || progress.blockerIds.length > 0;
   controls.querySelector('[data-choice="retry"]').hidden = draft?.intent.field === "nextRun";
   if (draft?.intent.field === "nextRun" || pending?.intent.field === "nextRun") {
     status.textContent = draft ? "The checklist changed. Review the saved run before starting another." :
@@ -44,7 +45,7 @@ async function paint() {
       ". Check the saved branch before retrying.";
     return;
   }
-  status.textContent = draft ? "Review needed. Saved task: " + (shown.subtasks[0].done?"complete":"open") +
+  status.textContent = draft ? "Review needed. Saved task: " + (shown.subtasks.find(task=>task.id===draft.intent.sub)?.done?"complete":"open") +
     ". Your edit: " + (draft.intent.value?"complete":"open") + "." :
     pending ? "Edit saved on this device." : "Synced · revision " + revision;
 }
@@ -90,12 +91,15 @@ window.__WF_SEED = {apps:[{id:item,name:"Sync practice",group:"General"}],target
         await queue.enqueue(item,revision,{field:"archived",sub,value});
       });
     },
+    supportsRepeat(key) { return key===item && shown?.repeatChecklist === true; },
     toggle(key,sub) {
-      if (key!==item || sub!=="leaf" || !shown || draft) return;
+      const task = shown?.subtasks.find(task=>task.id===sub);
+      if (key!==item || !task || draft) return;
+      if (!WFTaskEngine.command(shown.subtasks,{type:"done",id:sub,done:!task.done}).ok) return;
       run(async()=>{
         const state=await queue.inspect();
         if (state.operations.some(op=>op.status==="pending")) throw Error("Sync your pending edit first");
-        await queue.enqueue(item,revision,{field:"done",sub,value:!shown.subtasks[0].done});
+        await queue.enqueue(item,revision,{field:"done",sub,value:!task.done});
       });
     }
   }};

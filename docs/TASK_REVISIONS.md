@@ -128,3 +128,13 @@ request goes to review and requires a fresh choice after reviewing the saved run
 This phase supports explicitly repeatable, flat Weekly Focus checklists.
 Scheduling, nested or shared recurring tasks, reminder dispatch and live-board
 activation are separate work. The test database uses synthetic records only.
+
+### Nested repeat checklists in the sync pilot
+
+The sample now includes a parent, a child and an archived branch. Complete
+the active child, complete its parent and select **Start next checklist**.
+The completed run records one leaf. Both active rows reopen. Archived and
+deleted branches keep their values, and reopening a child during a run also
+reopens its completed ancestors. Cycles, missing parents, ambiguous IDs and
+shared-source checklists cannot start a run. Scheduling and live-board
+activation remain separate work.
